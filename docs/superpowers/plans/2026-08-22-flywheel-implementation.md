@@ -2696,6 +2696,117 @@ git commit -m "feat: SQLite position store and append-only decision journal"
 
 ---
 
+## Task 12b: The public status page
+
+**Files:**
+- Create: `src/flywheel/journal/site.py`, `scripts/build_site.py`
+- Test: `tests/test_site.py`
+
+**Interfaces:**
+- Consumes: `flywheel.journal.writer.read_entries`, `flywheel.store.export_snapshot`.
+- Produces: `render_site(entries: list[dict], wheels: list[dict], generated_at: datetime) -> str`
+  (pure, returns an HTML document), and `build_site(out_path: Path) -> Path`.
+
+**Why this exists.** The submission form asks for a live demo URL, and this agent has no user interface — see `docs/notes/logistics.md`. A static page on GitHub Pages answers that without introducing a server that could be down when a judge clicks the link. The workflow already commits `journal/` and `data/state/` after every cycle; regenerating one HTML file from them costs nothing extra and makes the daily run visible.
+
+**`render_site` must be pure and take no I/O.** That is what makes it testable, and it keeps the page generator incapable of touching the broker — a public artifact should be provably read-only.
+
+- [ ] **Step 1: Write the failing test** — `tests/test_site.py`
+
+```python
+from datetime import datetime
+
+from flywheel.journal.site import render_site
+
+
+def _entry(**overrides):
+    values = {
+        "ts": "2026-08-25T14:02:11Z",
+        "symbol": "SPY",
+        "action": "sell_put",
+        "regime": "calm",
+        "verdict": "approved",
+        "detail": "SPY260918P00620000 x1 @ 4.20",
+    }
+    values.update(overrides)
+    return values
+
+
+def test_the_page_is_a_complete_html_document():
+    html = render_site([_entry()], [], datetime(2026, 8, 25, 14, 5))
+    assert html.startswith("<!doctype html>")
+    assert "</html>" in html
+
+
+def test_journal_entries_appear_newest_first():
+    old = _entry(ts="2026-08-24T14:00:00Z", detail="older")
+    new = _entry(ts="2026-08-25T14:00:00Z", detail="newer")
+    html = render_site([old, new], [], datetime(2026, 8, 25, 14, 5))
+    assert html.index("newer") < html.index("older")
+
+
+def test_rejections_are_shown_not_hidden():
+    html = render_site(
+        [_entry(verdict="rejected", detail="assignment probability 0.41 > 0.35")],
+        [],
+        datetime(2026, 8, 25, 14, 5),
+    )
+    assert "rejected" in html
+    assert "0.41" in html
+
+
+def test_open_wheels_render_their_basis():
+    wheels = [{"symbol": "SPY", "leg": "SHARES", "basis": "472.70", "cycles": 3}]
+    html = render_site([], wheels, datetime(2026, 8, 25, 14, 5))
+    assert "472.70" in html
+    assert "SHARES" in html
+
+
+def test_html_is_escaped():
+    html = render_site(
+        [_entry(detail="<script>alert(1)</script>")], [], datetime(2026, 8, 25, 14, 5)
+    )
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_an_empty_journal_still_renders():
+    html = render_site([], [], datetime(2026, 8, 25, 14, 5))
+    assert "No cycles recorded yet" in html
+```
+
+- [ ] **Step 2: Run it and confirm it fails**
+
+Run: `uv run pytest tests/test_site.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'flywheel.journal.site'`
+
+- [ ] **Step 3: Implement `render_site`.** A single f-string document with inlined CSS — no external stylesheet, no JavaScript, no fonts. Escape every interpolated value with `html.escape`. Sections in this order: what the agent is, one line; the open wheels table with basis and cycle count; the journal table, newest first, with rejected rows visibly marked; the generation timestamp and a link to the repository.
+
+**Show rejections at least as prominently as fills.** The risk gate refusing a trade is the most interesting thing this agent does, and a status page that only lists successful orders throws away the strongest evidence on the page.
+
+- [ ] **Step 4: Run the tests and confirm they pass**
+
+Run: `uv run pytest tests/test_site.py -v`
+Expected: 6 passed
+
+- [ ] **Step 5: Write `scripts/build_site.py`** — reads the journal and the state snapshot, calls `render_site`, writes `docs/index.html`.
+
+- [ ] **Step 6: Wire it into the workflow.** In `.github/workflows/trade.yml`, run `build_site.py` in the same `if: always()` step that commits the journal, and add `docs/index.html` to the paths it commits. The page must update even on a cycle that traded nothing — "considered and declined" is a state worth publishing.
+
+- [ ] **Step 7: Enable GitHub Pages.** Repository Settings → Pages → Source: `main` branch, `/docs` folder. Wait for the first deploy, open the URL, and confirm the page renders.
+
+Record the resulting URL in `docs/notes/logistics.md` — it is the demo URL the submission form asks for.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/flywheel/journal/site.py scripts/build_site.py tests/test_site.py \
+        .github/workflows/trade.yml docs/index.html docs/notes/logistics.md
+git commit -m "feat: static status page published to GitHub Pages"
+```
+
+---
+
 ## Task 13: Reconciliation
 
 **Files:**
@@ -3187,6 +3298,20 @@ The backtest is the one deliverable that can be improved during this week withou
 - [ ] **Sep 1–2: the demo video, 2–5 minutes.** Structure: the problem (income overlays are hardcoded and fragile) → the pitch line → one real cycle end to end, reading from the actual journal → the risk gate rejecting something, shown live → the backtest report → the honest limitations. Use real journal output on screen; do not stage it.
 - [ ] **Sep 2–3: slides.** Same arc as the video, one slide per beat.
 - [ ] **Sep 3: submit.** Follow the deadline and format recorded in `docs/notes/logistics.md` on D1. Submit at least a day early — the deadline is in a timezone that is not yours.
+
+**Submission assets, from the form's own constraints.** Build these against the list in `docs/notes/logistics.md`, not from memory:
+
+| Asset | Constraint | Where it comes from |
+|---|---|---|
+| Title | ≤ 50 characters | — |
+| Short description | ≤ 255 characters | the pitch line |
+| Long description | ≥ 100 words | README sections 1–3 |
+| Cover image | 16:9 | the equity-curve chart from the report |
+| Video | **linked**, ≤ 5 min, ≤ 300 MB | upload to YouTube unlisted; do not attach a file |
+| GitHub repo | public | this repository |
+| Demo URL | live | the GitHub Pages status page from Task 12b |
+
+**Do these before Sep 3, not on it:** connect Discord, and create the team even though you are solo — a team is required before the form will accept a submission, and discovering that on deadline day is an avoidable way to lose.
 - [ ] **Sep 4: final journal commit**, and a short closing note in the README with the realised P&L over the six sessions, stated plainly whether it is positive or negative.
 
 ---
@@ -3197,17 +3322,18 @@ From spec §12.1, in the order things get dropped:
 
 | If time runs out | Drop |
 |---|---|
-| first | the Streamlit dashboard — the backtest report's charts cover it |
-| second | our own MCP server (`mcp/server.py`) |
-| third | the narrator role |
-| fourth | IWM — run SPY and QQQ only |
-| fifth | the modelled 2019–2026 run — ship the real-quote backtest and the `^PUT` overlay alone |
+| first | our own MCP server (`mcp/server.py`) |
+| second | the narrator role |
+| third | IWM — run SPY and QQQ only |
+| fourth | the modelled 2019–2026 run — ship the real-quote backtest and the `^PUT` overlay alone |
 
 **Not droppable from the backtest:** the `^PUT` calibration overlay. It costs one chart and is the only thing proving the engine works; without it the whole report is an unverified assertion.
 
-**Never dropped:** the risk gate and its tests, reconciliation, the journal, the scheduled run. An agent that reliably turns the wheel and cannot breach a limit beats an agent with a beautiful dashboard that died on Wednesday morning.
+**Never dropped:** the risk gate and its tests, reconciliation, the journal, the scheduled run, and the status page. An agent that reliably turns the wheel and cannot breach a limit beats an agent with a beautiful dashboard that died on Wednesday morning.
 
-The Streamlit dashboard and `mcp/server.py` from spec §5 are deliberately **not scheduled in this plan.** They are the top of the cut list, and scheduling them would mean planning to build something the plan already expects to abandon. If D1–D4 finish early, take them from the cut list in reverse: IWM first, then the narrator, then the MCP server.
+**The Streamlit dashboard from spec §5 is cancelled, not deferred.** The submission form asks for a live demo URL (see `docs/notes/logistics.md`), so *something* must be publicly visible — but a running server is the wrong answer for a project whose only interface is a daily cron. Task 12b publishes a static page to GitHub Pages instead: nothing to keep alive, nothing to go down mid-judging, and it regenerates itself from the journal every trading day. Spec §5's dashboard requirement is met by that page.
+
+`mcp/server.py` from spec §5 is deliberately **not scheduled**. It is the top of the cut list, and scheduling it would mean planning to build something the plan already expects to abandon. If D1–D4 finish early, take from the cut list in reverse: IWM first, then the narrator, then the MCP server.
 
 ---
 
@@ -3232,7 +3358,7 @@ Checked against the spec on completion.
 **Spec coverage.** Every section maps to a task: §3.1 wheel → Task 3; §3.3 optimizer → Tasks 5–7; §3.4 LLM role → Task 16; §4.2 cycle → Task 14; §4.3 middleware → Task 17; §4.4 dynamic prompt → Task 16; §4.5 state → Tasks 2, 12, 13; §5 layout → File Structure; §6 dependencies → Task 1; §7 secrets → Task 1 and Task 15; §8 risk → Task 4, recalibrated in Task 18; §9 backtest → Tasks 8, 18, 19; §10 testing order → Tasks 4, 3, 7, 17, 14, in exactly that order; §11 deployment → Task 15; §13 open questions → Task 0.
 
 **Deliberate deviations from the spec, all documented above:**
-- The Streamlit dashboard (§5, §14) and `mcp/server.py` (§5, §14) are not scheduled. Both are on §12.1's cut list; see the Cut Line section.
+- The Streamlit dashboard (§5, §14) is replaced by a static GitHub Pages status page (Task 12b) rather than dropped. The submission form requires a live demo URL, which the spec did not anticipate; a generated page satisfies both that and §5's visibility requirement without a server to keep alive. `mcp/server.py` (§5, §14) remains unscheduled — see the Cut Line section.
 - §9 asks for a 3–5 year backtest on real data. Alpaca's option history does not reach that far, so Task 18 uses a calibrated synthetic pricer and discloses it. This is a real limitation, surfaced rather than hidden.
 - §12 says all development ends Aug 27. This plan keeps that for the live agent and designates the offline backtest as the only work permitted to overflow into Aug 28–30.
 
