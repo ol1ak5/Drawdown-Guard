@@ -71,6 +71,8 @@ Files created, in dependency order. Each has one responsibility.
 | `src/flywheel/optimizer/candidates.py` | chain rows → scored `Candidate` list | D2 |
 | `src/flywheel/optimizer/model.py` | the CVXPY MILP | D2 |
 | `src/flywheel/backtest/data.py` | historical bar download + parquet cache | D2 |
+| `src/flywheel/backtest/options_history.py` | OCC symbols, expiries, real option bars | D2 |
+| `src/flywheel/backtest/benchmarks.py` | CBOE `^PUT` / `^BXM` index series | D2 |
 | `src/flywheel/mcp/alpaca_client.py` | connection to the Alpaca MCP server | D3 |
 | `src/flywheel/market/client.py` | alpaca-py wrapper: quotes, bars, account | D3 |
 | `src/flywheel/market/chain.py` | option chain load + liquidity filter | D3 |
@@ -137,7 +139,7 @@ git commit -m "docs: record hackathon logistics and account entitlements"
 uv init --package --name flywheel --python 3.11
 uv add alpaca-py "langchain>=1.0" langgraph langchain-anthropic mcp \
        cvxpy highspy numpy pandas scipy pydantic pydantic-settings \
-       pyyaml structlog pyarrow
+       pyyaml structlog pyarrow matplotlib yfinance
 uv add --dev pytest pytest-asyncio ruff mypy
 ```
 
@@ -1838,17 +1840,42 @@ git commit -m "feat: CVXPY allocation model with Rockafellar-Uryasev CVaR"
 ## Task 8: Historical data for the backtest
 
 **Files:**
-- Create: `src/flywheel/backtest/__init__.py`, `src/flywheel/backtest/data.py`, `scripts/fetch_history.py`
-- Test: `tests/test_backtest_data.py`
+- Create: `src/flywheel/backtest/__init__.py`, `src/flywheel/backtest/data.py`, `src/flywheel/backtest/options_history.py`, `src/flywheel/backtest/benchmarks.py`, `scripts/fetch_history.py`
+- Test: `tests/test_backtest_data.py`, `tests/test_options_history.py`
 
 **Interfaces:**
-- Consumes: `flywheel.settings.get_settings`, `alpaca.data.historical.StockHistoricalDataClient`.
-- Produces: `fetch_bars(symbol, start, end) -> pd.DataFrame` (columns `open, high, low, close, volume`, `DatetimeIndex`),
+- Consumes: `flywheel.settings.get_settings`, `alpaca.data.historical.{StockHistoricalDataClient, OptionHistoricalDataClient}`.
+- Produces, in `data.py`: `fetch_bars(symbol, start, end) -> pd.DataFrame` (columns `open, high, low, close, volume`, `DatetimeIndex`),
   `load_bars(symbol, start, end, cache_dir="data") -> pd.DataFrame` (parquet-cached),
   `realized_vol(closes: pd.Series, window: int = 20) -> pd.Series` (annualised),
   `return_scenarios(closes: pd.Series, lookback: int = 500) -> np.ndarray` (daily log returns).
+- Produces, in `options_history.py`: `occ_symbol(underlying, expiry, right, strike) -> str`,
+  `third_friday(year, month) -> date`,
+  `monthly_expiries(start, end) -> list[date]`,
+  `strike_grid(spot, width_pct=0.25, step=1.0) -> list[float]`,
+  `load_option_bars(underlying, expiry, strikes, start, end, cache_dir="data") -> pd.DataFrame`
+  (`MultiIndex[symbol, timestamp]`, columns `open, high, low, close, volume`).
+- Produces, in `benchmarks.py`: `load_benchmark(ticker, cache_dir="data/benchmarks") -> pd.Series` for `^PUT`, `^BXM`.
 
-**Why today:** the download is slow and rate-limited, and stock bars are available regardless of whether the market is open. Starting it now means D6's backtest is compute, not waiting.
+**Why today:** the downloads are slow and rate-limited, and none of them need an open market. Starting now means D6's backtest is compute, not waiting.
+
+### The three data layers, and what each one proves
+
+This task exists to answer one question — *does the theory hold on real data?* — and that question splits into three, each needing a different source. Getting this split wrong is how backtests end up proving nothing.
+
+| Layer | Source | Depth | The claim it supports |
+|---|---|---|---|
+| **A. Strategy class** | CBOE `^PUT`, `^BXM` via Yahoo | 1986 → | selling index puts systematically harvests the variance risk premium, and survives 1987, 2000, 2008 and 2020 |
+| **B. This parameterization** | real Alpaca option bars | Feb 2024 → | *my* deltas, DTE and limits work against real bid/ask spreads |
+| **C. Stress coverage** | Black-Scholes on real underlying bars | 2019 → | behaviour through March 2020 and 2022, explicitly labelled as modelled |
+
+**Layer A is not ours to rebuild.** `^PUT` is the CBOE S&P 500 PutWrite Index: a published index series, computed by the exchange from actual settlement prices, tracking exactly the put-selling half of this wheel since June 1986. `^BXM` is the covered-call half. Reproducing forty years of that with worse data would be a mistake — cite the index, plot it, move on. Layer A is evidence we get for free.
+
+**Layer B is the real backtest.** Alpaca's option history begins **February 2024**, which by now is roughly 30 months — about 30 monthly cycles per ticker. That is thin, and the report must say so. But these are real strikes, real bid/ask and real spreads, and 30 honest cycles beat 300 invented ones.
+
+**Layer C is a supplement, not a substitute.** The synthetic pricer covers the crash windows Layer B misses. Everything derived from it is labelled *modelled* in the report, never mixed into the headline numbers.
+
+**Entitlement note:** option data older than 15 minutes is available on every feed, so Layer B does not require the Algo Trader Plus subscription. Only real-time quoting does. Confirm this in Task 0 and record the answer.
 
 - [ ] **Step 1: Write the failing test** — `tests/test_backtest_data.py`
 
@@ -1969,41 +1996,303 @@ def return_scenarios(closes: pd.Series, lookback: int = 500) -> np.ndarray:
 Run: `uv run pytest tests/test_backtest_data.py -v`
 Expected: 4 passed
 
-- [ ] **Step 5: Write `scripts/fetch_history.py` and run it**
+- [ ] **Step 5: Write the failing test for OCC symbols and expiries** — `tests/test_options_history.py`
+
+Symbol construction and expiry arithmetic are pure and must be exactly right: a single off-by-one in the strike encoding silently requests contracts that never existed, and the backtest then reports a suspiciously clean history of trades that did not happen.
 
 ```python
-"""Download and cache daily bars for the backtest universe."""
+from datetime import date
+
+import pytest
+
+from flywheel.backtest.options_history import (
+    monthly_expiries,
+    occ_symbol,
+    strike_grid,
+    third_friday,
+)
+
+
+def test_occ_symbol_encodes_a_whole_dollar_strike():
+    assert occ_symbol("SPY", date(2024, 4, 19), "P", 480.0) == "SPY240419P00480000"
+
+
+def test_occ_symbol_encodes_a_half_dollar_strike():
+    assert occ_symbol("SPY", date(2024, 4, 19), "C", 512.5) == "SPY240419C00512500"
+
+
+def test_occ_symbol_uppercases_the_right():
+    assert occ_symbol("qqq", date(2025, 1, 17), "p", 400.0) == "QQQ250117P00400000"
+
+
+@pytest.mark.parametrize(
+    ("year", "month", "expected"),
+    [
+        (2024, 4, date(2024, 4, 19)),
+        (2024, 3, date(2024, 3, 15)),
+        (2025, 8, date(2025, 8, 15)),
+        (2026, 5, date(2026, 5, 15)),
+    ],
+)
+def test_third_friday(year, month, expected):
+    assert third_friday(year, month) == expected
+
+
+def test_monthly_expiries_are_ordered_and_bounded():
+    result = monthly_expiries(date(2024, 2, 1), date(2024, 6, 30))
+    assert result == [
+        date(2024, 2, 16),
+        date(2024, 3, 15),
+        date(2024, 4, 19),
+        date(2024, 5, 17),
+        date(2024, 6, 21),
+    ]
+
+
+def test_strike_grid_brackets_the_spot():
+    grid = strike_grid(spot=500.0, width_pct=0.10, step=5.0)
+    assert min(grid) == pytest.approx(450.0)
+    assert max(grid) == pytest.approx(550.0)
+    assert 500.0 in grid
+```
+
+- [ ] **Step 6: Run it and confirm it fails**
+
+Run: `uv run pytest tests/test_options_history.py -v`
+Expected: FAIL — `ModuleNotFoundError: No module named 'flywheel.backtest.options_history'`
+
+- [ ] **Step 7: Implement `src/flywheel/backtest/options_history.py`**
+
+**Contract discovery is done by construction, not by an API call.** Alpaca can list contracts, but the listing endpoint's treatment of long-expired contracts is not worth depending on. Instead: monthly expiries are the third Friday, strikes sit on a known grid, and the OCC symbol is a pure function of the two. Generate the candidates, ask for bars, and keep whatever came back. Symbols that never existed simply return no rows — which is the correct answer, not an error.
+
+```python
+"""Real historical option bars, addressed by constructed OCC symbols."""
+
+from datetime import date, timedelta
+from pathlib import Path
+
+import pandas as pd
+from alpaca.data.historical import OptionHistoricalDataClient
+from alpaca.data.requests import OptionBarsRequest
+from alpaca.data.timeframe import TimeFrame
+
+from flywheel.settings import get_settings
+
+# Alpaca's option history begins here. Requesting earlier returns nothing.
+OPTION_HISTORY_START = date(2024, 2, 1)
+
+
+def occ_symbol(underlying: str, expiry: date, right: str, strike: float) -> str:
+    """Build an OCC option symbol, e.g. SPY240419P00480000.
+
+    Strike is encoded in thousandths of a dollar, zero-padded to eight digits.
+    """
+    return (
+        underlying.upper()
+        + expiry.strftime("%y%m%d")
+        + right.upper()
+        + f"{round(strike * 1000):08d}"
+    )
+
+
+def third_friday(year: int, month: int) -> date:
+    """The standard monthly option expiry."""
+    first = date(year, month, 1)
+    offset = (4 - first.weekday()) % 7  # Monday is 0, Friday is 4
+    return first + timedelta(days=offset + 14)
+
+
+def monthly_expiries(start: date, end: date) -> list[date]:
+    expiries = []
+    year, month = start.year, start.month
+    while (year, month) <= (end.year, end.month):
+        candidate = third_friday(year, month)
+        if start <= candidate <= end:
+            expiries.append(candidate)
+        year, month = (year + 1, 1) if month == 12 else (year, month + 1)
+    return expiries
+
+
+def strike_grid(spot: float, width_pct: float = 0.25, step: float = 1.0) -> list[float]:
+    """Strikes bracketing the spot, on the exchange's listing increment."""
+    low = round((spot * (1 - width_pct)) / step) * step
+    high = round((spot * (1 + width_pct)) / step) * step
+    count = int(round((high - low) / step)) + 1
+    return [round(low + i * step, 2) for i in range(count)]
+
+
+def load_option_bars(
+    underlying: str,
+    expiry: date,
+    strikes: list[float],
+    start: date,
+    end: date,
+    cache_dir: str | Path = "data",
+) -> pd.DataFrame:
+    """Daily bars for every put and call on the given strikes. Parquet-cached.
+
+    Returns an empty frame rather than raising when nothing existed: a strike
+    that was never listed is a normal outcome of generating candidates.
+    """
+    cache = Path(cache_dir) / f"opt_{underlying}_{expiry}.parquet"
+    if cache.exists():
+        return pd.read_parquet(cache)
+
+    symbols = [
+        occ_symbol(underlying, expiry, right, strike)
+        for strike in strikes
+        for right in ("P", "C")
+    ]
+    settings = get_settings()
+    client = OptionHistoricalDataClient(
+        settings.alpaca_api_key, settings.alpaca_secret_key
+    )
+    frames = []
+    for batch_start in range(0, len(symbols), 100):  # keep URLs under the limit
+        batch = symbols[batch_start : batch_start + 100]
+        request = OptionBarsRequest(
+            symbol_or_symbols=batch,
+            timeframe=TimeFrame.Day,
+            start=max(start, OPTION_HISTORY_START),
+            end=end,
+        )
+        frame = client.get_option_bars(request).df
+        if not frame.empty:
+            frames.append(frame)
+
+    result = pd.concat(frames) if frames else pd.DataFrame()
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    result.to_parquet(cache)
+    return result
+```
+
+**Verify the SDK surface before trusting it.** Run this first:
+
+```bash
+uv run python3 -c "
+from alpaca.data.historical import OptionHistoricalDataClient
+from alpaca.data.requests import OptionBarsRequest
+print(OptionHistoricalDataClient.get_option_bars.__doc__)
+print(OptionBarsRequest.model_fields.keys())
+"
+```
+
+If the class or field names differ from the code above, fix the code to match the SDK — do not guess a second time. Record what you found in `docs/notes/alpaca-data-api.md`.
+
+- [ ] **Step 8: Run the tests and confirm they pass**
+
+Run: `uv run pytest tests/test_options_history.py -v`
+Expected: 9 passed
+
+- [ ] **Step 9: Implement `src/flywheel/backtest/benchmarks.py`**
+
+```python
+"""CBOE strategy benchmark indices — the published version of this strategy."""
+
+from pathlib import Path
+
+import pandas as pd
+import yfinance as yf
+
+# ^PUT  - CBOE S&P 500 PutWrite Index, the put-selling half of the wheel
+# ^BXM  - CBOE S&P 500 BuyWrite Index, the covered-call half
+BENCHMARKS = ("^PUT", "^BXM")
+
+
+def load_benchmark(ticker: str, cache_dir: str | Path = "data/benchmarks") -> pd.Series:
+    """Daily closes for a CBOE strategy index, cached as committed CSV.
+
+    The CSV is committed rather than gitignored: it is small, it never changes
+    retroactively, and a judge re-running the report must get our numbers
+    without needing network access or a Yahoo session.
+    """
+    cache = Path(cache_dir) / f"{ticker.strip('^')}.csv"
+    if cache.exists():
+        frame = pd.read_csv(cache, index_col=0, parse_dates=True)
+        return frame["close"]
+
+    frame = yf.download(ticker, start="1986-01-01", auto_adjust=False, progress=False)
+    series = frame["Close"].squeeze().rename("close").dropna()
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    series.to_frame().to_csv(cache)
+    return series
+```
+
+- [ ] **Step 10: Allow the benchmark CSVs past `.gitignore`**
+
+`data/` is excluded, but these files must ship. Add the exception alongside the one for `data/state/`:
+
+```gitignore
+data/*
+!data/state/
+!data/benchmarks/
+```
+
+- [ ] **Step 11: Write `scripts/fetch_history.py` and run it**
+
+```python
+"""Download and cache every historical input the backtest needs."""
 
 from datetime import date
 
+import pandas as pd
+
+from flywheel.backtest.benchmarks import BENCHMARKS, load_benchmark
 from flywheel.backtest.data import load_bars
+from flywheel.backtest.options_history import (
+    OPTION_HISTORY_START,
+    load_option_bars,
+    monthly_expiries,
+    strike_grid,
+)
 
 UNIVERSE = ["SPY", "QQQ", "IWM"]
 START = date(2019, 1, 1)
 END = date(2026, 8, 21)
 
 if __name__ == "__main__":
+    for ticker in BENCHMARKS:
+        series = load_benchmark(ticker)
+        print(f"{ticker}: {len(series)} closes, {series.index[0].date()} to "
+              f"{series.index[-1].date()}")
+
     for symbol in UNIVERSE:
-        frame = load_bars(symbol, START, END)
-        print(f"{symbol}: {len(frame)} bars, {frame.index[0]} to {frame.index[-1]}")
+        bars = load_bars(symbol, START, END)
+        print(f"{symbol}: {len(bars)} daily bars, {bars.index[0]} to {bars.index[-1]}")
+
+        for expiry in monthly_expiries(OPTION_HISTORY_START, END):
+            entry = expiry - pd.Timedelta(days=35)
+            window = bars.loc[:entry]
+            if window.empty:
+                continue
+            spot = float(window["close"].iloc[-1])
+            frame = load_option_bars(
+                symbol, expiry, strike_grid(spot), entry.date(), expiry
+            )
+            print(f"  {symbol} {expiry}: {len(frame)} option bars")
 ```
 
 Run: `uv run python3 scripts/fetch_history.py`
-Expected: roughly 1,900 bars per symbol, starting 2019-01-02. The window spans the March 2020 crash and the 2022 bear market — both are needed for §9's robustness argument.
 
-- [ ] **Step 6: Confirm the cache is gitignored**
+Expected: roughly 1,900 daily bars per symbol from 2019-01-02; about 10,000 closes for `^PUT` starting in 1986; and non-empty option bars for every expiry from February 2024 onward.
+
+**This step takes a while and will hit rate limits — that is why it runs on Sunday and not on D6.** If an expiry comes back empty, check the OCC symbol against Alpaca's own dashboard for one known contract before assuming the data is missing.
+
+- [ ] **Step 12: Confirm the right things are and are not gitignored**
 
 Run: `git status --short data/`
-Expected: no output. If parquet files appear, `data/` is missing from `.gitignore` — fix it before committing.
+Expected: the `data/benchmarks/*.csv` files appear as untracked, and no `.parquet` file does. If parquet appears, the `.gitignore` exception is too broad — fix it before committing.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 13: Commit**
 
 ```bash
-git add src/flywheel/backtest/ scripts/fetch_history.py tests/test_backtest_data.py
-git commit -m "feat: historical bar cache and volatility statistics"
+git add src/flywheel/backtest/ scripts/fetch_history.py \
+        tests/test_backtest_data.py tests/test_options_history.py \
+        .gitignore data/benchmarks/
+git commit -m "feat: historical bars, real option history, and CBOE benchmarks"
 ```
 
-**D2 done.** The optimizer is complete and tested with no network involved, and 7 years of history sits in `data/`. Everything from here needs a live market.
+**D2 done.** The optimizer is complete and tested with no network involved. On disk: 7 years of underlying bars, 30 months of real option quotes, and 40 years of published put-writing index. Everything from here needs a live market.
 
 ---
 
@@ -2739,29 +3028,55 @@ git push
 
 **The constraint that makes this credible, from spec §5:** the engine calls the same `optimizer/` and `risk/` modules the live agent calls. Not copies. If you find yourself reimplementing `veto` here, stop — the argument to the judges collapses at that point.
 
-**The synthetic-pricing problem, and how to handle it honestly.** Alpaca's historical *option* data does not reach back far enough for a multi-year study; only the underlying does. So the engine prices options with Black-Scholes from `payoff.py`, using an implied volatility modelled as realised volatility scaled by a variance-risk-premium factor:
+**Two pricing sources, one engine.** The engine takes a `pricer` argument and nothing else changes between runs:
 
-&nbsp;&nbsp;`iv_t = realized_vol_20d(t) × vrp_factor`
+- `RealQuotePricer` — reads `load_option_bars`. **Sells at the bid, buys at the ask, never at the mid.** This single rule is the difference between a backtest and a sales pitch; mid-pricing is the most common way a wheel backtest invents returns that no one could have captured. Available from February 2024. This is the primary run.
+- `SyntheticPricer` — Black-Scholes from `payoff.py` with `iv_t = realized_vol_20d(t) × vrp_factor`, where `vrp_factor` is fitted against real quotes over the Feb 2024 – Aug 2026 overlap. Used **only** to extend coverage back through March 2020 and 2022, and labelled *modelled* everywhere it appears.
 
-`vrp_factor` is **calibrated, not invented**: fit it against real Alpaca option quotes over the window where they do exist, and record the fitted value and the fit quality in the report. Then state the limitation plainly in the README. A judge who spots an undisclosed synthetic pricer discounts everything; a judge who reads that you identified the limitation, calibrated against real data, and said so, does the opposite.
+**No lookahead, enforced structurally.** The engine holds a cursor date and every read goes through one accessor that raises if asked for a timestamp at or after the cursor. Do not filter chains by "was it liquid" using data from after the entry date — this is the leak that produces the too-good result, and it is easy to introduce without noticing.
 
-**Overfitting guard per spec §9:** calibrate parameters on 2019–2022, validate on 2023–2026, and report both. If the strategy only works on the calibration slice, say so.
+**Assignment is resolved by the actual underlying close on the actual expiry date.** Not by `assignment_prob`, which exists only to inform the risk gate before the fact.
+
+**The calibration test — how we know the engine itself is not lying.** A backtest is code you wrote, so it can simply be wrong. `^PUT` gives us a ground truth to check it against: run *this engine* with the index's own parameters (at-the-money monthly puts, fully cash-secured, no regime sizing) over Feb 2024 – Aug 2026, and overlay the result on the real `^PUT` series for the same window.
+
+- Curves agree in shape and rough magnitude → the engine prices, assigns and compounds correctly, and its output on our own parameters can be trusted.
+- Curves diverge → there is a bug, and we found it before a judge did.
+
+This is instrument calibration against a reference, not a performance claim. Report the overlay chart either way.
+
+**Why there is no walk-forward split.** 30 months is about 30 cycles; halving it leaves 15 per slice, which is too few for the comparison to mean anything. Report a single period on real quotes and say plainly that the window is short. Spec §9's robustness requirement is met instead by Layer A (`^PUT` across four decades of crises) and Layer C (the modelled 2020 and 2022 windows). An honest small sample beats a split that implies precision the data cannot support.
 
 - [ ] **Step 1: Write the failing tests.** Required cases:
   - a flat market yields a positive return (all puts expire worthless, premium is kept) — the sanity case;
   - a market gapping down 30% produces assignment and a loss, and the equity curve reflects it;
   - the engine's cycle count matches the number of expiries in the window;
+  - **`RealQuotePricer` sells at the bid** — feed a bar with a known bid/ask and assert the recorded premium is the bid, not the mid;
+  - **the cursor rejects lookahead** — ask the accessor for a bar dated after the cursor and assert it raises;
   - **no cycle in the result ever violates a limit** — assert by re-running `veto` over every recorded order. This is the test that proves the backtest and the live agent share a risk model.
 - [ ] **Step 2: Run them and confirm they fail.**
-- [ ] **Step 3: Implement the engine.** Loop over trading days; on each expiry, resolve the open contract via the wheel transitions; on each entry day, build candidates from a synthesised chain, run `optimize`, filter through `veto`, and record the cycle.
+- [ ] **Step 3: Implement the engine.** Loop over trading days; on each expiry, resolve the open contract via the wheel transitions using the real underlying close; on each entry day, build candidates from the pricer, run `optimize`, filter through `veto`, and record the cycle.
 - [ ] **Step 4: Run the tests and confirm they pass.**
-- [ ] **Step 5: Run the real backtest**
+- [ ] **Step 5: Run the calibration check against `^PUT` — before looking at your own results**
 
-Run: `uv run python3 scripts/run_backtest.py --symbol SPY --start 2019-01-01 --end 2026-08-21`
+Run: `uv run python3 scripts/run_backtest.py --calibrate-against PUT --start 2024-02-01 --end 2026-08-21`
 
-- [ ] **Step 6: Recalibrate `config/risk.yaml` from the results**, as spec §8 requires: limits come from the worst historical cycle, not from the placeholders written on D1. Record the before-and-after values in the report.
-- [ ] **Step 7: Re-run the full test suite** — the risk-gate tests use their own `Limits` fixture and must stay green regardless of what the config now says. If they fail, a test was reading production config, which is a defect in the test.
-- [ ] **Step 8: Commit**
+Expected: a curve tracking `^PUT` in shape. Do this first, deliberately: once you have seen your own equity curve, you will be motivated to explain away a calibration failure rather than fix it.
+
+- [ ] **Step 6: Run the primary backtest on real quotes**
+
+Run: `uv run python3 scripts/run_backtest.py --symbol SPY --pricer real --start 2024-02-01 --end 2026-08-21`
+
+Repeat for QQQ and IWM.
+
+- [ ] **Step 7: Run the supplementary modelled backtest**
+
+Run: `uv run python3 scripts/run_backtest.py --symbol SPY --pricer synthetic --start 2019-01-01 --end 2026-08-21`
+
+Report the fitted `vrp_factor` and its fit quality over the overlap window.
+
+- [ ] **Step 8: Recalibrate `config/risk.yaml` from the results**, as spec §8 requires: limits come from the worst historical cycle, not from the placeholders written on D1. Use the worst cycle across **both** pricers — the 2020 window only exists in the modelled run, and a limit set that has never seen a crash is not a limit set. Record the before-and-after values in the report.
+- [ ] **Step 9: Re-run the full test suite** — the risk-gate tests use their own `Limits` fixture and must stay green regardless of what the config now says. If they fail, a test was reading production config, which is a defect in the test.
+- [ ] **Step 10: Commit**
 
 ```bash
 git add src/flywheel/backtest/engine.py scripts/run_backtest.py \
@@ -2779,18 +3094,27 @@ git commit -m "feat: backtest engine sharing the live risk and optimizer modules
 **Interfaces:**
 - Produces: `build_report(results: dict[str, BacktestResult], out_dir) -> Path`.
 
-Per spec §9, the report contains: Sharpe, maximum drawdown, share of profitable cycles, the per-cycle return distribution, the equity curve, and a comparison against buy-and-hold for each ticker. Plus the calibration-versus-validation split, the fitted `vrp_factor`, and the stated limitations.
+Per spec §9, the report contains: Sharpe, maximum drawdown, share of profitable cycles, the per-cycle return distribution, the equity curve, and a comparison against buy-and-hold for each ticker.
+
+Structure it as the three layers, in this order — evidence we did not produce comes first, because it is the strongest and the least suspect:
+
+1. **`^PUT` and `^BXM`, 1986–2026.** The published record of this strategy class through 1987, 2000, 2008 and 2020, with drawdowns shown. One paragraph and one chart. Cited, not claimed.
+2. **The calibration overlay.** Our engine on index parameters against real `^PUT`, Feb 2024 – Aug 2026. This is what licenses the reader to believe anything below it.
+3. **Real-quote results, Feb 2024 – Aug 2026.** The headline numbers, versus SPY buy-and-hold, with the 30-cycle sample size stated in the same sentence as the Sharpe ratio.
+4. **Modelled results, 2019–2026.** Labelled *modelled* in the heading, not only in a footnote. Include the fitted `vrp_factor` and its fit quality.
 
 **Report the losses at least as prominently as the gains.** The worst cycle and the maximum drawdown are the numbers a judge with options experience looks for first, and a report that buries them reads as a sales pitch rather than evidence.
 
+**State the three limitations in the report itself,** not only in the README: the real-quote window is ~30 cycles; the modelled window uses computed prices and no spreads; assignment is European-style at expiry, ignoring early exercise.
+
 - [ ] **Step 1: Implement `report.py`** — matplotlib figures written to `docs/img/`, markdown written to `docs/backtest-report.md`.
 - [ ] **Step 2: Generate the report and read it end to end.**
-- [ ] **Step 3: Sanity-check the headline numbers.** A wheel on SPY that reports a Sharpe above 3 or a maximum drawdown under 5% is not a discovery, it is a bug — most likely lookahead in the chain synthesis or a sign error in `loss_scenarios`. Investigate before publishing.
+- [ ] **Step 3: Sanity-check the headline numbers.** A wheel on SPY that reports a Sharpe above 3 or a maximum drawdown under 5% is not a discovery, it is a bug — most likely lookahead past the cursor, mid-pricing that slipped past `RealQuotePricer`, or a sign error in `loss_scenarios`. `^PUT` itself runs a Sharpe well under 1 over most decades; a result far above the published index for the same strategy is a defect, not an edge. Investigate before publishing.
 - [ ] **Step 4: Commit**
 
 ```bash
 git add src/flywheel/backtest/report.py docs/backtest-report.md docs/img/
-git commit -m "docs: backtest report with walk-forward validation"
+git commit -m "docs: backtest report with CBOE benchmark calibration"
 ```
 
 ---
@@ -2810,7 +3134,7 @@ The README is read by judges and is the front door to the whole submission. Requ
 5. **Risk model** — the limit table, and the fact that limits were derived from the backtest.
 6. **Results** — a link to `docs/backtest-report.md` and the live journal.
 7. **How to run it** — `uv sync`, `.env.example`, `scripts/run_cycle.py`.
-8. **Limitations** — synthetic option pricing in the backtest, six live sessions being statistically thin, paper trading only. Say it before a judge finds it.
+8. **Limitations** — the real-quote backtest covers ~30 cycles because Alpaca's option history starts February 2024; the longer 2019–2026 run uses modelled prices and no spreads; assignment is resolved at expiry, ignoring early exercise; six live sessions are statistically thin; paper trading only. Say all of it before a judge finds it.
 
 - [ ] **Step 1: Write `README.md`.**
 - [ ] **Step 2: Switch to account #2.** Replace the repository secrets with account #2's keys and set `FLYWHEEL_ENV=judging`.
@@ -2877,7 +3201,9 @@ From spec §12.1, in the order things get dropped:
 | second | our own MCP server (`mcp/server.py`) |
 | third | the narrator role |
 | fourth | IWM — run SPY and QQQ only |
-| fifth | the walk-forward split — report a single-period backtest and say so |
+| fifth | the modelled 2019–2026 run — ship the real-quote backtest and the `^PUT` overlay alone |
+
+**Not droppable from the backtest:** the `^PUT` calibration overlay. It costs one chart and is the only thing proving the engine works; without it the whole report is an unverified assertion.
 
 **Never dropped:** the risk gate and its tests, reconciliation, the journal, the scheduled run. An agent that reliably turns the wheel and cannot breach a limit beats an agent with a beautiful dashboard that died on Wednesday morning.
 
