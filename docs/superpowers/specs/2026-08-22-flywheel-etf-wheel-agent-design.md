@@ -1,183 +1,182 @@
 # Flywheel — ETF Wheel Overlay Agent
 
-**Дата:** 2026-08-22
-**Хакатон:** Alpaca AI Trading Agents Hackathon, 28 августа — 4 сентября 2026
-**Категория:** Income & Portfolio Overlay Agents
-**Статус:** дизайн утверждён, реализация не начата
+**Date:** 2026-08-22
+**Hackathon:** Alpaca AI Trading Agents Hackathon, August 28 – September 4, 2026
+**Track:** Income & Portfolio Overlay Agents
+**Status:** design approved, implementation not started
 
 ---
 
-## 1. Контекст
+## 1. Context
 
-Хакатон Alpaca, 7 дней, приз $5 000. Обязательны Alpaca Trading API и его MCP-сервер, только paper trading, стратегия обязана использовать опционы. Критерии оценки: P&L Performance, Technology Implementation, Creativity & Originality, Presentation & Execution.
+Alpaca hackathon, 7 days, $5,000 prize pool. The Alpaca Trading API and its MCP server are mandatory, paper trading only, and the strategy must involve options. Judging criteria: P&L Performance, Technology Implementation, Creativity & Originality, Presentation & Execution.
 
-Формулировка категории задаёт планку прямым текстом:
+The track description sets the bar explicitly:
 
 > "Consistency is the bar here — a good overlay agent should run on a schedule and hold up across many cycles, not just one lucky quarter."
 
-Отсюда два обязательных требования, а не пожелания:
-- агент **работает по расписанию автономно**, без человека за клавиатурой;
-- есть **доказательство устойчивости на многих циклах** — то есть бэктест.
+That yields two hard requirements, not preferences:
+- the agent **runs autonomously on a schedule**, with nobody at the keyboard;
+- there is **evidence of robustness across many cycles** — that is, a backtest.
 
-**Ограничение исполнителя:** один человек, 2–3 часа в день. Это главный проектный риск и он определяет все решения ниже.
+**Builder constraint:** one person, 2–3 hours per day. This is the primary project risk and it drives every decision below.
 
-**Ограничение окна оценки:** в период 28.08–04.09 попадает **6 торговых сессий** (28 пт, 31 пн, 1–4 сентября). Направленная стратегия на таком отрезке — чистый шум. Живой P&L за неделю статистически ничего не доказывает, поэтому основным доказательством для жюри выступает бэктест, а живой прогон — доказательством автономности и работоспособности.
+**Evaluation-window constraint:** the period Aug 28 – Sep 4 contains **6 trading sessions** (Aug 28 Fri, Aug 31 Mon, Sep 1–4). A directional strategy over that span is pure noise. One week of live P&L proves nothing statistically. Therefore the backtest is the primary evidence for the judges, and the live run is evidence of autonomy and operational soundness.
 
 ---
 
 ## 2. Non-goals
 
-Раздел важнее большинства остальных. Он существует, чтобы в спешке последних дней не переродиться в другой проект.
+This section matters more than most of the others. It exists so that the last-minute rush does not turn this into a different project.
 
-**Мы НЕ предсказываем направление рынка.** Ни LLM, ни математика, ни бэктест не отвечают на вопрос «вырастет или упадёт». Если бы мы умели на него отвечать, продавать опционы было бы иррационально — выгоднее было бы просто торговать базовым активом с плечом.
+**We do NOT forecast market direction.** Neither the LLM, nor the optimizer, nor the backtest answers "will it go up or down." If we could answer that, selling options would be irrational — trading the underlying with leverage would pay far better.
 
-**Выбор «пут или колл» не является прогнозом.** Он полностью определяется состоянием позиции:
+**Choosing "put or call" is not a forecast.** It is fully determined by position state:
 
 ```
-CASH   → продаём пут
-SHARES → продаём колл
+CASH   → sell a put
+SHARES → sell a call
 ```
 
-Ни одна ветка этого условия не спрашивает, куда пойдёт рынок.
+Neither branch of that condition asks where the market is heading.
 
-**Источник прибыли — variance risk premium**, а не точность прогноза. Подразумеваемая волатильность систематически выше реализованной: покупатели опционов переплачивают за страховку. Мы регулярно оказываемся на стороне того, кому платят за принятие риска. Плюс распад временной стоимости в пользу продавца.
+**The source of profit is the variance risk premium**, not forecast accuracy. Implied volatility is systematically higher than realized volatility: option buyers overpay for insurance. We are repeatedly on the side that gets paid for accepting risk, plus time decay accrues to the seller.
 
-**Мы не обучаем модель.** Нет ML, нет тренировки, нет предсказателя. Бэктест — это не обучение, это валидация правил и калибровка параметров.
+**We do not train a model.** No ML, no training, no predictor. A backtest is not training; it is rule validation and parameter calibration.
 
-**Что мы всё-таки оцениваем — режим волатильности, и только его.** Обоснование — асимметрия автокорреляций: направление цены автокорреляции практически не имеет, волатильность кластеризуется. Режим меняется медленно и наблюдаем по текущим данным. Поэтому оценка режима — не прогноз будущего, а измерение настоящего.
+**The one thing we do assess is the volatility regime, and nothing else.** The justification is an asymmetry in autocorrelation: price direction has essentially none, while volatility clusters. Regime shifts slowly and is observable from current data. Assessing the regime is therefore a measurement of the present, not a prediction of the future.
 
-**Режим влияет на размер и дистанцию, но никогда на направление:**
+**Regime affects size and distance, never direction:**
 
-| Режим | Размер позиции | Дистанция страйка от цены |
+| Regime | Position size | Strike distance from spot |
 |---|---|---|
-| calm | полный | ближе к деньгам |
-| elevated | сокращённый | дальше |
-| stress | минимальный | значительно дальше |
-| crash | торговля остановлена | — |
+| calm | full | closer to the money |
+| elevated | reduced | further out |
+| stress | minimal | significantly further out |
+| crash | trading halted | — |
 
-**Мы не строим мульти-агентный рой.** Один агент. Обоснование в разделе 4.
+**We do not build a multi-agent swarm.** One agent. Rationale in section 4.
 
 ---
 
-## 3. Стратегия
+## 3. Strategy
 
-**ETF Wheel на SPY / QQQ / IWM с оптимизатором.**
+**ETF wheel on SPY / QQQ / IWM, driven by an optimizer.**
 
-### 3.1 Механика колеса
+### 3.1 Wheel mechanics
 
-Конечный автомат на каждый тикер:
+A state machine per ticker:
 
 ```
 CASH ──sell cash-secured put──► PUT_OPEN
                                    │
               ┌────────────────────┴────────────────────┐
-        экспирация вне денег                     ассигнация
+        expires worthless                          assigned
               │                                          │
               ▼                                          ▼
-            CASH  (премия в кармане)                  SHARES
+            CASH  (premium kept)                      SHARES
                                                          │
                                           sell covered call
                                                          ▼
                                                     CALL_OPEN
                                    ┌─────────────────────┴──────────────┐
-                             экспирация вне денег                 ассигнация
+                             expires worthless                    assigned
                                    │                                    │
                                    ▼                                    ▼
                                 SHARES                                CASH
 ```
 
-Эффективный базис = страйк − все собранные премии. Каждый следующий проданный колл снижает базис. Базис — это точка безубыточности позиции.
+Effective basis = strike − all premiums collected. Every subsequent covered call lowers the basis further. The basis is the position's breakeven.
 
-### 3.2 Почему SPY / QQQ / IWM
+### 3.2 Why SPY / QQQ / IWM
 
-- огромная ликвидность опционов, спреды в центах — проскальзывание не съедает премию;
-- экспирации почти ежедневные (пн/ср/пт) — гибкость по срокам;
-- нет риска гэпа на отчётности и нет риска отдельной компании;
-- три разных профиля волатильности (широкий рынок / технологии / малая капитализация) — оптимизатору есть между чем распределять.
+- deep option liquidity, cent-wide spreads — slippage does not eat the premium;
+- near-daily expirations (Mon/Wed/Fri) — flexibility on tenor;
+- no earnings-gap risk and no single-company risk;
+- three distinct volatility profiles (broad market / tech / small caps) — the optimizer has something meaningful to allocate between.
 
-### 3.3 Чем отличаемся от типичного wheel-бота
+### 3.3 How this differs from a typical wheel bot
 
-Стандартный wheel-бот на GitHub захардкожен: `delta = 0.30`, `DTE = 7`. Мы решаем задачу оптимизации на каждом цикле:
+The standard GitHub wheel bot is hardcoded: `delta = 0.30`, `DTE = 7`. We solve an optimization problem every cycle:
 
-**максимизировать** ожидаемую премию на единицу задействованного капитала
+**maximize** expected premium per unit of deployed capital
 
-**при ограничениях:**
-- CVaR@95 ≤ лимита
-- суммарная дельта портфеля в заданном коридоре
-- бюджет по веге
-- лимит капитала на инструмент
-- бюджет вероятности ассигнации
-- фильтр ликвидности (спред, открытый интерес, объём)
+**subject to:**
+- CVaR@95 ≤ limit
+- portfolio net delta within a band
+- vega budget
+- per-instrument capital cap
+- assignment-probability budget
+- liquidity filter (spread, open interest, volume)
 
-### 3.4 Роль LLM
+### 3.4 The role of the LLM
 
-Узкая и защищаемая:
-1. классификация режима: calm / elevated / stress / crash;
-2. учёт календаря и новостей (FOMC, CPI, экспирации);
-3. объяснение решения человеческим языком для журнала и демо.
+Narrow and defensible:
+1. regime classification: calm / elevated / stress / crash;
+2. calendar and news awareness (FOMC, CPI, expirations);
+3. plain-language explanation of each decision, for the journal and the demo.
 
-**LLM никогда не выбирает страйк, не считает размер и не отправляет ордер.**
+**The LLM never picks a strike, never sizes a position, and never places an order.**
 
-Формула для питча:
+Pitch formulation:
 
-> **LLM предлагает, математика выбирает, risk gate имеет право вето.**
+> **The LLM proposes, the math decides, the risk gate holds veto power.**
 
 ---
 
-## 4. Архитектура
+## 4. Architecture
 
-### 4.1 Один агент, четыре роли
+### 4.1 One agent, four roles
 
-Мульти-агентная схема отвергнута: за 6 торговых сессий она не окупает добавленную латентность, расход токенов и новые режимы отказа. Вместо роя — разделение ответственности, где **LLM разрешён ровно в одной роли**:
+A multi-agent design was rejected: across 6 trading sessions it does not repay the added latency, token spend, and new failure modes. Instead of a swarm, responsibilities are separated so that **the LLM is permitted in exactly one role**:
 
-| Роль | Реализация | LLM |
+| Role | Implementation | LLM |
 |---|---|---|
-| Analyst | `create_agent` + dynamic prompt | да |
-| Optimizer | CVXPY, вызывается как tool | нет |
-| Risk Officer | middleware `wrap_tool_call` | нет |
-| Executor | Alpaca MCP | нет |
+| Analyst | `create_agent` + dynamic prompt | yes |
+| Optimizer | CVXPY, deterministic cycle node | no |
+| Risk Officer | risk gate + middleware | no |
+| Executor | Alpaca MCP | no |
 
-Способности агента реализованы как **tools**, а не как суб-агенты.
+Agent capabilities are implemented as **tools**, not sub-agents.
 
-**Аналитику выдаётся только read-only набор инструментов** — `ALPACA_TOOLSETS=account,stock-data,options-data,news`. Ордерных инструментов у него нет физически: ему нечем торговать. Оптимизатор не является инструментом модели — это детерминированный узел цикла (см. 4.2). Наружу он отдаётся как инструмент через собственный MCP-сервер, для внешних потребителей.
+**The analyst is given a read-only toolset only** — `ALPACA_TOOLSETS=account,stock-data,options-data,news`. It has no order tools at all: it physically has nothing to trade with. The optimizer is not a model tool; it is a deterministic node in the cycle (see 4.2). It is exposed outward as a tool through our own MCP server, for external consumers.
 
-### 4.2 Торговый цикл
+### 4.2 Trading cycle
 
-Запускается по расписанию, через 30 минут после открытия рынка:
+Runs on a schedule, 30 minutes after the market opens:
 
 ```
- 1. reconcile ──────── подтянуть позиции у брокера, сверить со своим состоянием
- 2. market_snapshot ── цены, реализованная волатильность, IV rank, календарь
+ 1. reconcile ──────── pull broker positions, reconcile with our own state
+ 2. market_snapshot ── prices, realized volatility, IV rank, event calendar
  3. classify_regime ── [LLM] calm / elevated / stress / crash
- 4. route_by_state ─── по каждому ETF: продать пут? продать колл? управлять?
- 5. candidates ─────── загрузить цепочку опционов, отфильтровать по ликвидности
- 6. optimize ───────── [CVXPY] выбрать набор при ограничениях риска
- 7. execute ────────── ордера через Alpaca MCP
-        └── каждый вызов проходит через RiskGateMiddleware
- 8. journal ────────── записать всё: промпт, ответ, решение, вето, факт исполнения
+ 4. route_by_state ─── per ETF: sell put? sell call? manage?
+ 5. candidates ─────── load the option chain, filter by liquidity
+ 6. optimize ───────── [CVXPY] pick the set subject to risk constraints
+ 7. execute ────────── orders via Alpaca MCP, each preceded by risk.gate.veto()
+ 8. journal ────────── record everything: prompt, response, decision, veto, fill
 ```
 
-Скелет цикла — детерминированный `StateGraph` LangGraph. Свобода модели ограничена узлом 3.
+The cycle skeleton is a deterministic LangGraph `StateGraph`. The model's freedom is confined to node 3.
 
-### 4.3 Middleware — слой контроля
+### 4.3 Middleware — the control layer
 
-Требуется `langchain>=1.0`.
+Requires `langchain>=1.0`.
 
-Risk gate защищает **два независимых пути**, и это осознанная избыточность:
+The risk gate protects **two independent paths**, and that redundancy is deliberate:
 
-**Путь 1 — исполнение (основной).** Узел `execute` детерминирован; `execution/orders.py` вызывает `risk.gate.veto()` безусловно перед каждым ордером. Модель в этом пути не участвует вообще.
+**Path 1 — execution (primary).** The `execute` node is deterministic; `execution/orders.py` calls `risk.gate.veto()` unconditionally before every order. The model plays no part in this path.
 
-**Путь 2 — инструменты модели (эшелонированная защита).** `RiskGateMiddleware` оборачивает вызовы инструментов аналитика. В штатной конфигурации аналитик получает read-only toolset и ордерных инструментов не имеет, поэтому middleware не должен срабатывать никогда. Он существует ровно на случай ошибки конфигурации `ALPACA_TOOLSETS` или расширения набора инструментов в будущем: если ордерный инструмент когда-либо окажется у модели, он будет заблокирован. Срабатывание этого middleware — **сигнал о дефекте конфигурации**, и журнал помечает его отдельным уровнем.
+**Path 2 — model tools (defense in depth).** `RiskGateMiddleware` wraps the analyst's tool calls. In the normal configuration the analyst holds a read-only toolset and has no order tools, so this middleware should never fire. It exists precisely for the case of an `ALPACA_TOOLSETS` misconfiguration or a future toolset expansion: if an order tool ever reaches the model, it is blocked. A firing of this middleware is a **signal of a configuration defect**, and the journal flags it at its own severity level.
 
-Middleware выбран вместо узла графа потому, что узел можно обойти одним неверным ребром, а `wrap_tool_call` — физическая обёртка вокруг каждого вызова инструмента.
+Middleware was chosen over a graph node because a node can be bypassed by one wrong edge, whereas `wrap_tool_call` is a physical wrapper around every tool invocation.
 
 ```python
 class RiskGateMiddleware(AgentMiddleware):
-    """Единственная дверь между моделью и брокером."""
+    """The only door between the model and the broker."""
 
     def wrap_tool_call(self, request, handler):
         if request.tool_call["name"] not in ORDER_TOOLS:
-            return handler(request)                    # чтение данных пропускаем
+            return handler(request)                    # data reads pass through
 
         verdict = risk.gate.veto(
             parse_order(request.tool_call["args"]),
@@ -189,21 +188,21 @@ class RiskGateMiddleware(AgentMiddleware):
         return handler(request)
 ```
 
-Полный список:
+The full set:
 
-| Middleware | Хук | Назначение |
+| Middleware | Hook | Purpose |
 |---|---|---|
-| `risk_gate` | `wrap_tool_call` | вето на ордера, нарушающие `risk.yaml` |
-| `kill_switch` | `before_agent` | просадка сверх лимита либо файл `HALT` в репозитории → цикл не стартует |
-| `market_hours` | `before_agent` | биржа закрыта, сокращённый день, торги остановлены → выход |
-| `journal` | `after_model`, `wrap_tool_call` | аудит-трейл каждого промпта, ответа, ордера и вето |
-| `retry` | `wrap_model_call` | ретраи и fallback модели при сбоях |
+| `risk_gate` | `wrap_tool_call` | veto orders violating `risk.yaml` |
+| `kill_switch` | `before_agent` | drawdown beyond limit, or a `HALT` file in the repo → the cycle never starts |
+| `market_hours` | `before_agent` | market closed, half day, or trading halted → exit |
+| `journal` | `after_model`, `wrap_tool_call` | audit trail of every prompt, response, order, and veto |
+| `retry` | `wrap_model_call` | retries and model fallback on transient failures |
 
-`risk/gate.py` остаётся отдельным модулем — чистая функция без LLM и без сети. Middleware является только адаптером, втыкающим её в LangChain. Это сохраняет два свойства: риск тестируется изолированно и тот же код исполняется в бэктесте.
+`risk/gate.py` stays a standalone module — a pure function with no LLM and no network. The middleware is only an adapter plugging it into LangChain. This preserves two properties: risk is testable in isolation, and the very same code runs in the backtest.
 
 ### 4.4 Dynamic prompt
 
-Системный промпт аналитика — чистая функция состояния портфеля:
+The analyst's system prompt is a pure function of portfolio state:
 
 ```python
 @dynamic_prompt
@@ -212,19 +211,19 @@ def analyst_prompt(request: ModelRequest) -> str:
     return RULEBOOK + render("analyst_context.md", state=s)
 ```
 
-Три правила:
+Three rules:
 
-1. **Статика впереди, динамика в хвосте.** `RULEBOOK` — константа (кто такой аналитик, определения режимов, формат ответа). Изменяющиеся числа идут после неё, чтобы не ломать кеширование промпта.
-2. **Промпт не является механизмом контроля.** Лимиты риска в промпте нужны, чтобы модель не тратила ходы на заведомо отклоняемые предложения. Соблюдение обеспечивает `risk/gate.py`.
-3. **Новости — данные, а не инструкции.** Новостной текст никогда не попадает в системный промпт. Он приходит tool-сообщением, обёрнутый в явный делимитер `<news>...</news>`; в `RULEBOOK` зафиксировано, что содержимое делимитера — наблюдаемые данные, не команды. Risk gate служит последним рубежом: модель физически не может отправить ордер мимо него.
+1. **Static first, dynamic last.** `RULEBOOK` is a constant (who the analyst is, regime definitions, response format). Changing numbers come after it, so prompt caching is not invalidated.
+2. **The prompt is not a control mechanism.** Risk limits appear in the prompt so the model does not waste turns proposing what would be rejected anyway. Enforcement lives in `risk/gate.py`.
+3. **News is data, not instructions.** News text never enters the system prompt. It arrives as a tool message wrapped in an explicit `<news>...</news>` delimiter, and `RULEBOOK` states that delimiter contents are observed data, not commands. The risk gate is the last line of defense: the model physically cannot route an order around it.
 
-Промпт пишется в журнал дословно рядом с решением — любое решение агента воспроизводимо построчно.
+The rendered prompt is written to the journal verbatim alongside the decision — every decision the agent makes is reproducible line by line.
 
-### 4.5 Состояние
+### 4.5 State
 
-Три уровня, которые нельзя путать.
+Three levels that must not be conflated.
 
-**1. Состояние цикла** — живёт секунды, в памяти LangGraph:
+**1. Cycle state** — lives for seconds, in LangGraph memory:
 
 ```python
 class FlywheelState(AgentState):
@@ -235,67 +234,67 @@ class FlywheelState(AgentState):
     verdict: RiskVerdict | None
 ```
 
-**2. Состояние позиций** — живёт между запусками, SQLite:
+**2. Position state** — lives between runs, in SQLite:
 
 ```python
 class WheelState(BaseModel):
     symbol: str
     leg: Literal["CASH", "SHARES", "PUT_OPEN", "CALL_OPEN"]
-    basis: Decimal | None            # страйк − все собранные премии
+    basis: Decimal | None            # strike − all premiums collected
     contracts: list[OpenContract]
     premium_collected: Decimal
     cycle_count: int
 ```
 
-Потеря `leg` означает продажу голого колла — позицию с неограниченным убытком. Это тот отказ, который состояние обязано предотвращать, а risk gate — ловить.
+Losing `leg` means selling a naked call — a position with unbounded loss. That is the failure state must prevent and the risk gate must catch.
 
-**3. Брокер — источник истины.** SQLite является кэшем. Первый узел каждого цикла сверяет своё состояние с позициями у Alpaca; при расхождении верим брокеру и записываем расхождение в журнал. Ассигнация могла произойти ночью.
+**3. The broker is the source of truth.** SQLite is a cache. The first node of every cycle reconciles our state against Alpaca positions; on any mismatch we trust the broker and write the discrepancy to the journal. Assignment can happen overnight.
 
-Дополнительно `SqliteSaver` как checkpointer LangGraph — на случай падения процесса между отправкой ордера и записью в журнал.
+Additionally, `SqliteSaver` serves as the LangGraph checkpointer, covering a process crash between order submission and journal write.
 
 ---
 
-## 5. Структура репозитория
+## 5. Repository layout
 
 ```
 alpaca-hackathon/
-├── .env                      # ключи, НИКОГДА не в git
-├── .env.example              # шаблон с пустыми значениями, коммитится
+├── .env                      # keys, NEVER in git
+├── .env.example              # template with empty values, committed
 ├── .gitignore
-├── pyproject.toml            # зависимости, uv
-├── README.md                 # для жюри: что это, как запустить, результаты
+├── pyproject.toml            # dependencies, uv
+├── README.md                 # for judges: what it is, how to run, results
 │
 ├── config/
-│   ├── strategy.yaml         # тикеры, диапазоны дельты, DTE, правила роллов
-│   └── risk.yaml             # жёсткие лимиты
+│   ├── strategy.yaml         # tickers, delta ranges, DTE, roll rules
+│   └── risk.yaml             # hard limits
 │
 ├── src/flywheel/
-│   ├── settings.py           # .env + yaml → типизированные настройки
+│   ├── settings.py           # .env + yaml → typed settings
 │   ├── state.py              # WheelState, Position, Decision
-│   ├── store.py              # персистентность состояния, SQLite
+│   ├── store.py              # state persistence, SQLite
 │   │
 │   ├── market/
-│   │   ├── client.py         # обёртка Alpaca для котировок и баров
-│   │   ├── chain.py          # загрузка цепочки + фильтр ликвидности
-│   │   └── features.py       # реализованная волатильность, IV rank, тренд
+│   │   ├── client.py         # Alpaca wrapper for quotes and bars
+│   │   ├── chain.py          # option chain loading + liquidity filter
+│   │   └── features.py       # realized vol, IV rank, term structure, trend
 │   │
 │   ├── mcp/
-│   │   ├── alpaca_client.py  # подключение к Alpaca MCP серверу
-│   │   └── server.py         # наш собственный MCP-сервер: отдаёт оптимизатор
+│   │   ├── alpaca_client.py  # connection to the Alpaca MCP server
+│   │   └── server.py         # our own MCP server: exposes the optimizer
 │   │
 │   ├── optimizer/
-│   │   ├── candidates.py     # цепочка → оценённые кандидаты
-│   │   ├── payoff.py         # ожидаемая доходность, CVaR, греки, P(ассигнации)
-│   │   └── model.py          # задача CVXPY
+│   │   ├── candidates.py     # chain → scored candidates
+│   │   ├── payoff.py         # expected return, CVaR, greeks, P(assignment)
+│   │   └── model.py          # the CVXPY problem
 │   │
 │   ├── risk/
-│   │   ├── limits.py         # определения лимитов из risk.yaml
+│   │   ├── limits.py         # limit definitions, loaded from risk.yaml
 │   │   └── gate.py           # veto(decision) -> Approved | Rejected(reason)
 │   │
 │   ├── agent/
-│   │   ├── graph.py          # сборка StateGraph
+│   │   ├── graph.py          # StateGraph assembly
 │   │   ├── state.py          # FlywheelState(AgentState)
-│   │   ├── nodes/            # по файлу на узел
+│   │   ├── nodes/            # one file per node
 │   │   ├── middleware/
 │   │   │   ├── risk_gate.py
 │   │   │   ├── kill_switch.py
@@ -310,47 +309,47 @@ alpaca-hackathon/
 │   │       └── narrator.md
 │   │
 │   ├── execution/
-│   │   ├── orders.py         # размещение ордеров через MCP, ретраи
-│   │   └── reconcile.py      # сверка намеренного с исполненным
+│   │   ├── orders.py         # order placement via MCP, retries
+│   │   └── reconcile.py      # intended vs actually filled
 │   │
 │   ├── journal/
 │   │   └── writer.py
 │   │
 │   └── backtest/
-│       ├── data.py           # загрузка истории, кеш
-│       ├── engine.py         # проигрывает ТУ ЖЕ логику по истории
-│       └── report.py         # Sharpe, max DD, доля прибыльных циклов, графики
+│       ├── data.py           # history loading, cache
+│       ├── engine.py         # replays the SAME logic over history
+│       └── report.py         # Sharpe, max DD, % profitable cycles, charts
 │
-├── dashboard/app.py          # Streamlit: P&L, позиции, греки, лента решений
+├── dashboard/app.py          # Streamlit: P&L, positions, greeks, decision feed
 ├── scripts/
-│   ├── run_cycle.py          # точка входа cron — один торговый цикл
+│   ├── run_cycle.py          # cron entry point — one trading cycle
 │   ├── run_backtest.py
 │   └── healthcheck.py
 ├── tests/
-├── data/                     # кеш истории, в .gitignore
-├── journal/                  # журнал решений, В GIT — доказательство для жюри
+├── data/                     # history cache, gitignored
+├── journal/                  # decision journal, IN GIT — evidence for judges
 └── .github/workflows/trade.yml
 ```
 
-### Обоснование ключевых границ
+### Rationale for the key boundaries
 
-**`risk/` — модуль верхнего уровня**, потому что это самая важная часть системы и она обязана проверяться изолированно: без LLM, без сети, без брокера. Чистая функция «предложенное решение + состояние портфеля → Approved | Rejected(reason)». Тесты пишутся на неё первыми.
+**`risk/` is a top-level module** because it is the most important part of the system and must be verifiable in isolation: no LLM, no network, no broker. A pure function of "proposed decision + portfolio state → Approved | Rejected(reason)." Its tests are written first.
 
-**`optimizer/` не знает ни про Alpaca, ни про LLM** — числа на вход, выбранный набор на выход. Благодаря этому он исполняется в бэктесте без единого сетевого вызова.
+**`optimizer/` knows nothing about Alpaca or the LLM** — numbers in, chosen set out. That is what lets it run in the backtest without a single network call.
 
-**`backtest/engine.py` вызывает те же самые модули `optimizer/` и `risk/`**, что и живой агент, а не их копии. Иначе бэктест доказывает жизнеспособность кода, которого нет в проде, и аргумент перед жюри рассыпается.
+**`backtest/engine.py` calls the same `optimizer/` and `risk/` modules** the live agent uses, not copies of them. Otherwise the backtest validates code that is not in production and the argument to the judges collapses.
 
-**`agent/prompts/` — отдельные файлы**, потому что промпты переписываются десятки раз; строки в коде превращают правку текста в диff логики.
+**`agent/prompts/` are separate files** because prompts get rewritten dozens of times; strings in code turn every prompt edit into a logic diff.
 
-**`journal/` коммитится в git.** Каждый запуск фиксирует, что агент увидел, что выбрал, почему и что исполнилось. К концу недели это готовая хронология автономной работы: доказательство для жюри и материал для демо-видео.
+**`journal/` is committed to git.** Every run records what the agent saw, what it chose, why, and what filled. By the end of the week this is a ready-made chronology of autonomous operation: evidence for judges and raw material for the demo video.
 
-**`mcp/server.py`** — наш собственный MCP-сервер, отдающий оптимизатор наружу как инструмент. Превращает проект из «бота» в «инструмент», что напрямую работает на критерий Creativity & Originality.
+**`mcp/server.py`** is our own MCP server exposing the optimizer outward as a tool. It turns the project from "a bot" into "a tool," which speaks directly to Creativity & Originality.
 
-Код, комментарии и README пишутся на английском. Спеки и внутренние заметки — на русском.
+**Language:** all project artifacts — code, comments, specs, README, journal, commit messages — are written in English.
 
 ---
 
-## 6. Зависимости
+## 6. Dependencies
 
 ```toml
 [project]
@@ -358,7 +357,7 @@ name = "flywheel"
 requires-python = ">=3.11"
 dependencies = [
     "alpaca-py",
-    "langchain>=1.0",          # middleware появился здесь
+    "langchain>=1.0",          # middleware landed here
     "langgraph",
     "langchain-anthropic",
     "mcp",
@@ -374,16 +373,16 @@ dependencies = [
 dev = ["pytest", "pytest-asyncio", "ruff", "mypy"]
 ```
 
-Менеджер пакетов — `uv`. На этой машине используется `python3`, не `python`.
+Package manager: `uv`. On this machine use `python3`, not `python`.
 
 ---
 
-## 7. Безопасность и секреты
+## 7. Security and secrets
 
-- Секреты живут **только** в `.env`, который перечислен в `.gitignore`. Коммитится `.env.example` с пустыми значениями.
-- Ключи **не помещаются** в конфиг MCP-клиента, лежащий в репозитории. MCP-сервер получает их из окружения.
-- `ALPACA_PAPER_TRADE=true` — предохранитель. `settings.py` **падает на старте**, если значение не `true`. Реальные деньги не могут быть затронуты по ошибке.
-- `FLYWHEEL_ENV` разделяет `dev` (аккаунт №1, обкатка до хакатона) и `judging` (чистый аккаунт №2, чей P&L оценивается).
+- Secrets live **only** in `.env`, which is listed in `.gitignore`. A `.env.example` with empty values is committed.
+- Keys are **not** placed in any MCP client config stored in the repository. The MCP server receives them from the environment.
+- `ALPACA_PAPER_TRADE=true` is a safety interlock. `settings.py` **fails at startup** if the value is not `true`. Real money cannot be touched by accident.
+- `FLYWHEEL_ENV` separates `dev` (account #1, pre-hackathon shakedown) from `judging` (clean account #2 whose P&L is scored).
 
 ```bash
 ALPACA_API_KEY=
@@ -395,107 +394,105 @@ FLYWHEEL_ENV=dev
 
 ---
 
-## 8. Риск-модель
+## 8. Risk model
 
-`risk.yaml` содержит жёсткие лимиты, проверяемые детерминированно:
+`risk.yaml` holds hard limits, checked deterministically:
 
-| Лимит | Смысл |
+| Limit | Meaning |
 |---|---|
-| max_position_pct | доля капитала на один инструмент |
-| max_deployed_pct | доля капитала в открытых позициях суммарно |
-| max_drawdown_pct | триггер kill switch |
-| max_net_delta | коридор суммарной дельты портфеля |
-| max_vega | бюджет по веге |
-| max_assignment_prob | бюджет вероятности ассигнации на цикл |
-| min_open_interest | фильтр ликвидности |
-| max_spread_pct | фильтр ликвидности |
-| forbid_naked | запрет непокрытых позиций, абсолютный |
+| max_position_pct | capital share per instrument |
+| max_deployed_pct | total capital in open positions |
+| max_drawdown_pct | kill-switch trigger |
+| max_net_delta | portfolio net delta band |
+| max_vega | vega budget |
+| max_assignment_prob | assignment-probability budget per cycle |
+| min_open_interest | liquidity filter |
+| max_spread_pct | liquidity filter |
+| forbid_naked | absolute ban on uncovered positions |
 
-Лимиты выставляются **по результатам бэктеста** — от худшего цикла за историю, а не на глаз.
+Limits are set **from backtest results** — derived from the worst historical cycle, not guessed.
 
-Премия является буфером, а не защитой. Против настоящего обвала она бесполезна. Отсюда три следствия, уже заложенные в дизайн: сокращение размера и увеличение дистанции при росте волатильности; торговля только широкими ETF, переживающими кризисы; жёсткий kill switch по просадке, который LLM не может обойти.
-
----
-
-## 9. Бэктест
-
-Назначение — три конкретные вещи, ни одна из которых не является обучением:
-
-1. **Доказательство устойчивости.** Те же правила по 3–5 годам истории: сколько циклов, какая доля прибыльных, максимальная просадка, поведение в марте 2020 и в 2022.
-2. **Калибровка параметров:** дельта, DTE, размер позиции — из данных, а не из головы.
-3. **Поиск точки поломки:** насколько плохо было в худшем цикле, и лимиты риска ставятся оттуда.
-
-**Защита от переподгонки:** параметры калибруются на раннем отрезке истории, проверяются на позднем (walk-forward). Если результат держится только на подобранных константах — это подгонка под шум, и её надо признать, а не спрятать.
-
-Отчёт: Sharpe, максимальная просадка, доля прибыльных циклов, распределение доходности по циклам, кривая капитала, сравнение с buy-and-hold по каждому тикеру.
+Premium is a buffer, not protection. Against a genuine crash it is useless. Three design consequences follow, already built in: shrink size and widen strike distance as volatility rises; wheel only broad ETFs that survive crises; enforce a hard drawdown kill switch the LLM cannot bypass.
 
 ---
 
-## 10. Тестирование
+## 9. Backtest
 
-Порядок написания тестов отражает приоритет:
+Its purpose is three specific things, none of which is training:
 
-1. **`risk/gate.py`** — первым. Табличные тесты: каждый лимит нарушается по отдельности, проверяется отказ и текст причины. Без сети, без LLM.
-2. **Конечный автомат колеса** — все переходы, включая ассигнацию посреди цикла и расхождение с брокером.
-3. **`optimizer/`** — свойства решения: ограничения не нарушены, решение существует при пустом наборе кандидатов.
-4. **Middleware** — что вето действительно блокирует вызов инструмента, что kill switch останавливает цикл.
-5. **Интеграция** — один полный цикл на замоканном Alpaca.
+1. **Robustness evidence.** The same rules replayed over 3–5 years: how many cycles, what share were profitable, maximum drawdown, behavior in March 2020 and through 2022.
+2. **Parameter calibration:** delta, DTE, position size — derived from data rather than invented.
+3. **Locating the break point:** how bad the worst cycle was, with risk limits set from there.
 
----
+**Overfitting guard:** parameters are calibrated on an early slice of history and validated on a later one (walk-forward). If results survive only under hand-picked constants, that is fitting noise and must be acknowledged, not hidden.
 
-## 11. Развёртывание
-
-Живой прогон — GitHub Actions по cron. Обоснование: бесплатно, инфраструктура не нужна, ноутбук может быть выключен, а журнал коммитится обратно в репозиторий и сам по себе служит аудит-трейлом для жюри.
-
-`scripts/healthcheck.py` проверяет перед циклом: ключи валидны, аккаунт фондирован, рынок открыт, состояние сходится с брокером.
+Report: Sharpe, maximum drawdown, share of profitable cycles, per-cycle return distribution, equity curve, and comparison against buy-and-hold for each ticker.
 
 ---
 
-## 12. План по датам
+## 10. Testing
 
-**22–27 августа — вся разработка.** Обкатка на paper-аккаунте №1.
-**28 августа — 4 сентября — только прогон, наблюдение, видео и питч.** Чистый аккаунт №2, чей P&L оценивается.
+The order in which tests are written reflects priority:
 
-Из режима 2–3 часа в день следует, что к 28 августа агент обязан быть полностью автономным и развёрнутым. Хакатонная неделя на разработку не закладывается.
-
-Подённая разбивка — в отдельном документе плана реализации.
-
----
-
-## 12.1 Линия отсечения
-
-Объём работ превышает то, что гарантированно помещается в 2–3 часа в день за шесть дней. Поэтому приоритет зафиксирован заранее, а не в панике 27 августа.
-
-**Обязательный минимум — без него сдавать нечего:**
-конечный автомат колеса, `risk/gate.py` с тестами, интеграция с Alpaca MCP, исполнение ордеров со сверкой, журнал, запуск по расписанию, README.
-
-**Ядро ценности — то, ради чего проект отличается от типового wheel-бота:**
-оптимизатор на CVXPY, классификация режима через LLM, бэктест с отчётом.
-
-**Отбрасывается первым, если время кончается:**
-Streamlit-дашборд (заменяется графиками из отчёта бэктеста), собственный MCP-сервер, роль narrator, третий тикер (IWM).
-
-Порядок именно такой: агент, который надёжно крутит колесо и не может нарушить лимит, лучше агента с красивым дашбордом, который упал в среду утром.
+1. **`risk/gate.py`** — first. Table-driven tests: each limit violated individually, asserting rejection and the reason text. No network, no LLM.
+2. **The wheel state machine** — every transition, including assignment mid-cycle and broker mismatch.
+3. **`optimizer/`** — solution properties: constraints hold, and a solution exists when the candidate set is empty.
+4. **Middleware** — that a veto actually blocks the tool call, and that the kill switch stops the cycle.
+5. **Integration** — one full cycle against a mocked Alpaca.
 
 ---
 
-## 13. Открытые вопросы
+## 11. Deployment
 
-Требуют проверки сразу после регистрации и получения ключей:
+The live run uses GitHub Actions on a cron schedule. Rationale: free, no infrastructure to run, the laptop can be off, and the journal is committed back to the repository, serving as the audit trail for judges by itself.
 
-1. **Формат сдачи и точное время дедлайна.** Публичная страница lablab.ai отдаёт 403 автоматическим запросам и в браузере без входа показывает лишь краткое описание. Типичный для lablab набор — публичный репозиторий, демо-видео 2–5 минут, слайды, описание — но это надо подтвердить в личном кабинете.
-2. **Стартовый капитал paper-аккаунта.** Один контракт — 100 акций; covered call на SPY требует десятков тысяч долларов. По умолчанию Alpaca даёт около $100k, что позволяет вести лишь пару параллельных колёс. Размер позиции обязан быть параметром оптимизатора, а не константой. При нехватке — сброс аккаунта с большим стартовым балансом либо смещение набора тикеров в сторону более дешёвых ETF.
-3. **Уровень доступа к данным опционов.** 15-минутная задержка требует Algo Trader Plus; надо проверить, что доступно на бесплатном уровне и достаточно ли этого для цикла, идущего через 30 минут после открытия.
-
-Отдельный вопрос «источник базового портфеля для оверлея» снят: базовый портфель не нужен. Колесо **само является** оверлеем — стадия пута приобретает акции, стадия колла накладывает оверлей на них. Старт всегда из состояния CASH.
+`scripts/healthcheck.py` verifies before each cycle: keys valid, account funded, market open, state reconciled with the broker.
 
 ---
 
-## 14. Критерии успеха
+## 12. Timeline
 
-| Критерий жюри | Чем закрываем |
+**August 22–27 — all development.** Shakedown on paper account #1.
+**August 28 – September 4 — run, observe, film, pitch only.** Clean account #2, whose P&L is scored.
+
+Given 2–3 hours per day, the agent must be fully autonomous and deployed by August 28. The hackathon week is not budgeted for development.
+
+The day-by-day breakdown lives in a separate implementation plan.
+
+## 12.1 Cut line
+
+The scope exceeds what reliably fits into 2–3 hours a day across six days. Priority is therefore fixed now, not in a panic on August 27.
+
+**Mandatory minimum — without this there is nothing to submit:**
+the wheel state machine, `risk/gate.py` with tests, Alpaca MCP integration, order execution with reconciliation, the journal, scheduled runs, README.
+
+**Core value — what makes this different from a stock wheel bot:**
+the CVXPY optimizer, LLM regime classification, the backtest with its report.
+
+**First to be cut if time runs out:**
+the Streamlit dashboard (replaced by backtest report charts), our own MCP server, the narrator role, the third ticker (IWM).
+
+The order is deliberate: an agent that reliably turns the wheel and cannot breach a limit beats an agent with a beautiful dashboard that died on Wednesday morning.
+
+---
+
+## 13. Open questions
+
+To be verified immediately after registration and key issuance:
+
+1. **Submission format and exact deadline time.** The public lablab.ai page returns 403 to automated requests and shows only a short description in a browser without login. The typical lablab set is a public repository, a 2–5 minute demo video, slides, and a description — but this must be confirmed in the account dashboard.
+2. **Paper account starting capital.** One contract is 100 shares; a covered call on SPY requires tens of thousands of dollars. Alpaca defaults to roughly $100k, which supports only a couple of parallel wheels. Position size must be an optimizer parameter, never a constant. If capital is short: reset the account with a larger starting balance, or shift the universe toward cheaper ETFs.
+3. **Options data entitlement.** 15-minute delayed data requires Algo Trader Plus; confirm what the free tier provides and whether it suffices for a cycle running 30 minutes after the open.
+
+The earlier open question about a "base portfolio source" for the overlay is resolved: no base portfolio is needed. The wheel **is** the overlay — the put leg acquires shares, the call leg overlays them. Every cycle starts from CASH.
+
+---
+
+## 14. Success criteria
+
+| Judging criterion | How it is addressed |
 |---|---|
-| P&L Performance | 6 сессий живого прогона + бэктест на 3–5 годах как основное доказательство |
-| Technology Implementation | LangGraph, middleware-слой контроля, CVXPY, собственный MCP-сервер, тесты на риск |
-| Creativity & Originality | оптимизатор вместо захардкоженной дельты; risk gate как непроходимый middleware; MCP-сервер, отдающий оптимизатор наружу |
-| Presentation & Execution | журнал решений как готовая хронология автономной работы; Streamlit-дашборд; демо-видео на материале реальных запусков |
+| P&L Performance | 6 live sessions plus a 3–5 year backtest as the primary evidence |
+| Technology Implementation | LangGraph, a middleware control layer, CVXPY, our own MCP server, risk tests |
+| Creativity & Originality | an optimizer instead of a hardcoded delta; the risk gate as unbypassable middleware; an MCP server exposing the optimizer outward |
+| Presentation & Execution | the decision journal as a ready chronology of autonomous operation; a Streamlit dashboard; a demo video built from real runs |
