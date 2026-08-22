@@ -1,0 +1,11 @@
+# Hard limits. Enforced deterministically by risk/gate.py.
+# Values are provisional until D6 recalibrates them from backtest results.
+max_position_pct: 25.0      # capital share per instrument
+max_deployed_pct: 60.0      # total capital in open positions
+max_drawdown_pct: 15.0      # kill-switch trigger
+max_net_delta: 150.0        # portfolio net delta band, +/-
+max_vega: 500.0             # vega budget
+max_assignment_prob: 0.35   # per order
+min_open_interest: 500      # liquidity filter
+max_spread_pct: 5.0         # liquidity filter, (ask-bid)/mid
+forbid_naked: true          # absolute, never overridden

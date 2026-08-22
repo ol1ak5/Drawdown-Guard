@@ -1,0 +1,16 @@
+universe: [SPY, QQQ, IWM]
+target_delta:
+  calm:     {min: 0.25, max: 0.35}
+  elevated: {min: 0.15, max: 0.25}
+  stress:   {min: 0.08, max: 0.15}
+dte:
+  min: 5
+  max: 14
+size_multiplier:   # applied to the optimizer's capital budget
+  calm: 1.0
+  elevated: 0.6
+  stress: 0.3
+  crash: 0.0
+roll:
+  profit_take_pct: 50.0   # buy back at 50% of premium captured
+  defend_dte: 2           # roll if still open this close to expiry
