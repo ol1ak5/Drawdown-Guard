@@ -259,3 +259,41 @@ the same default — paper unless you explicitly opt into live.
   would also hide a genuine NaN in our own maths.
 - Ruff reformats a file you just wrote — that is fine, commit the reformatted
   version. Run `ruff format` before `git add` to avoid the round trip.
+
+## Task 18 findings, 2026-08-22
+
+**Alpaca's option history is bars, not quotes.** The endpoint returns open,
+high, low, close, volume and vwap. There is no historical bid, no ask, no open
+interest and no implied volatility. The plan for this task assumed quotes, so
+`engine.py` models three quantities and names each one in `params`:
+
+- the execution price, as the bar close less a haircut (default 2%), booked as
+  the fill — never the mid;
+- implied volatility, solved for from that close;
+- open interest, which cannot be modelled at all. Rather than fabricate a
+  number for a field the risk gate reads, the check is disabled explicitly
+  (`DISABLED_CHECKS`) and a stricter measured filter replaces it: the contract
+  must have actually traded that day.
+
+**`max_net_delta: 150` is incompatible with the wheel.** The first real run on
+SPY, February 2024 to August 2026, opened exactly one position out of 31
+available expiries, took the assignment, and then held the shares for two and a
+half years without writing a single call. It was not a bad market — the gate
+was unsatisfiable.
+
+Assignment of four SPY contracts leaves 400 shares, which is 400 of net delta
+against a band of +/-150. A covered call does reduce delta, so the direction is
+right, but to pull 400 back inside 150 the optimizer needs eight contracts,
+while `max_position_pct: 25` allows at most four. Infeasible, every month.
+
+Two consequences, both for Step 8:
+
+1. The limit has to admit the delta a single assignment creates. At 25% of a
+   1,000,000 account in one instrument around 500 a share, that is roughly 500
+   shares, so the band cannot be below about 600 if the wheel is to turn.
+2. A portfolio-wide delta band may be the wrong shape entirely. Shares held
+   against a covered call are collateral, not a directional bet, and counting
+   them the same way as a naked delta is what produced the deadlock.
+
+Do not adjust these values by hand from one symbol. Recalibrate across SPY,
+QQQ and IWM, and record before-and-after in the report as Step 8 requires.

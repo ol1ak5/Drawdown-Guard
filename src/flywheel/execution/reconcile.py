@@ -28,8 +28,12 @@ _OCC = re.compile(
 )
 
 
-def _parse_occ(symbol: str) -> dict | None:
-    """Decode an OCC symbol, or return None when it is an ordinary ticker."""
+def parse_occ(symbol: str) -> dict | None:
+    """Decode an OCC symbol, or return None when it is an ordinary ticker.
+
+    Public because the backtest reads these symbols back out of historical
+    bars. `options_history.occ_symbol` builds them; this is the inverse.
+    """
     match = _OCC.match(symbol.upper())
     if match is None:
         return None
@@ -79,7 +83,7 @@ def _group(positions: list[dict]) -> dict[str, dict]:
     """Index the broker's positions by underlying symbol."""
     grouped: dict[str, dict] = {}
     for position in positions:
-        occ = _parse_occ(position["symbol"])
+        occ = parse_occ(position["symbol"])
         symbol = occ["underlying"] if occ else position["symbol"].upper()
         holding = grouped.setdefault(symbol, {"shares": 0, "options": []})
         if occ:
