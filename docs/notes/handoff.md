@@ -68,8 +68,8 @@ Do not skip step 3. It is the only step that proves the test works.
 
 ## The plan is a draft, not scripture
 
-Two real bugs were already found in it while implementing Task 4, both caught
-because the tests were written before the code:
+Four problems have already been found in it, every one caught because the tests
+were written before the code:
 
 - **Net delta sign.** The plan computed a short put's delta contribution as
   `-delta * contracts * 100`, which gives −30 for a −0.30 delta put, while its
@@ -81,6 +81,15 @@ because the tests were written before the code:
   dropped equity to 200,000 but left `peak_equity` at 300,000, which is a 33%
   drawdown. The drawdown check runs first and short-circuits, so the test was
   passing on the wrong rejection reason. `peak_equity` now tracks equity.
+- **A fixture that hid every other filter (Task 6).** The default quote was
+  1.00/1.10, a 9.5% spread against a 5% limit, so every row was dropped on
+  liquidity before the delta or expiry checks could run. One test would have
+  failed outright; worse, another would have *passed* while testing nothing.
+  The default is now 1.00/1.04.
+- **A test named after the wrong thing (Task 7).** "An infeasible problem
+  returns empty" — but a zero capital budget is perfectly feasible, since
+  selling nothing satisfies every constraint. The test proves the empty
+  return, not the infeasible path. Renamed.
 
 Expect more of these. When the plan's code and the plan's test disagree, the
 test is usually closer to the intent — but think it through rather than
@@ -96,8 +105,9 @@ patching until green. If you change something, say why in the commit message.
 | 4 | `risk/gate.py` + `risk/limits.py` + `config/*.yaml` — the deterministic veto | 18 |
 | 5 | `optimizer/payoff.py` — Black-Scholes price, delta, vega, assignment proxy, loss scenarios | 9 |
 | 6 | `optimizer/candidates.py` — chain rows in, filtered and priced candidates out | 6 |
+| 7 | `optimizer/model.py` — the MILP that picks contracts and counts | 8 |
 
-52 tests, all passing. Nothing so far touches the network, so none of it needs
+60 tests, all passing. Nothing so far touches the network, so none of it needs
 API keys.
 
 The first `pytest` run after installing scipy takes a minute or two while it
@@ -105,11 +115,10 @@ warms its caches. Every run after that is a few seconds. This is normal.
 
 ## Next, in order
 
-- **Task 7** — the CVXPY optimizer that picks among candidates.
 - **Task 8** — historical data for the backtest.
 
-Tasks 5 to 8 are all offline maths. They need no API keys and no network except
-Task 8's data download, so they can be done at any time.
+Task 8 is the last of the offline maths, and the only one of them that needs the
+network, for its data download.
 
 The first task that needs a working Alpaca account is **Task 9**.
 
@@ -147,5 +156,9 @@ the same default — paper unless you explicitly opt into live.
 - The same error *after* writing the implementation — check the file is under
   `src/flywheel/`, and that any new sub-package has an `__init__.py`.
 - `uv run` cannot find a dependency — `uv sync`.
+- `RuntimeWarning: invalid value encountered in reduce` during the optimizer
+  tests — comes from inside cvxpy, which sums an uninitialised array purely to
+  read its shape. Harmless, and left unsilenced on purpose: a blanket filter
+  would also hide a genuine NaN in our own maths.
 - Ruff reformats a file you just wrote — that is fine, commit the reformatted
   version. Run `ruff format` before `git add` to avoid the round trip.
