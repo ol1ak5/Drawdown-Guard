@@ -49,8 +49,8 @@ class ProposedOrder(BaseModel):
     expiry: date
     contracts: int  # negative: sell to open
     limit_price: Decimal
-    delta: float
-    vega: float
+    delta: float  # per share, signed
+    vega: float  # per contract, per one point of implied volatility
     assignment_prob: float
     open_interest: int
     spread_pct: float
@@ -66,8 +66,8 @@ class Portfolio(BaseModel):
     cash: Decimal
     peak_equity: Decimal
     deployed: Decimal = Decimal("0")
-    net_delta: float = 0.0
-    vega: float = 0.0
+    net_delta: float = 0.0  # position delta: shares equivalent, signed
+    vega: float = 0.0  # dollars lost per one point rise in implied volatility
     wheels: dict[str, WheelState] = Field(default_factory=dict)
 
     @property

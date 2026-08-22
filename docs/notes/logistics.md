@@ -168,7 +168,9 @@ Scheduled as Task 12b on D4, alongside the journal it reads.
       (closes spec §13.3) and confirm buying power (closes §13.2). Level 3,
       1,000,000 options buying power.
 - [ ] Create the `judging` account and fill `.env.judging`.
-- [ ] Settle the vega units question before D6 calibration — see `handoff.md`.
+- [x] Settle the vega units question. Fixed 2026-08-22: per contract, per one
+      point of implied volatility. See `handoff.md`.
+- [ ] Decide whether the live agent uses Alpaca's greeks or our own.
 - [ ] Fill `ANTHROPIC_API_KEY` in `.env`; it is empty, and Task 16 needs it.
 - [x] Connect Discord and create the team.
 - [x] Confirm whether a demo URL is required — it is, and the answer is a

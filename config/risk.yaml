@@ -3,8 +3,17 @@
 max_position_pct: 25.0      # capital share per instrument
 max_deployed_pct: 60.0      # total capital in open positions
 max_drawdown_pct: 15.0      # kill-switch trigger
-max_net_delta: 150.0        # portfolio net delta band, +/-
-max_vega: 500.0             # vega budget
+max_net_delta: 150.0        # portfolio net delta band, +/-, in share equivalents
+# Vega budget, in dollars lost per one point rise in implied volatility.
+# 500 is not arbitrary: we write options, so we are short vega, and a 30 point
+# IV spike is roughly what a crash delivers. 500 x 30 = 15,000, which is 1.5%
+# of a 1,000,000 account, or one tenth of the 15% drawdown budget below.
+# Reality check against live SPY quotes on 2026-08-22: a put 5-14 days out in
+# the 0.15-0.35 delta band carries 33-46 vega per contract, so this budget
+# admits roughly 11-15 concurrent contracts. At ~76,000 collateral each that is
+# more than max_deployed_pct allows, so capital binds first and this limit is a
+# second line of defence rather than the primary sizing constraint.
+max_vega: 500.0
 max_assignment_prob: 0.35   # per order
 min_open_interest: 500      # liquidity filter
 max_spread_pct: 5.0         # liquidity filter, (ask-bid)/mid

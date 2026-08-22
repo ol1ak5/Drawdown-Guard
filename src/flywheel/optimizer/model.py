@@ -51,6 +51,8 @@ def optimize(
     # negative. Position delta is quantity * per-share delta, hence the sign flip:
     # selling a -0.30 delta put contributes +30.
     delta_contribution = np.array([-c.delta * SHARES_PER_CONTRACT for c in candidates])
+    # Vega is already per contract, so unlike delta it takes no share factor.
+    # See `contract_vega` for why the two greeks are quoted differently.
     vega = np.array([abs(c.vega) for c in candidates])
 
     x = cp.Variable(n, integer=True)

@@ -1,11 +1,13 @@
 import numpy as np
 import pytest
 
+from flywheel.domain import SHARES_PER_CONTRACT
 from flywheel.optimizer.payoff import (
     assignment_prob,
     bs_delta,
     bs_price,
     bs_vega,
+    contract_vega,
     loss_scenarios,
 )
 
@@ -21,6 +23,33 @@ def test_atm_put_and_call_are_close_in_price():
 def test_put_delta_is_negative_and_call_delta_is_positive():
     assert bs_delta(SPOT, 100.0, TAU, VOL, "P") < 0
     assert bs_delta(SPOT, 100.0, TAU, VOL, "C") > 0
+
+
+def test_contract_vega_predicts_the_cost_of_a_one_point_volatility_rise():
+    """The unit test in the literal sense: it pins down what the number means.
+
+    Vega is quoted three different ways in the wild, and the three differ by
+    factors of 100. This ties ours to something observable — the change in the
+    price of one contract when implied volatility goes from 20 to 21.
+    """
+    before = bs_price(SPOT, 100.0, TAU, 0.20, "P") * SHARES_PER_CONTRACT
+    after = bs_price(SPOT, 100.0, TAU, 0.21, "P") * SHARES_PER_CONTRACT
+    assert contract_vega(SPOT, 100.0, TAU, 0.20) == pytest.approx(
+        after - before, rel=0.02
+    )
+
+
+def test_contract_vega_is_a_hundred_times_the_per_share_point_vega():
+    """Alpaca's chain quotes vega per share per point. Ours is per contract.
+
+    The two conversions between them cancel numerically, which is exactly why
+    this is worth asserting: a reader who simplifies the arithmetic away would
+    not change any number today and would silently break the units later.
+    """
+    per_share_per_point = bs_vega(SPOT, 100.0, TAU, VOL) / 100.0
+    assert contract_vega(SPOT, 100.0, TAU, VOL) == pytest.approx(
+        per_share_per_point * SHARES_PER_CONTRACT
+    )
 
 
 def test_deeper_out_of_the_money_puts_are_cheaper():

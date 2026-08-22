@@ -117,6 +117,10 @@ def _net_delta(order: ProposedOrder, portfolio: Portfolio, limits: Limits) -> Ve
 
 
 def _vega(order: ProposedOrder, portfolio: Portfolio, limits: Limits) -> Verdict:
+    # No SHARES_PER_CONTRACT here, unlike the delta check above. Delta is quoted
+    # per share, vega per contract — see `contract_vega`. The asymmetry is
+    # deliberate and load-bearing: adding a factor of 100 to make the two checks
+    # look alike would make this limit unreachable.
     projected = portfolio.vega + abs(order.vega * order.contracts)
     if projected > limits.max_vega:
         return Verdict.reject(

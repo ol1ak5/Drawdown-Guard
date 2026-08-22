@@ -15,7 +15,7 @@ from flywheel.domain import SHARES_PER_CONTRACT, Right
 from flywheel.optimizer.payoff import (
     assignment_prob,
     bs_delta,
-    bs_vega,
+    contract_vega,
     loss_scenarios,
 )
 from flywheel.risk.limits import Limits
@@ -38,8 +38,8 @@ class Candidate(BaseModel):
     open_interest: int
     implied_vol: float
     tau: float
-    delta: float
-    vega: float
+    delta: float  # per share, signed
+    vega: float  # per contract, per one point of implied volatility
     assignment_prob: float
     collateral: Decimal
     losses: np.ndarray = Field(exclude=True)
@@ -104,7 +104,7 @@ def build_candidates(
                 implied_vol=vol,
                 tau=tau,
                 delta=delta,
-                vega=bs_vega(spot, strike, tau, vol),
+                vega=contract_vega(spot, strike, tau, vol),
                 assignment_prob=assignment_prob(spot, strike, tau, vol, right),
                 collateral=row["strike"] * SHARES_PER_CONTRACT,
                 losses=loss_scenarios(

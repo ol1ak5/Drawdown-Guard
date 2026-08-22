@@ -61,11 +61,40 @@ def bs_delta(
 def bs_vega(
     spot: float, strike: float, tau: float, vol: float, rate: float = DEFAULT_RATE
 ) -> float:
-    """Sensitivity per share to a 1.00 (i.e. 100 point) change in volatility."""
+    """Textbook vega: sensitivity per share to a 1.00 change in volatility.
+
+    This is the raw Black-Scholes quantity, and it is almost never the number
+    you want to compare against a risk limit. Use `contract_vega` for that.
+    """
     if tau <= 0 or vol <= 0:
         return 0.0
     d1, _ = _d1_d2(spot, strike, tau, vol, rate)
     return float(spot * norm.pdf(d1) * np.sqrt(tau))
+
+
+def contract_vega(
+    spot: float, strike: float, tau: float, vol: float, rate: float = DEFAULT_RATE
+) -> float:
+    """Vega per contract per one point of implied volatility.
+
+    **This is the project's vega convention.** Everything downstream — the
+    `vega` field on candidates and orders, `Portfolio.vega`, and `max_vega` in
+    risk.yaml — is in these units. A portfolio vega of 300 means implied
+    volatility rising from 18 to 19 costs 300 dollars.
+
+    Three conventions are in circulation and they differ by factors of 100:
+    textbook vega is per share per 1.00 of volatility, Alpaca's chain quotes
+    per share per point, and traders speak per contract per point. Mixing any
+    two of them produces a risk limit that is either unreachable or inert, and
+    nothing about the resulting number looks wrong.
+
+    The two conversions from `bs_vega` — divide by 100 for a one-point move,
+    multiply by 100 shares per contract — cancel exactly. That cancellation is
+    the reason this is a named function instead of a bare call: the units are
+    invisible in the arithmetic, so they have to be visible in the name.
+    """
+    per_share_per_point = bs_vega(spot, strike, tau, vol, rate) / 100.0
+    return per_share_per_point * SHARES_PER_CONTRACT
 
 
 def assignment_prob(

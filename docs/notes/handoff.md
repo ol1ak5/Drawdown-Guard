@@ -91,53 +91,66 @@ were written before the code:
   selling nothing satisfies every constraint. The test proves the empty
   return, not the infeasible path. Renamed.
 
-A fifth, found by connecting the live paper account rather than by a test, is
-open and needs a decision — see below.
+A fifth was found by connecting the live paper account rather than by a test.
+It is resolved; the section below records what it was and how the fix works,
+because the fix is the kind that looks like it does nothing.
 
 Expect more of these.
 
-## Open: the vega units are inconsistent
+## Resolved: the vega convention
 
-Real chain data exposed this and no test catches it, because every test picks
-its own numbers and is internally consistent.
+**First, a correction.** The initial diagnosis of this was wrong. It claimed the
+gate and the optimizer disagreed with each other about units and that `max_vega`
+was therefore either inert or vetoed everything. Checking against live SPY
+quotes showed the code was already self-consistent under one reading. The real
+defect was narrower and more insidious: *nothing anywhere said which reading was
+intended*, so the consistency was luck, and the next person to touch it — adding
+a plausible-looking factor of 100 to make the vega check resemble the delta
+check — would have broken it without any test objecting.
 
-Three places disagree about what a vega number means:
+Vega is quoted three ways in the wild, and they differ by factors of 100:
 
-- `risk/gate.py::_vega` computes `order.vega * order.contracts`. Delta, one
-  function above it, multiplies by `SHARES_PER_CONTRACT`. Vega does not. So
-  within a single gate, delta is a position figure and vega is a per-share
-  figure times a contract count, which is not a unit at all.
-- `optimizer/model.py` repeats the same omission: it scales delta by 100 and
-  leaves vega unscaled.
-- `payoff.py::bs_vega` returns sensitivity to a 1.00 move in volatility.
-  Alpaca's chain returns vega per 0.01 move — the market convention. The two
-  differ by a factor of 100, and the code currently mixes them.
+| Convention | An ATM SPY put, 9 days out |
+|---|---|
+| Textbook: per share, per 1.00 of volatility | 44.5 |
+| Alpaca's chain: per share, per one point | 0.445 |
+| **Ours: per contract, per one point** | **44.5** |
 
-Why it matters, with real numbers. A SPY put roughly 9 days out has a
-Black-Scholes vega near 12.7 per share, so about 1,270 per contract on our
-scale. `max_vega: 500` in `risk.yaml` therefore either never binds (reading
-vega as per-share, ~39 contracts allowed, several million in collateral) or
-vetoes every order ever written (reading it as per-contract). There is no
-reading in which the current number does useful work.
+The first and third are numerically identical, because dividing by 100 for the
+smaller volatility step and multiplying by 100 shares per contract cancel
+exactly. That coincidence is the whole trap. It let the code be right for the
+wrong reason, and it means a units bug introduced later would change no number
+that any existing test looks at.
 
-Two decisions, and they are separate:
+**The convention is: dollars lost per one point rise in implied volatility, per
+contract.** A portfolio vega of 300 means IV going from 18 to 19 costs $300.
 
-1. **Units.** Pick one convention, state it in a comment in `domain.py`, and
-   make the gate, the optimizer, and `bs_vega` all obey it. Per contract, per
-   0.01 of volatility, is the convention a trader would expect.
-2. **The limit.** `max_vega` has to be recalibrated once units are fixed. The
-   plan already schedules this for D6, and `risk.yaml` says the values are
-   provisional, so this part is on the map — the units are not.
+What enforces it now:
 
-Do the units first. Recalibrating a number whose meaning is undecided produces
-a figure that looks authoritative and means nothing.
+- `payoff.py::contract_vega` is the only function anything should call. It
+  exists purely to give the units a name — its body is a no-op multiplication,
+  and the docstring says so, so nobody deletes it as redundant.
+- `bs_vega` is still there, still textbook, and its docstring now warns that it
+  is almost never the number you want.
+- Two tests in `test_payoff.py` pin it down. One is empirical: it reprices a
+  contract at 20 and at 21 volatility and asserts the difference *is* the vega.
+  A test that ties a unit to something observable cannot drift.
+- `gate.py::_vega` and `model.py` carry comments explaining why, unlike delta,
+  they apply no `SHARES_PER_CONTRACT` factor — the exact "fix" that would break
+  this.
+- `risk.yaml` states the units on `max_vega` and shows the arithmetic behind
+  the number: 500 vega against a 30 point IV spike is $15,000, or 1.5% of a
+  1,000,000 account, one tenth of the drawdown budget.
 
-There is a second question worth deciding at the same time: now that Alpaca
-returns greeks directly, should the live agent use them instead of our
-Black-Scholes ones? The argument against is consistency — the backtest has to
-compute its own, and if live and backtest use different greeks, the backtest
-stops predicting live behaviour. `payoff.py` is needed either way for
-`loss_scenarios` and `assignment_prob`. When the plan's code and the plan's test disagree, the
+Live SPY quotes confirmed the scale: puts 5-14 days out in the 0.15-0.35 delta
+band carry 33-46 vega per contract, and our `contract_vega` matched Alpaca's
+reported vega to within 0.5% across the band.
+
+**Still open, and worth deciding before D6:** Alpaca returns greeks directly, so
+the live agent could use theirs instead of computing Black-Scholes. The argument
+against is consistency — the backtest must compute its own, and if the two
+sources disagree the backtest stops predicting live behaviour. `payoff.py` is
+needed either way for `loss_scenarios` and `assignment_prob`. When the plan's code and the plan's test disagree, the
 test is usually closer to the intent — but think it through rather than
 patching until green. If you change something, say why in the commit message.
 
@@ -152,8 +165,9 @@ patching until green. If you change something, say why in the commit message.
 | 5 | `optimizer/payoff.py` — Black-Scholes price, delta, vega, assignment proxy, loss scenarios | 9 |
 | 6 | `optimizer/candidates.py` — chain rows in, filtered and priced candidates out | 6 |
 | 7 | `optimizer/model.py` — the MILP that picks contracts and counts | 8 |
+| — | `optimizer/payoff.py::contract_vega` — the project's vega convention, pinned | 2 |
 
-60 tests, all passing. Nothing so far touches the network, so none of it needs
+62 tests, all passing. Nothing so far touches the network, so none of it needs
 API keys.
 
 The first `pytest` run after installing scipy takes a minute or two while it
