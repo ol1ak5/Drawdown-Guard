@@ -94,13 +94,16 @@ patching until green. If you change something, say why in the commit message.
 | 2 | `domain.py` — `WheelState`, `OpenContract`, `ProposedOrder`, `Portfolio`, `Verdict` | 4 |
 | 3 | `wheel.py` — the state machine, raises `IllegalTransition` on anything naked | 11 |
 | 4 | `risk/gate.py` + `risk/limits.py` + `config/*.yaml` — the deterministic veto | 18 |
+| 5 | `optimizer/payoff.py` — Black-Scholes price, delta, vega, assignment proxy, loss scenarios | 9 |
 
-37 tests, all passing. Nothing so far touches the network, so none of it needs
+46 tests, all passing. Nothing so far touches the network, so none of it needs
 API keys.
+
+The first `pytest` run after installing scipy takes a minute or two while it
+warms its caches. Every run after that is a few seconds. This is normal.
 
 ## Next, in order
 
-- **Task 5** — options pricing and payoff scenarios (Black-Scholes, greeks).
 - **Task 6** — candidate construction: turn an option chain into `ProposedOrder`s.
 - **Task 7** — the CVXPY optimizer that picks among candidates.
 - **Task 8** — historical data for the backtest.
