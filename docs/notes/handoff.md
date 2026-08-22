@@ -91,7 +91,53 @@ were written before the code:
   selling nothing satisfies every constraint. The test proves the empty
   return, not the infeasible path. Renamed.
 
-Expect more of these. When the plan's code and the plan's test disagree, the
+A fifth, found by connecting the live paper account rather than by a test, is
+open and needs a decision — see below.
+
+Expect more of these.
+
+## Open: the vega units are inconsistent
+
+Real chain data exposed this and no test catches it, because every test picks
+its own numbers and is internally consistent.
+
+Three places disagree about what a vega number means:
+
+- `risk/gate.py::_vega` computes `order.vega * order.contracts`. Delta, one
+  function above it, multiplies by `SHARES_PER_CONTRACT`. Vega does not. So
+  within a single gate, delta is a position figure and vega is a per-share
+  figure times a contract count, which is not a unit at all.
+- `optimizer/model.py` repeats the same omission: it scales delta by 100 and
+  leaves vega unscaled.
+- `payoff.py::bs_vega` returns sensitivity to a 1.00 move in volatility.
+  Alpaca's chain returns vega per 0.01 move — the market convention. The two
+  differ by a factor of 100, and the code currently mixes them.
+
+Why it matters, with real numbers. A SPY put roughly 9 days out has a
+Black-Scholes vega near 12.7 per share, so about 1,270 per contract on our
+scale. `max_vega: 500` in `risk.yaml` therefore either never binds (reading
+vega as per-share, ~39 contracts allowed, several million in collateral) or
+vetoes every order ever written (reading it as per-contract). There is no
+reading in which the current number does useful work.
+
+Two decisions, and they are separate:
+
+1. **Units.** Pick one convention, state it in a comment in `domain.py`, and
+   make the gate, the optimizer, and `bs_vega` all obey it. Per contract, per
+   0.01 of volatility, is the convention a trader would expect.
+2. **The limit.** `max_vega` has to be recalibrated once units are fixed. The
+   plan already schedules this for D6, and `risk.yaml` says the values are
+   provisional, so this part is on the map — the units are not.
+
+Do the units first. Recalibrating a number whose meaning is undecided produces
+a figure that looks authoritative and means nothing.
+
+There is a second question worth deciding at the same time: now that Alpaca
+returns greeks directly, should the live agent use them instead of our
+Black-Scholes ones? The argument against is consistency — the backtest has to
+compute its own, and if live and backtest use different greeks, the backtest
+stops predicting live behaviour. `payoff.py` is needed either way for
+`loss_scenarios` and `assignment_prob`. When the plan's code and the plan's test disagree, the
 test is usually closer to the intent — but think it through rather than
 patching until green. If you change something, say why in the commit message.
 

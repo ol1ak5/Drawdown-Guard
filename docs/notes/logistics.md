@@ -56,7 +56,7 @@ Paper-only accounts need no funding and no KYC, and are available worldwide.
 | Reset | no longer exists; delete the account and create a new one |
 | API base URL | `https://paper-api.alpaca.markets` |
 | API keys | generated per account; the secret is displayed once only |
-| Options level | Level 1 covers covered calls and cash-secured puts, which is this entire strategy. Paper accounts are reported to receive Level 3 by default — **verify and record the actual level here.** |
+| Options level | Level 1 covers covered calls and cash-secured puts, which is this entire strategy. **Verified 2026-08-22: the paper account is granted Level 3**, two levels more than we use. |
 
 **Planned accounts:**
 
@@ -65,6 +65,22 @@ Paper-only accounts need no funding and no KYC, and are available worldwide.
 | scratch (the original account) | 100,000 | nowhere — used only to prove keys can be read |
 | `dev` | 1,000,000 | `.env` |
 | `judging` | 1,000,000 | `.env.judging` |
+
+**`dev` connected and verified 2026-08-22.** Account `PA3BER5PHGFO`, status ACTIVE,
+equity and cash 1,000,000 USD, options level 3, options buying power 1,000,000,
+trading not blocked. The key begins `PK`, which is the paper prefix — live keys
+begin `AK`. That is a third independent confirmation of paper, alongside the
+`ALPACA_PAPER_TRADE` interlock and the CLI's paper default.
+
+**Reported buying power is 4,000,000 and must be ignored.** That is 4x margin.
+Every position this agent takes is cash-secured, and the risk gate sizes against
+`equity`, never against buying power. If a future change ever reads
+`buying_power`, it has quietly turned a cash-secured strategy into a margin one.
+
+**Market data verified the same day.** `OptionHistoricalDataClient.get_option_chain`
+returns 1,749 SPY put contracts for expiries 3 to 16 days out, each with a quote,
+an implied volatility, and greeks. Alpaca supplying greeks directly was not
+assumed by the design; see the vega-units note in `handoff.md`.
 
 **Why 1,000,000 rather than 250,000.** Option collateral is quantised: one
 cash-secured put on SPY ties up roughly 60–65k, and that figure cannot be scaled
@@ -148,8 +164,12 @@ Scheduled as Task 12b on D4, alongside the journal it reads.
 
 - [ ] Record the real deadline, timezone, tracks, and rubric here.
 - [ ] Record the final team name.
-- [ ] Record the options level actually granted on the paper accounts
-      (closes spec §13.3) and confirm buying power (closes §13.2).
+- [x] Record the options level actually granted on the paper accounts
+      (closes spec §13.3) and confirm buying power (closes §13.2). Level 3,
+      1,000,000 options buying power.
+- [ ] Create the `judging` account and fill `.env.judging`.
+- [ ] Settle the vega units question before D6 calibration — see `handoff.md`.
+- [ ] Fill `ANTHROPIC_API_KEY` in `.env`; it is empty, and Task 16 needs it.
 - [x] Connect Discord and create the team.
 - [x] Confirm whether a demo URL is required — it is, and the answer is a
       GitHub Pages status page.
