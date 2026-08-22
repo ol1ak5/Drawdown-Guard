@@ -86,6 +86,22 @@ were written before the code:
   liquidity before the delta or expiry checks could run. One test would have
   failed outright; worse, another would have *passed* while testing nothing.
   The default is now 1.00/1.04.
+- **Expiry is not always the third Friday (Task 8).** The plan's `third_friday`
+  is correct arithmetic and the wrong question. When the exchange is shut on the
+  third Friday — Good Friday 2025, Juneteenth 2026 — contracts expire on the
+  Thursday. Asking for the Friday symbol returns an empty frame, which looks
+  exactly like a quiet month. Two expiries in every 31 were vanishing, for all
+  three tickers, and refetching them recovered 33,304 bars. Caught only because
+  the download printed a row count per expiry and the zeros formed a pattern.
+  **Print counts, not "done".**
+- **Two crashes in the download script, and one false claim (Task 8).** The
+  script mixed `pd.Timedelta` into `datetime.date` arithmetic, which returns a
+  `date` and not a `Timestamp`, so the next line's `.date()` raised; and it
+  sliced a `DatetimeIndex` with a `date`, deprecated in pandas 3. Separately,
+  the plan claimed the CBOE `^PUT` index starts in June 1986 and covers the 1987
+  crash. Yahoo says 1996-08-02. The series does not reach 1987 and the report
+  must not say it does — see `alpaca-data-api.md`. That one would have shipped
+  as a false statement to judges, which is worse than a crash.
 - **A test named after the wrong thing (Task 7).** "An infeasible problem
   returns empty" — but a zero capital budget is perfectly feasible, since
   selling nothing satisfies every constraint. The test proves the empty
@@ -146,11 +162,28 @@ Live SPY quotes confirmed the scale: puts 5-14 days out in the 0.15-0.35 delta
 band carry 33-46 vega per contract, and our `contract_vega` matched Alpaca's
 reported vega to within 0.5% across the band.
 
-**Still open, and worth deciding before D6:** Alpaca returns greeks directly, so
-the live agent could use theirs instead of computing Black-Scholes. The argument
-against is consistency — the backtest must compute its own, and if the two
-sources disagree the backtest stops predicting live behaviour. `payoff.py` is
-needed either way for `loss_scenarios` and `assignment_prob`. When the plan's code and the plan's test disagree, the
+## Decided: whose greeks the agent uses
+
+Alpaca returns greeks on every chain snapshot, so the live agent could use those
+instead of computing Black-Scholes. **It does not. Every decision uses ours.**
+
+The reason is not that ours are better — Alpaca's come off the market's own
+implied volatility surface and are the more accurate number. The reason is that
+historical option *bars* carry no greeks, so the backtest has no choice but to
+compute its own. If live used one source and the backtest the other, the two
+would diverge in ways nobody could untangle, and the backtest would stop
+predicting live behaviour. A backtest that does not predict the live system is
+not evidence, it is decoration. Consistency beats accuracy here.
+
+Alpaca's greeks are not wasted, though. When the live agent reads a chain it
+records both figures in the journal, and flags a divergence beyond a set
+tolerance. A gap that opens up means one of our inputs is wrong — usually the
+implied volatility or the time to expiry — so the comparison doubles as a bug
+detector that runs on every cycle. On 85 live quotes the two agreed to within
+0.5%, which is the baseline to alarm against.
+
+Implement the comparison when the chain reader is written (Task 10); the
+decision is recorded here so it does not get relitigated. When the plan's code and the plan's test disagree, the
 test is usually closer to the intent — but think it through rather than
 patching until green. If you change something, say why in the commit message.
 
@@ -166,8 +199,9 @@ patching until green. If you change something, say why in the commit message.
 | 6 | `optimizer/candidates.py` — chain rows in, filtered and priced candidates out | 6 |
 | 7 | `optimizer/model.py` — the MILP that picks contracts and counts | 8 |
 | — | `optimizer/payoff.py::contract_vega` — the project's vega convention, pinned | 2 |
+| 8 | `backtest/data.py`, `backtest/options_history.py`, `backtest/benchmarks.py`, `scripts/fetch_history.py` | 13 |
 
-62 tests, all passing. Nothing so far touches the network, so none of it needs
+75 tests, all passing. Nothing so far touches the network, so none of it needs
 API keys.
 
 The first `pytest` run after installing scipy takes a minute or two while it
@@ -175,12 +209,15 @@ warms its caches. Every run after that is a few seconds. This is normal.
 
 ## Next, in order
 
-- **Task 8** — historical data for the backtest.
+- **Task 9** — the Alpaca MCP server connection. **Needs the market open**, so it
+  is Monday's work, not the weekend's.
 
-Task 8 is the last of the offline maths, and the only one of them that needs the
-network, for its data download.
+Everything up to here runs offline or off cached data. From Task 9 onward the
+market has to be open for the results to mean anything: option chains are stale
+or empty outside 09:30–16:00 ET.
 
-The first task that needs a working Alpaca account is **Task 9**.
+Re-running `uv run python scripts/fetch_history.py` is safe and cheap — every
+layer is cached, so a second run only fetches what is missing.
 
 ## Still blocked on you
 

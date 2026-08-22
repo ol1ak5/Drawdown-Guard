@@ -1865,11 +1865,11 @@ This task exists to answer one question — *does the theory hold on real data?*
 
 | Layer | Source | Depth | The claim it supports |
 |---|---|---|---|
-| **A. Strategy class** | CBOE `^PUT`, `^BXM` via Yahoo | 1986 → | selling index puts systematically harvests the variance risk premium, and survives 1987, 2000, 2008 and 2020 |
+| **A. Strategy class** | CBOE `^PUT`, `^BXM` via Yahoo | 1996 → (`^BXM` 1988 →) | selling index puts systematically harvests the variance risk premium, and survives 2000, 2008 and 2020 |
 | **B. This parameterization** | real Alpaca option bars | Feb 2024 → | *my* deltas, DTE and limits work against real bid/ask spreads |
 | **C. Stress coverage** | Black-Scholes on real underlying bars | 2019 → | behaviour through March 2020 and 2022, explicitly labelled as modelled |
 
-**Layer A is not ours to rebuild.** `^PUT` is the CBOE S&P 500 PutWrite Index: a published index series, computed by the exchange from actual settlement prices, tracking exactly the put-selling half of this wheel since June 1986. `^BXM` is the covered-call half. Reproducing forty years of that with worse data would be a mistake — cite the index, plot it, move on. Layer A is evidence we get for free.
+**Layer A is not ours to rebuild.** `^PUT` is the CBOE S&P 500 PutWrite Index: a published index series, computed by the exchange from actual settlement prices, tracking exactly the put-selling half of this wheel since August 1996. `^BXM` is the covered-call half, from June 1988. Verified against Yahoo on 2026-08-22 — the earlier claim of 1986 and forty years was wrong, and neither series reaches the 1987 crash. Reproducing thirty years of that with worse data would be a mistake — cite the index, plot it, move on. Layer A is evidence we get for free.
 
 **Layer B is the real backtest.** Alpaca's option history begins **February 2024**, which by now is roughly 30 months — about 30 monthly cycles per ticker. That is thin, and the report must say so. But these are real strikes, real bid/ask and real spreads, and 30 honest cycles beat 300 invented ones.
 
@@ -2274,7 +2274,7 @@ if __name__ == "__main__":
 
 Run: `uv run python3 scripts/fetch_history.py`
 
-Expected: roughly 1,900 daily bars per symbol from 2019-01-02; about 10,000 closes for `^PUT` starting in 1986; and non-empty option bars for every expiry from February 2024 onward.
+Expected: roughly 1,900 daily bars per symbol from 2019-01-02; 7,554 closes for `^PUT` starting 1996-08-02 and 9,603 for `^BXM` starting 1988-06-01; and non-empty option bars for every expiry from February 2024 onward.
 
 **This step takes a while and will hit rate limits — that is why it runs on Sunday and not on D6.** If an expiry comes back empty, check the OCC symbol against Alpaca's own dashboard for one known contract before assuming the data is missing.
 
@@ -2292,7 +2292,7 @@ git add src/flywheel/backtest/ scripts/fetch_history.py \
 git commit -m "feat: historical bars, real option history, and CBOE benchmarks"
 ```
 
-**D2 done.** The optimizer is complete and tested with no network involved. On disk: 7 years of underlying bars, 30 months of real option quotes, and 40 years of published put-writing index. Everything from here needs a live market.
+**D2 done.** The optimizer is complete and tested with no network involved. On disk: 7 years of underlying bars, 30 months of real option quotes, and 30 years of published put-writing index. Everything from here needs a live market.
 
 ---
 
@@ -3209,7 +3209,7 @@ Per spec §9, the report contains: Sharpe, maximum drawdown, share of profitable
 
 Structure it as the three layers, in this order — evidence we did not produce comes first, because it is the strongest and the least suspect:
 
-1. **`^PUT` and `^BXM`, 1986–2026.** The published record of this strategy class through 1987, 2000, 2008 and 2020, with drawdowns shown. One paragraph and one chart. Cited, not claimed.
+1. **`^PUT` 1996–2026 and `^BXM` 1988–2026.** The published record of this strategy class through 2000, 2008 and 2020, with drawdowns shown. One paragraph and one chart. Cited, not claimed.
 2. **The calibration overlay.** Our engine on index parameters against real `^PUT`, Feb 2024 – Aug 2026. This is what licenses the reader to believe anything below it.
 3. **Real-quote results, Feb 2024 – Aug 2026.** The headline numbers, versus SPY buy-and-hold, with the 30-cycle sample size stated in the same sentence as the Sharpe ratio.
 4. **Modelled results, 2019–2026.** Labelled *modelled* in the heading, not only in a footnote. Include the fitted `vrp_factor` and its fit quality.

@@ -170,7 +170,8 @@ Scheduled as Task 12b on D4, alongside the journal it reads.
 - [ ] Create the `judging` account and fill `.env.judging`.
 - [x] Settle the vega units question. Fixed 2026-08-22: per contract, per one
       point of implied volatility. See `handoff.md`.
-- [ ] Decide whether the live agent uses Alpaca's greeks or our own.
+- [x] Decide whether the live agent uses Alpaca's greeks or our own. Ours, for
+      consistency with the backtest; Alpaca's logged as a cross-check. See `handoff.md`.
 - [ ] Fill `ANTHROPIC_API_KEY` in `.env`; it is empty, and Task 16 needs it.
 - [x] Connect Discord and create the team.
 - [x] Confirm whether a demo URL is required — it is, and the answer is a

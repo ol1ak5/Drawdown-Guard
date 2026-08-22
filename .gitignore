@@ -1,7 +1,14 @@
 .env
 .env.*
 !.env.example
-data/
+# Parquet caches are large and refetchable, so data/ is ignored by default.
+# Two subdirectories must ship: the agent's committed state and journal, and the
+# CBOE benchmark CSVs a judge needs to reproduce the report offline.
+# This has to be `data/*` and not `data/`: git does not descend into an ignored
+# directory, so a negation inside one never fires.
+data/*
+!data/state/
+!data/benchmarks/
 __pycache__/
 *.pyc
 .venv/
