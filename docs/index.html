@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flywheel &mdash; autonomous ETF wheel overlay</title>
+<style>
+:root { color-scheme: light dark; }
+body { font: 15px/1.5 system-ui, sans-serif; margin: 0 auto; padding: 2rem;
+       max-width: 60rem; }
+h1 { font-size: 1.4rem; margin-bottom: .2rem; }
+h2 { font-size: 1.05rem; margin-top: 2rem; }
+p.lede { margin-top: 0; opacity: .75; }
+table { border-collapse: collapse; width: 100%; font-size: .9rem; }
+th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #8884; }
+th { font-weight: 600; opacity: .7; }
+td.detail { font-family: ui-monospace, monospace; font-size: .85rem; }
+tr.rejected td { background: #e5484d22; }
+tr.defect td { background: #f5a52322; font-weight: 600; }
+.badge { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
+footer { margin-top: 2.5rem; font-size: .8rem; opacity: .6; }
+.empty { opacity: .6; font-style: italic; }
+</style>
+</head>
+<body>
+<h1>Flywheel</h1>
+<p class="lede">An autonomous ETF wheel overlay on Alpaca paper trading: it
+sells cash-secured puts, takes assignment, writes covered calls against the
+shares, and repeats. The LLM proposes, the optimizer decides, and a
+deterministic risk gate holds veto power.</p>
+
+<h2>Open wheels</h2>
+<table>
+<thead><tr><th>Symbol</th><th>Leg</th><th>Basis</th><th>Cycles</th></tr></thead>
+<tbody>
+<tr><td colspan="4" class="empty">No wheels open.</td></tr>
+</tbody>
+</table>
+
+<h2>Decisions</h2>
+<p class="lede">Refusals are listed alongside fills. A gate that never says no
+is not a gate, so the rejections are the evidence, not the omissions.</p>
+<table>
+<thead><tr><th>Time (UTC)</th><th>Symbol</th><th>Action</th><th>Verdict</th>
+<th>Detail</th></tr></thead>
+<tbody>
+<tr><td colspan="5" class="empty">No cycles recorded yet.</td></tr>
+</tbody>
+</table>
+
+<footer>
+Generated 2026-08-22 10:26 UTC &middot;
+paper trading only
+</footer>
+</body>
+</html>
