@@ -128,9 +128,17 @@ generic guidelines.
 | Cover image | 16:9 recommended *(unconfirmed)* |
 | Video presentation | link, under 5 minutes, under 300 MB *(unconfirmed)* |
 | GitHub repository | public URL; extra repositories listed in the README |
-| Demo application platform | where the application is deployed |
-| **Demo application URL** | direct URL to the live demo |
+| Demo Application Platform | where the application is deployed — a label, e.g. GitHub Pages |
+| **Application URL** | *"Required for interactive evaluation"* — the link a judge opens |
 | Additional information | free text, e.g. how the solution scales beyond the hackathon |
+
+The two are a pair, not alternatives: the platform names the host, the URL is
+the clickable link. **The parenthetical on the URL field is quoted from the real
+form** (seen 2026-08-22); the surrounding rows are still inferred from lablab's
+generic guidelines.
+
+That parenthetical changes what the page has to be. "Interactive evaluation"
+means a judge clicks and *does something*, not that a document loads.
 
 ## The demo-URL problem, and the decision taken
 
@@ -155,10 +163,31 @@ Answers for the two form fields:
 
 | Field | Answer |
 |---|---|
-| Demo application platform | GitHub Pages |
-| Demo application URL | `https://<username>.github.io/flywheel-agent/` |
+| Demo Application Platform | GitHub Pages |
+| Application URL | `https://<username>.github.io/flywheel-agent/` |
 
-Scheduled as Task 12b on D4, alongside the journal it reads.
+Built at Task 12b, alongside the journal it reads.
+
+### Static is not the same as non-interactive
+
+The URL field says *"Required for interactive evaluation"*, and the first
+version of the page was a read-only document. Those are not the same
+constraint, and conflating them cost the page its strongest feature.
+
+Two separate things were wanted:
+
+- **No external resource.** No CDN, no font, no remote fetch. This one is real:
+  a judge's click must not depend on someone else's uptime, and a page that
+  cannot reach out cannot reach the broker. `test_the_page_references_no_external_resource`
+  enforces it.
+- **No JavaScript at all.** This one was never required and was smuggled in by
+  the same test. An inline script makes no request and weakens nothing.
+
+So the page keeps its single-file, zero-request shape and gains client-side
+interaction: filter the decision log by symbol and by verdict, expand any row
+to see the gate's full reasoning, and isolate the refusals. The refusals are the
+argument, and letting a judge pull them up in one click makes the argument
+themselves rather than reading a claim that it happened.
 
 ## Open items
 

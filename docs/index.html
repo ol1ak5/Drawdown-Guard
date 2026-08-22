@@ -7,17 +7,27 @@
 <style>
 :root { color-scheme: light dark; }
 body { font: 15px/1.5 system-ui, sans-serif; margin: 0 auto; padding: 2rem;
-       max-width: 60rem; }
+       max-width: 62rem; }
 h1 { font-size: 1.4rem; margin-bottom: .2rem; }
-h2 { font-size: 1.05rem; margin-top: 2rem; }
+h2 { font-size: 1.05rem; margin-top: 2.2rem; margin-bottom: .4rem; }
 p.lede { margin-top: 0; opacity: .75; }
 table { border-collapse: collapse; width: 100%; font-size: .9rem; }
-th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #8884; }
+th, td { text-align: left; padding: .4rem .6rem; border-bottom: 1px solid #8884;
+         vertical-align: top; }
 th { font-weight: 600; opacity: .7; }
 td.detail { font-family: ui-monospace, monospace; font-size: .85rem; }
 tr.rejected td { background: #e5484d22; }
 tr.defect td { background: #f5a52322; font-weight: 600; }
 .badge { font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; }
+.controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap;
+            margin: .6rem 0 .8rem; font-size: .85rem; }
+.controls input, .controls select { font: inherit; padding: .25rem .4rem;
+            border: 1px solid #8886; border-radius: .25rem; background: none;
+            color: inherit; }
+.controls .count { opacity: .6; }
+details summary { cursor: pointer; }
+details pre { margin: .4rem 0 0; padding: .5rem; overflow-x: auto;
+              background: #8881; border-radius: .25rem; font-size: .8rem; }
 footer { margin-top: 2.5rem; font-size: .8rem; opacity: .6; }
 .empty { opacity: .6; font-style: italic; }
 </style>
@@ -39,18 +49,52 @@ deterministic risk gate holds veto power.</p>
 
 <h2>Decisions</h2>
 <p class="lede">Refusals are listed alongside fills. A gate that never says no
-is not a gate, so the rejections are the evidence, not the omissions.</p>
+is not a gate, so the rejections are the evidence, not the omissions. Filter to
+<em>rejected</em> to read only the trades this agent talked itself out of, and
+expand any row for the record it decided from.</p>
+
 <table>
 <thead><tr><th>Time (UTC)</th><th>Symbol</th><th>Action</th><th>Verdict</th>
 <th>Detail</th></tr></thead>
 <tbody>
 <tr><td colspan="5" class="empty">No cycles recorded yet.</td></tr>
+<tr id="f-nomatch" hidden><td colspan="5" class="empty">Nothing matches that
+filter.</td></tr>
 </tbody>
 </table>
 
 <footer>
-Generated 2026-08-22 10:26 UTC &middot;
+Generated 2026-08-22 10:35 UTC &middot;
 paper trading only
 </footer>
+<script>
+(function () {
+  var symbolBox = document.getElementById('f-symbol');
+  var verdictBox = document.getElementById('f-verdict');
+  var rows = [].slice.call(document.querySelectorAll('tr[data-symbol]'));
+  var shown = document.getElementById('f-count');
+  var nothing = document.getElementById('f-nomatch');
+  if (!symbolBox || !verdictBox || !rows.length) { return; }
+  function apply() {
+    var needle = symbolBox.value.trim().toUpperCase();
+    var verdict = verdictBox.value;
+    var visible = 0;
+    rows.forEach(function (row) {
+      var bySymbol = !needle ||
+        row.getAttribute('data-symbol').indexOf(needle) !== -1;
+      var byVerdict = verdict === 'all' ||
+        row.getAttribute('data-verdict') === verdict;
+      var show = bySymbol && byVerdict;
+      row.hidden = !show;
+      if (show) { visible += 1; }
+    });
+    shown.textContent = visible + ' of ' + rows.length;
+    nothing.hidden = visible !== 0;
+  }
+  symbolBox.addEventListener('input', apply);
+  verdictBox.addEventListener('change', apply);
+  apply();
+})();
+</script>
 </body>
 </html>

@@ -73,15 +73,49 @@ def test_a_wheel_with_no_basis_yet_renders_without_inventing_one():
     assert "0.00" not in html
 
 
-def test_the_page_references_no_external_resource():
-    """No CDN, no font, no script. A judge's click must not depend on a network.
+def test_the_page_fetches_nothing_from_anywhere():
+    """A judge's click must not depend on someone else's uptime.
 
-    It also keeps the published artifact provably incapable of doing anything
-    beyond rendering: the page cannot reach the broker if it cannot reach out.
+    This is about requests, not about JavaScript. An earlier version of this
+    test also banned `<script`, which conflated two unrelated things and cost
+    the page its interactivity for no safety gained: an inline script makes no
+    request. What must stay true is that the document loads nothing remote —
+    which is also what keeps a public page incapable of reaching the broker.
     """
     html = render_site([_entry()], [], datetime(2026, 8, 25, 14, 5))
-    for forbidden in ("http://", "https://cdn", "<script", "@import"):
+    for forbidden in ("http://", "//cdn", "@import", "src=", "fetch(", "XMLHttp"):
         assert forbidden not in html
+
+
+def test_the_decision_log_can_be_filtered():
+    """ "Interactive evaluation" means a judge does something, not that a page loads."""
+    html = render_site([_entry()], [], datetime(2026, 8, 25, 14, 5))
+    assert 'id="f-symbol"' in html
+    assert 'id="f-verdict"' in html
+    assert "<script>" in html
+
+
+def test_rows_carry_the_attributes_the_filter_needs():
+    html = render_site(
+        [_entry(symbol="QQQ", verdict="rejected")], [], datetime(2026, 8, 25, 14, 5)
+    )
+    assert 'data-symbol="QQQ"' in html
+    assert 'data-verdict="rejected"' in html
+
+
+def test_an_empty_journal_renders_no_filter_to_operate_on():
+    """Controls over an empty table are furniture, and imply data that is absent."""
+    html = render_site([], [], datetime(2026, 8, 25, 14, 5))
+    assert 'id="f-symbol"' not in html
+
+
+def test_the_full_decision_record_is_available_on_the_row():
+    """The raw journal payload, so a judge can check the summary against it."""
+    html = render_site(
+        [_entry(full='{"assignment_prob": 0.41}')], [], datetime(2026, 8, 25, 14, 5)
+    )
+    assert "<details" in html
+    assert "assignment_prob" in html
 
 
 def test_a_journal_line_becomes_a_row():
@@ -178,3 +212,46 @@ def test_a_supplied_repository_link_is_rendered():
         repository_url="https://github.com/example/flywheel-agent",
     )
     assert 'href="https://github.com/example/flywheel-agent"' in html
+
+
+def test_the_journal_payload_becomes_the_expandable_record():
+    line = {
+        "timestamp": "2026-08-25T14:02:11+00:00",
+        "flywheel_env": "dev",
+        "event": "order_rejected",
+        "severity": "veto",
+        "payload": {"symbol": "SPY", "reason": "net delta band", "net_delta": 168},
+    }
+    row = entry_from_journal(line)
+    assert "168" in row["full"]
+    assert "net_delta" in row["full"]
+
+
+def test_every_element_the_script_looks_up_exists_in_the_page():
+    """A typo in an id does not raise. The script simply does nothing forever.
+
+    The guard clause that keeps an empty journal from throwing would also
+    swallow a renamed control, so nothing at runtime would ever complain. This
+    ties the two halves together at build time instead.
+    """
+    import re
+
+    from flywheel.journal.site import _SCRIPT
+
+    wanted = set(re.findall(r"getElementById\('([^']+)'\)", _SCRIPT))
+    assert wanted, "the script looks nothing up; this test has gone stale"
+
+    html = render_site([_entry()], [], datetime(2026, 8, 25, 14, 5))
+    for element_id in wanted:
+        assert f'id="{element_id}"' in html, element_id
+
+
+def test_the_script_selector_matches_the_rendered_rows():
+    """The filter selects on data-symbol; the rows must actually carry it."""
+    import re
+
+    from flywheel.journal.site import _SCRIPT
+
+    assert "tr[data-symbol]" in _SCRIPT
+    html = render_site([_entry()], [], datetime(2026, 8, 25, 14, 5))
+    assert re.search(r"<tr[^>]*data-symbol=", html)
