@@ -13,12 +13,80 @@ read 2026-08-22.
 | Build window | 28 August – 4 September 2026 |
 | Kick-off | Friday 28 August 2026, 17:00 CEST |
 | Registered | ~1,635 at time of reading |
+| Team | created 2026-08-22, solo, invite-only |
 
-**Not yet known — requires an enrolled account to see:** the exact submission
-deadline and its timezone, the track list, the judging rubric, and the prize
-structure. Fill these in immediately after enrolling. Everything below marked
-*(unconfirmed)* is inferred from lablab's generic guidelines, not from the event
-page.
+**Still not known:** the exact submission deadline and its timezone, the track
+list, the judging rubric, and the prize structure. Fill these in as soon as they
+become visible. Items below marked *(unconfirmed)* are inferred from lablab's
+generic guidelines rather than the event page.
+
+## Core requirements (confirmed, quoted from the event conditions)
+
+> - **Autonomous agents** — participants must build autonomous AI trading agents
+>   using Alpaca's Trading API.
+> - **MCP or CLI** — projects must utilise either Alpaca's MCP server or its CLI
+>   tools.
+> - **Options trading** — all strategies must incorporate options trading.
+
+How this project meets each:
+
+| Requirement | How it is met |
+|---|---|
+| Autonomous | scheduled once per trading day, no human in the loop, decisions and rejections written to a committed journal |
+| Trading API | Trading API, not Broker API. Broker API is for firms opening accounts on behalf of end users and is out of scope. |
+| MCP or CLI | both. The MCP server backs the analyst role (read-only toolsets: account, stock-data, options-data, news). The CLI backs a pre-flight check before each run. |
+| Options | the entire strategy is short options — cash-secured puts and covered calls. |
+
+**Note on the "MCP or CLI" wording.** The requirement says projects must
+*utilise* one of the two; it does not say every order must be routed through
+them. Order placement stays deterministic Python. This is a deliberate boundary,
+not an omission: the LLM is given read access to everything and write access to
+nothing, and a test asserts the analyst is constructed without order tools. Say
+this plainly in the demo rather than waiting to be asked.
+
+## Alpaca accounts
+
+Paper-only accounts need no funding and no KYC, and are available worldwide.
+
+| Item | Value |
+|---|---|
+| Account limit | 3 paper accounts per login |
+| Creation | dashboard → paper account number, top left → "Open New Paper Account" |
+| Starting equity | chosen at creation, maximum 1,000,000 USD, **not editable afterwards** |
+| Reset | no longer exists; delete the account and create a new one |
+| API base URL | `https://paper-api.alpaca.markets` |
+| API keys | generated per account; the secret is displayed once only |
+| Options level | Level 1 covers covered calls and cash-secured puts, which is this entire strategy. Paper accounts are reported to receive Level 3 by default — **verify and record the actual level here.** |
+
+**Planned accounts:**
+
+| Purpose | Equity | Keys live in |
+|---|---|---|
+| scratch (the original account) | 100,000 | nowhere — used only to prove keys can be read |
+| `dev` | 1,000,000 | `.env` |
+| `judging` | 1,000,000 | `.env.judging` |
+
+**Why 1,000,000 rather than 250,000.** Option collateral is quantised: one
+cash-secured put on SPY ties up roughly 60–65k, and that figure cannot be scaled
+down because a contract is always 100 shares. On a 250k account a single
+position is a quarter of the portfolio, so either the risk gate rejects
+everything or its limits are set so wide they constrain nothing. At 1,000,000
+the same contract is about 6% and ten to fifteen concurrent wheels across three
+or four ETFs become possible, which is what makes the diversification claim in
+the report true rather than aspirational.
+
+The cost of the larger account is that idle cash dilutes percentage return. That
+is addressed by the target-utilisation parameter in `risk.yaml` — aim for 60–70%
+of capital posted as collateral — not by shrinking the account.
+
+**Why `judging` is created now but connected later.** Creating an account starts
+nothing; the equity curve begins at the first trade, not at the opening date.
+Creating both today means any surprise — wrong options level, account limit
+already reached, dashboard trouble — surfaces on a quiet Saturday instead of
+during kick-off. The keys are not placed in GitHub Secrets until 27 August, and
+`FLYWHEEL_ENV=dev` reads `.env`, so the judging account is never touched by a
+development run. If it is contaminated anyway, delete and recreate takes two
+minutes.
 
 ## Enrolment sequence
 
@@ -28,21 +96,25 @@ page.
 4. Create a team. Required even when building solo.
 5. Submit the project through the form on the event page.
 
-## Submission form fields *(unconfirmed — from generic guidelines)*
+## Submission form fields
+
+The Technical Details block is quoted from the event conditions and is
+confirmed. The remaining fields are *(unconfirmed)* — taken from lablab's
+generic guidelines.
 
 | Field | Constraint |
 |---|---|
-| Submission title | max 50 characters |
-| Short description | max 255 characters |
-| Long description | minimum 100 words |
-| Main tracks | selected from the event's list |
-| Technologies | from lablab.ai/tech |
-| Cover image | 16:9 recommended |
-| Video presentation | **link**, under 5 minutes, under 300 MB |
-| GitHub repository | public URL; extra repos listed in the README |
-| Demo application platform | where the app is deployed |
-| **Demo application URL** | **direct link to a live demo** |
-| Additional information | free text, e.g. how the solution scales |
+| Submission title | max 50 characters *(unconfirmed)* |
+| Short description | max 255 characters *(unconfirmed)* |
+| Long description | minimum 100 words *(unconfirmed)* |
+| Main tracks | selected from the event's list *(unconfirmed)* |
+| Technologies | from lablab.ai/tech *(unconfirmed)* |
+| Cover image | 16:9 recommended *(unconfirmed)* |
+| Video presentation | link, under 5 minutes, under 300 MB *(unconfirmed)* |
+| GitHub repository | public URL; extra repositories listed in the README |
+| Demo application platform | where the application is deployed |
+| **Demo application URL** | direct URL to the live demo |
+| Additional information | free text, e.g. how the solution scales beyond the hackathon |
 
 ## The demo-URL problem, and the decision taken
 
@@ -63,12 +135,21 @@ dashboard for this project:
 - it refreshes itself every trading day, which demonstrates the autonomy claim
   rather than merely asserting it.
 
+Answers for the two form fields:
+
+| Field | Answer |
+|---|---|
+| Demo application platform | GitHub Pages |
+| Demo application URL | `https://<username>.github.io/flywheel-agent/` |
+
 Scheduled as Task 12b on D4, alongside the journal it reads.
 
 ## Open items
 
-- [ ] Enrol and record the real deadline, timezone, tracks, and rubric here.
-- [ ] Confirm whether the demo URL field is mandatory or optional.
-- [ ] Connect Discord and create the team.
-- [ ] Record Alpaca paper account buying power and options entitlement level
-      (closes spec §13.2 and §13.3).
+- [ ] Record the real deadline, timezone, tracks, and rubric here.
+- [ ] Record the final team name.
+- [ ] Record the options level actually granted on the paper accounts
+      (closes spec §13.3) and confirm buying power (closes §13.2).
+- [x] Connect Discord and create the team.
+- [x] Confirm whether a demo URL is required — it is, and the answer is a
+      GitHub Pages status page.
