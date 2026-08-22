@@ -13,4 +13,7 @@ __pycache__/
 *.pyc
 .venv/
 .remember/
+graphify-out/
+# The working SQLite store is one run's scratch space. The durable copy is the
+# committed snapshot at data/state/wheels.json — see store.py for why both exist.
 *.db
