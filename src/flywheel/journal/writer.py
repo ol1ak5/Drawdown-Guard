@@ -36,9 +36,16 @@ def write(
     event: str,
     payload: dict,
     severity: str = "info",
-    directory: str | Path = JOURNAL_DIR,
+    directory: str | Path | None = None,
 ) -> None:
-    """Append one entry to today's journal."""
+    """Append one entry to today's journal.
+
+    `directory` resolves to `JOURNAL_DIR` at call time, not at definition
+    time. A default argument would bind the module constant once at import,
+    so a test that redirected the journal would still write to the real one
+    — and would pass, because it never looked at where the line landed.
+    """
+    directory = JOURNAL_DIR if directory is None else directory
     if severity not in SEVERITIES:
         raise ValueError(
             f"unknown severity {severity!r}; expected one of {', '.join(SEVERITIES)}"
