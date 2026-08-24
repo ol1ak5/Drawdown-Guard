@@ -29,6 +29,10 @@ class Candidate(BaseModel):
     symbol: str
     right: Right
     occ_symbol: str
+    # Underlying price when the chain was read. Carried so directional
+    # exposure can be priced in dollars; share equivalents cannot be
+    # converted afterwards without knowing what a share cost.
+    spot: float
     strike: Decimal
     expiry: date
     bid: Decimal
@@ -94,6 +98,7 @@ def build_candidates(
                 symbol=symbol,
                 right=right,
                 occ_symbol=row["occ_symbol"],
+                spot=spot,
                 strike=row["strike"],
                 expiry=row["expiry"],
                 bid=bid,

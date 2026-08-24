@@ -39,7 +39,7 @@ LIMITS = Limits(
     max_position_pct=25.0,
     max_deployed_pct=60.0,
     max_drawdown_pct=15.0,
-    max_net_delta=150.0,
+    max_net_delta_pct=50.0,
     max_vega=500.0,
     max_assignment_prob=0.35,
     min_open_interest=500,
@@ -305,6 +305,7 @@ def test_no_recorded_order_ever_violated_a_limit():
             assignment_prob=cycle.assignment_prob,
             open_interest=0,
             spread_pct=cycle.spread_pct,
+            spot=cycle.spot,
         )
         portfolio = Portfolio(
             equity=cycle.equity_before,

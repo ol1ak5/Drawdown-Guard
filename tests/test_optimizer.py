@@ -12,7 +12,7 @@ LIMITS = Limits(
     max_position_pct=25.0,
     max_deployed_pct=60.0,
     max_drawdown_pct=15.0,
-    max_net_delta=150.0,
+    max_net_delta_pct=50.0,
     max_vega=500.0,
     max_assignment_prob=0.35,
     min_open_interest=500,
@@ -37,6 +37,7 @@ def candidate(strike=100.0, mid="1.00", delta=-0.30, vega=10.0, tail=-0.02):
     return Candidate(
         symbol="SPY",
         right="P",
+        spot=100.0,
         occ_symbol=f"SPY260904P{int(strike)}",
         strike=Decimal(str(strike)),
         expiry=date(2026, 9, 4),
@@ -83,8 +84,15 @@ def test_the_delta_band_is_respected():
     allocations = optimize(
         [candidate(delta=-0.40)], portfolio(), LIMITS, Decimal("10000000"), 1e9
     )
-    net = sum(-a.candidate.delta * a.contracts * 100 for a in allocations)
-    assert abs(net) <= LIMITS.max_net_delta + 1e-6
+    # In dollars now, not share equivalents: the constraint the optimizer
+    # solves and the one the gate enforces must be the same quantity, or
+    # the optimizer proposes what the gate then refuses.
+    book = portfolio()
+    net = sum(
+        -a.candidate.delta * a.contracts * 100 * a.candidate.spot for a in allocations
+    )
+    budget = float(book.equity) * LIMITS.max_net_delta_pct / 100
+    assert abs(net) <= budget + 1e-6
 
 
 def test_the_vega_budget_is_respected():

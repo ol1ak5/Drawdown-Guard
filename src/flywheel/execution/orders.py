@@ -69,6 +69,7 @@ def to_proposed_order(allocation: Allocation) -> ProposedOrder:
         assignment_prob=candidate.assignment_prob,
         open_interest=candidate.open_interest,
         spread_pct=candidate.spread_pct,
+        spot=candidate.spot,
     )
 
 

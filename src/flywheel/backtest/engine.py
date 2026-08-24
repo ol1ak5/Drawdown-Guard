@@ -232,6 +232,10 @@ class CycleRecord(BaseModel):
     vega: float
     assignment_prob: float
     spread_pct: float
+    # The underlying price the decision was priced against. Recorded because
+    # directional exposure is measured in dollars, and a cycle that cannot
+    # say what a share cost cannot be re-checked against the limit later.
+    spot: float
     equity_before: Decimal
     cash_before: Decimal
     wheel_before: WheelState
@@ -271,6 +275,7 @@ def _order_from(candidate: Candidate, contracts: int, symbol: str) -> ProposedOr
         assignment_prob=candidate.assignment_prob,
         open_interest=0,  # not available historically; the check is disabled
         spread_pct=candidate.spread_pct,
+        spot=candidate.spot,
     )
 
 
@@ -417,6 +422,10 @@ def run_backtest(
                 peak_equity=peak_equity,
                 deployed=deployed,
                 net_delta=float(shares),
+                # Shares held are the whole of the historical book's
+                # directional exposure: the short option's own delta is
+                # carried by the order under test, not by the portfolio.
+                net_delta_value=float(shares) * spot,
                 wheels={symbol: wheel},
             )
             budget = (
@@ -468,6 +477,7 @@ def run_backtest(
                         vega=candidate.vega,
                         assignment_prob=candidate.assignment_prob,
                         spread_pct=candidate.spread_pct,
+                        spot=spot,
                         equity_before=equity,
                         cash_before=cash,
                         wheel_before=wheel,

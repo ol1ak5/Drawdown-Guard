@@ -10,7 +10,11 @@ class Limits(BaseModel):
     max_position_pct: float
     max_deployed_pct: float
     max_drawdown_pct: float
-    max_net_delta: float
+    # Directional exposure band, as a percentage of equity, plus or minus.
+    # Denominated in equity rather than share equivalents: see the note on
+    # `Portfolio.net_delta_value` for why a share count is not comparable
+    # across instruments or across account sizes.
+    max_net_delta_pct: float
     max_vega: float
     max_assignment_prob: float
     min_open_interest: int

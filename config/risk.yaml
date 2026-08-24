@@ -3,7 +3,23 @@
 max_position_pct: 25.0      # capital share per instrument
 max_deployed_pct: 60.0      # total capital in open positions
 max_drawdown_pct: 15.0      # kill-switch trigger
-max_net_delta: 150.0        # portfolio net delta band, +/-, in share equivalents
+# Directional exposure band, +/- as a percentage of equity.
+#
+# Was `max_net_delta: 150`, in share equivalents, and that unit was the bug.
+# One fully sized position at max_position_pct is 300 shares of SPY, 400 of QQQ
+# or 1,000 of IWM: identical dollar risk, share counts differing by 3.3x. The
+# band was unreachable on cheap instruments and inert on expensive ones, and a
+# single assignment breached it, so the wheel could never write the covered
+# call that would bring it back. Over 2.5 years on SPY it opened one position
+# in thirty-one expiries and then held the shares -- buy-and-hold wearing a
+# wheel's clothes.
+#
+# Calibrated 2026-08-24 across SPY, QQQ and IWM. The share-denominated band
+# stopped binding at 600, which is 45.8% of equity on SPY but 14.7% on IWM --
+# the same number meaning three different risks. 50% covers the saturation
+# point on every symbol in the universe while still refusing a book that is
+# more directional than max_deployed_pct allows it to be capitalised.
+max_net_delta_pct: 50.0
 # Vega budget, in dollars lost per one point rise in implied volatility.
 # 500 is not arbitrary: we write options, so we are short vega, and a 30 point
 # IV spike is roughly what a crash delivers. 500 x 30 = 15,000, which is 1.5%

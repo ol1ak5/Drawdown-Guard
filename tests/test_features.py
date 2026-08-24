@@ -92,7 +92,7 @@ def test_short_puts_are_long_the_underlying():
     is most neutral.
     """
     wheels = {"SPY": wheel_with_short_puts(-4)}
-    net_delta, _ = position_greeks(
+    net_delta, _value, _ = position_greeks(
         wheels,
         {"SPY": 764.0},
         {"SPY260918P00700000": 0.20},
@@ -103,7 +103,7 @@ def test_short_puts_are_long_the_underlying():
 
 def test_shares_count_one_for_one():
     wheels = {"SPY": WheelState(symbol="SPY", leg="SHARES", shares=400)}
-    net_delta, vega = position_greeks(wheels, {"SPY": 764.0}, {}, {})
+    net_delta, _value, vega = position_greeks(wheels, {"SPY": 764.0}, {}, {})
     assert net_delta == 400.0
     assert vega == 0.0
 
@@ -111,7 +111,7 @@ def test_shares_count_one_for_one():
 def test_writing_options_costs_money_when_volatility_rises():
     """Portfolio vega is dollars *lost* per point, so a short book is positive."""
     wheels = {"SPY": wheel_with_short_puts(-4)}
-    _, vega = position_greeks(
+    _, _value, vega = position_greeks(
         wheels,
         {"SPY": 764.0},
         {"SPY260918P00700000": 0.20},
@@ -123,7 +123,7 @@ def test_writing_options_costs_money_when_volatility_rises():
 def test_a_contract_with_no_implied_volatility_is_skipped_not_zeroed():
     """A missing input must not silently read as a position with no risk."""
     wheels = {"SPY": wheel_with_short_puts(-4)}
-    net_delta, vega = position_greeks(wheels, {"SPY": 764.0}, {}, {})
+    net_delta, _value, vega = position_greeks(wheels, {"SPY": 764.0}, {}, {})
     assert net_delta == 0.0
     assert vega == 0.0
 
@@ -136,5 +136,5 @@ def test_four_hundred_shares_against_the_delta_band_is_the_recorded_deadlock():
     call that would bring it back — see docs/notes/handoff.md.
     """
     wheels = {"SPY": WheelState(symbol="SPY", leg="SHARES", shares=400)}
-    net_delta, _ = position_greeks(wheels, {"SPY": 764.0}, {}, {})
+    net_delta, _value, _ = position_greeks(wheels, {"SPY": 764.0}, {}, {})
     assert abs(net_delta) > 150.0

@@ -103,15 +103,23 @@ def _total_deployed(
 
 
 def _net_delta(order: ProposedOrder, portfolio: Portfolio, limits: Limits) -> Verdict:
+    # Measured in dollars of directional exposure against equity, not in share
+    # equivalents. A share count is not comparable between a 764 dollar
+    # instrument and a 245 dollar one, and means something different at every
+    # account size — see `Portfolio.net_delta_value`.
+    #
     # Position delta is quantity * per-share delta, and quantity is negative for
-    # a short. A short put (delta -0.30, contracts -1) therefore contributes
-    # +30: selling a put is a bullish position.
-    contributed = order.delta * order.contracts * SHARES_PER_CONTRACT
-    projected = portfolio.net_delta + contributed
-    if abs(projected) > limits.max_net_delta:
+    # a short. A short put (delta -0.30, contracts -1) therefore contributes a
+    # positive exposure: selling a put is a bullish position.
+    if portfolio.equity <= 0:
+        return Verdict.reject("equity is zero or negative")
+    projected = portfolio.net_delta_value + order.delta_value
+    pct = abs(projected) / float(portfolio.equity) * 100
+    if pct > limits.max_net_delta_pct:
         return Verdict.reject(
-            f"net delta would reach {projected:.0f}, outside the band of "
-            f"+/-{limits.max_net_delta:.0f}"
+            f"directional exposure would reach {pct:.1f}% of equity "
+            f"({projected:,.0f}), outside the band of "
+            f"+/-{limits.max_net_delta_pct:.1f}%"
         )
     return Verdict.approve()
 

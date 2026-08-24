@@ -54,6 +54,20 @@ class ProposedOrder(BaseModel):
     assignment_prob: float
     open_interest: int
     spread_pct: float
+    # Price of the underlying when the order was proposed. Carried because the
+    # directional limit is measured in dollars, and share equivalents cannot be
+    # converted to dollars after the fact without knowing what a share cost.
+    spot: float
+
+    @property
+    def delta_value(self) -> float:
+        """Directional exposure in dollars, signed.
+
+        Quantity times per-share delta times the contract multiplier, priced at
+        spot. A short put (delta -0.30, contracts -1) is positive: selling a put
+        is a bullish position.
+        """
+        return self.delta * self.contracts * SHARES_PER_CONTRACT * self.spot
 
     @property
     def collateral(self) -> Decimal:
@@ -66,7 +80,19 @@ class Portfolio(BaseModel):
     cash: Decimal
     peak_equity: Decimal
     deployed: Decimal = Decimal("0")
-    net_delta: float = 0.0  # position delta: shares equivalent, signed
+    # Share equivalents, signed. Kept for reporting: it is the number a trader
+    # reads. It is *not* what the limit is measured against — see below.
+    net_delta: float = 0.0
+    # Directional exposure in dollars, signed. This is what `max_net_delta_pct`
+    # constrains.
+    #
+    # Share equivalents do not compare across instruments. At a quarter of a
+    # 1,000,000 account, one fully sized position is 300 shares of SPY, 400 of
+    # QQQ or 1,000 of IWM — the same dollar risk, share counts differing by
+    # 3.3x. A band in shares is strict on cheap instruments and permissive on
+    # expensive ones for identical exposure, and it means something different
+    # at every account size. Dollars compare; share counts do not.
+    net_delta_value: float = 0.0
     vega: float = 0.0  # dollars lost per one point rise in implied volatility
     wheels: dict[str, WheelState] = Field(default_factory=dict)
 

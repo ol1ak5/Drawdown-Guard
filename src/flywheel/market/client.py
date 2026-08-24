@@ -55,8 +55,8 @@ def position_greeks(
     spots: dict[str, float],
     vols: dict[str, float],
     as_of_tau: dict[str, float],
-) -> tuple[float, float]:
-    """Net delta in share equivalents, and vega in dollars per point.
+) -> tuple[float, float, float]:
+    """Net delta in shares, directional exposure in dollars, and vega.
 
     Sign conventions, both of which are easy to get backwards:
 
@@ -71,11 +71,14 @@ def position_greeks(
     is positive. Four short contracts at 40 vega each report 160.
     """
     net_delta = 0.0
+    net_delta_value = 0.0
     vega = 0.0
 
     for symbol, wheel in wheels.items():
         net_delta += float(wheel.shares)
         spot = spots.get(symbol)
+        if spot is not None:
+            net_delta_value += float(wheel.shares) * spot
         for contract in wheel.contracts:
             key = contract.occ_symbol
             vol, tau = vols.get(key), as_of_tau.get(key)
@@ -83,10 +86,12 @@ def position_greeks(
                 continue
             strike = float(contract.strike)
             per_share = bs_delta(spot, strike, tau, vol, contract.right)
-            net_delta += contract.contracts * per_share * SHARES_PER_CONTRACT
+            contribution = contract.contracts * per_share * SHARES_PER_CONTRACT
+            net_delta += contribution
+            net_delta_value += contribution * spot
             vega -= contract.contracts * contract_vega(spot, strike, tau, vol)
 
-    return net_delta, vega
+    return net_delta, net_delta_value, vega
 
 
 async def get_positions() -> list[dict[str, Any]]:
@@ -159,7 +164,7 @@ async def get_account(
                     days = (contract.expiry - today).days
                     taus[contract.occ_symbol] = days / 365.0 if days > 0 else 0.0
 
-    net_delta, vega = position_greeks(wheels, spots, vols, taus)
+    net_delta, net_delta_value, vega = position_greeks(wheels, spots, vols, taus)
 
     equity = _money(account["equity"])
     deployed = sum(
@@ -173,6 +178,7 @@ async def get_account(
         peak_equity=max(peak_equity or equity, equity),
         deployed=deployed,
         net_delta=net_delta,
+        net_delta_value=net_delta_value,
         vega=vega,
         wheels=wheels,
     )

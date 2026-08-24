@@ -50,10 +50,18 @@ def optimize(
     # x counts contracts sold, so it is positive where the position quantity is
     # negative. Position delta is quantity * per-share delta, hence the sign flip:
     # selling a -0.30 delta put contributes +30.
-    delta_contribution = np.array([-c.delta * SHARES_PER_CONTRACT for c in candidates])
+    # Dollars of directional exposure per contract sold, not share
+    # equivalents. The gate measures the same quantity the same way; if the
+    # two units diverged the optimizer would keep proposing allocations the
+    # gate then refused, and the refusals would look like bad luck.
+    delta_contribution = np.array(
+        [-c.delta * SHARES_PER_CONTRACT * c.spot for c in candidates]
+    )
     # Vega is already per contract, so unlike delta it takes no share factor.
     # See `contract_vega` for why the two greeks are quoted differently.
     vega = np.array([abs(c.vega) for c in candidates])
+
+    delta_budget = float(portfolio.equity) * limits.max_net_delta_pct / 100
 
     x = cp.Variable(n, integer=True)
     zeta = cp.Variable()
@@ -70,8 +78,8 @@ def optimize(
         # Every candidate in one call belongs to one symbol, so a single
         # constraint on total collateral is the per-symbol concentration cap.
         collateral @ x <= float(portfolio.equity) * limits.max_position_pct / 100,
-        delta_contribution @ x <= limits.max_net_delta - portfolio.net_delta,
-        delta_contribution @ x >= -limits.max_net_delta - portfolio.net_delta,
+        delta_contribution @ x <= delta_budget - portfolio.net_delta_value,
+        delta_contribution @ x >= -delta_budget - portfolio.net_delta_value,
         vega @ x <= limits.max_vega - portfolio.vega,
         cvar <= cvar_limit,
     ]
