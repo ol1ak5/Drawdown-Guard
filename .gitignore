@@ -9,6 +9,10 @@
 data/*
 !data/state/
 !data/benchmarks/
+# The implied-volatility record accumulates one observation a day and takes a
+# year to rebuild. Ignoring it would mean the scheduled runner starts from an
+# empty history every run and iv_rank never becomes a number.
+!data/iv_history/
 __pycache__/
 *.pyc
 .venv/
