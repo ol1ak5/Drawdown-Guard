@@ -21,6 +21,7 @@ actually describes the risk being taken.
 """
 
 import argparse
+import functools
 from decimal import Decimal
 from pathlib import Path
 
@@ -30,6 +31,10 @@ import yaml
 from flywheel.backtest.engine import BarPricer, run_backtest
 from flywheel.backtest.options_history import monthly_expiries
 from flywheel.risk.limits import load_limits
+
+# Flushed: the sweep runs for many minutes and a buffered report that
+# arrives only at the end tells you nothing about whether it is stuck.
+print = functools.partial(print, flush=True)  # noqa: A001
 
 CACHE = Path("data")
 SYMBOLS = ("SPY", "QQQ", "IWM")

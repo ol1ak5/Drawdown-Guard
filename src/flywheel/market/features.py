@@ -24,6 +24,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
+import yaml
 from pydantic import BaseModel, ConfigDict
 
 from flywheel.backtest.data import load_bars, realized_vol, return_scenarios
@@ -131,15 +132,31 @@ def _atm_iv(rows: list[dict], spot: float) -> float | None:
     return float(nearest["implied_vol"])
 
 
+def dte_band(path: str | Path = "config/strategy.yaml") -> tuple[int, int]:
+    """The entry window, read from the same file the backtest reads.
+
+    Not a default argument. A hardcoded 5 and 14 sitting here while
+    `config/strategy.yaml` says 30 and 45 is a divergence nothing would report:
+    the live agent and the backtest would quietly trade different strategies
+    and both would look correct.
+    """
+    band = yaml.safe_load(Path(path).read_text())["dte"]
+    return int(band["min"]), int(band["max"])
+
+
 async def build_snapshot(
     symbol: str,
-    min_dte: int = 5,
-    max_dte: int = 14,
+    min_dte: int | None = None,
+    max_dte: int | None = None,
     as_of: date | None = None,
     record: bool = True,
 ) -> MarketSnapshot:
     """Spot, realised volatility, today's implied volatility, and its rank."""
     as_of = as_of or date.today()
+    if min_dte is None or max_dte is None:
+        configured_min, configured_max = dte_band()
+        min_dte = configured_min if min_dte is None else min_dte
+        max_dte = configured_max if max_dte is None else max_dte
 
     closes = load_bars(symbol, as_of - timedelta(days=BARS_LOOKBACK_DAYS), as_of)[
         "close"

@@ -3,9 +3,30 @@ target_delta:
   calm:     {min: 0.25, max: 0.35}
   elevated: {min: 0.15, max: 0.25}
   stress:   {min: 0.08, max: 0.15}
+# Days to expiry at entry. 20-33, and the upper bound is set by the data.
+#
+# The original 5-14 assumed weekly expiries. The option history actually
+# available is monthly -- 31 expiries over 30 months -- so a 5-14 window let the
+# agent hold a position for at most nine calendar days in thirty. Two thirds of
+# the time it was structurally out of the market.
+#
+# 30-45 was tried next and produced zero trades on all three symbols, with zero
+# refusals: the give-away that nothing reached the candidate stage at all. The
+# cached option bars cover only 1 to 35 days before expiry, and the engine
+# enters on the *earliest* day inside the band, so a band starting at 45 asks
+# for prices that were never fetched. Config and data disagreed and nothing
+# reported it -- the same failure as the `orders` toolset and the hardcoded
+# 5/14 default in features.py.
+#
+# 20-33 sits wholly inside the fetched window with margin. It is also an
+# ordinary monthly wheel, so this is not a strategy bent to fit its data. But
+# the upper bound was chosen by what is on disk, and that has to be stated:
+# with option history fetched 60+ days before expiry, 30-45 is the better band
+# and this should be revisited.
 dte:
-  min: 5
-  max: 14
+  min: 20
+  max: 33
+
 size_multiplier:   # applied to the optimizer's capital budget
   calm: 1.0
   elevated: 0.6

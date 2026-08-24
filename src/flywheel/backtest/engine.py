@@ -377,6 +377,24 @@ def run_backtest(
                     f"basis were not offered; writing one locks in a loss"
                 )
 
+            # An entry day that priced nothing at all is a data problem wearing
+            # a strategy's clothes. Without this note the run reports zero
+            # trades and zero refusals, which reads as a cautious strategy
+            # rather than as a chain that was never fetched for this day. That
+            # is exactly how a DTE band pointing outside the cached window went
+            # undiagnosed: silence looked like discipline.
+            if not rows:
+                skipped.append(
+                    f"{today}: no option bars at all for the {expiry} expiry "
+                    f"{(expiry - today).days} days out — the chain was not "
+                    f"fetched this far from expiry, so nothing could be priced"
+                )
+            elif not priced:
+                skipped.append(
+                    f"{today}: {len(rows)} contracts had bars but none could be "
+                    f"priced for the {expiry} expiry"
+                )
+
             history = closes.iloc[: position + 1]
             candidates = build_candidates(
                 chain_rows=priced,
