@@ -20,7 +20,6 @@ from typing import Any
 import yaml
 
 from flywheel.agent.state import FlywheelState
-from flywheel.domain import Regime
 from flywheel.execution.orders import submit_order, to_proposed_order
 from flywheel.journal import writer
 from flywheel.market.client import get_account
@@ -113,16 +112,30 @@ async def snapshot_node(state: FlywheelState) -> FlywheelState:
 
 
 async def regime_node(state: FlywheelState) -> FlywheelState:
-    """Classify the market. Deterministic for now.
+    """Ask the analyst which volatility regime this is.
 
-    Returns "calm" unconditionally until the analyst replaces the body. That is
-    a placeholder, and it is a *safe* placeholder only because of which way the
-    analyst may move the answer: it can tighten the delta band and shrink the
-    size multiplier, never loosen either. A wrong "calm" therefore trades the
-    strategy as configured rather than something riskier than configured.
+    The analyst proposes; it does not decide. Its answer can only move the
+    agent along `calm -> elevated -> stress -> crash`, and every step narrows
+    the delta band and shrinks the size multiplier. There is no value it can
+    return that loosens a limit or approves a trade the gate would refuse, so
+    the worst a wrong or compromised answer costs is a skipped cycle.
+
+    A failure lands on `stress`, never on `calm`. An analyst that could not
+    answer is not evidence of a calm market.
+
+    The rendered prompt is journalled verbatim. A decision that cannot be
+    reproduced line by line is not auditable, and the prompt is half of what
+    produced this one.
     """
-    regime: Regime = "calm"
-    return FlywheelState(regime=regime)
+    from flywheel.agent.roles.analyst import classify_regime
+
+    regime, rationale, prompt = await classify_regime(state.get("snapshots") or {})
+    writer.write(
+        "regime.classified",
+        {"regime": regime, "rationale": rationale, "prompt": prompt},
+        severity="info",
+    )
+    return FlywheelState(regime=regime, regime_rationale=rationale)
 
 
 # --- 4. route ---------------------------------------------------------------
@@ -281,6 +294,7 @@ async def journal_node(state: FlywheelState) -> FlywheelState:
         "cycle.complete",
         {
             "regime": state.get("regime"),
+            "regime_rationale": state.get("regime_rationale", ""),
             "halted": state.get("halted", False),
             "halt_reason": state.get("halt_reason", ""),
             "equity": str(portfolio.equity) if portfolio else None,

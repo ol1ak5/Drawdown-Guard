@@ -32,6 +32,7 @@ class FlywheelState(TypedDict, total=False):
     wheels: dict[str, WheelState]
     portfolio: Portfolio | None
     regime: Regime
+    regime_rationale: str
     actionable: list[str]
     candidates: list[Candidate]
     allocations: list[Allocation]
@@ -54,6 +55,7 @@ def initial_state(dry_run: bool = False) -> FlywheelState:
         wheels={},
         portfolio=None,
         regime="calm",
+        regime_rationale="",
         actionable=[],
         candidates=[],
         allocations=[],
