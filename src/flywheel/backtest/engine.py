@@ -77,6 +77,23 @@ from flywheel.wheel import (
 DISABLED_CHECKS = ("min_open_interest",)
 
 DEFAULT_HAIRCUT_PCT = 2.0
+
+# Annual yield on uninvested cash. A fourth modelled quantity, and the one
+# that mattered most: a cash-secured put ties up cash as collateral, and in
+# a real account that collateral sits in Treasury bills. Leaving it at zero
+# understated the strategy by more than the entire premium it collected.
+#
+# Over 2024-02 to 2026-08 the wheel was roughly 20 percent deployed, so the
+# idle 80 percent at this rate is worth about 9.5 percent over the window,
+# against 1 to 6 percent of premium. Reporting only the premium would have
+# been reporting the smaller half.
+#
+# A flat rate is itself a model. The honest version is the actual bill
+# series for each day; this is a constant because that series is not
+# cached, and like the haircut it is named in BacktestResult.params rather
+# than buried.
+DEFAULT_CASH_RATE = 0.045
+TRADING_DAYS_PER_YEAR = 252
 VOL_BOUNDS = (0.01, 3.0)
 
 
@@ -289,6 +306,7 @@ def run_backtest(
     initial_capital: Decimal = Decimal("1000000"),
     regime: str = "calm",
     cvar_pct: float = 2.0,
+    cash_rate: float = DEFAULT_CASH_RATE,
 ) -> BacktestResult:
     """Walk the window one trading day at a time and record every decision.
 
@@ -317,7 +335,16 @@ def run_backtest(
     skipped: list[str] = []
     equity_by_day: list[float] = []
 
+    # Compounded per trading day rather than applied once a year, because a
+    # wheel moves in and out of cash constantly and a lump annual credit
+    # would pay interest on balances that were not held.
+    daily_rate = Decimal(str((1 + cash_rate) ** (1 / TRADING_DAYS_PER_YEAR) - 1))
+
     for position, today in enumerate(days):
+        # Collateral earns. Accrued before anything is decided, so a day the
+        # agent trades and a day it skips are paid the same.
+        if cash > 0:
+            cash += cash * daily_rate
         cursor = Cursor(today)
         spot = float(closes.iloc[position])
 
@@ -523,6 +550,11 @@ def run_backtest(
             "initial_capital": str(initial_capital),
             "haircut_pct": pricer.haircut_pct,
             "priced_from": "daily bars, not quotes",
+            "cash_rate": cash_rate,
+            "cash_rate_note": (
+                "flat annual yield on uninvested collateral, compounded per "
+                "trading day; a modelled constant, not the historical bill series"
+            ),
             "disabled_checks": list(DISABLED_CHECKS),
             "cvar_pct": cvar_pct,
             "expiries": [e.isoformat() for e in expiries],

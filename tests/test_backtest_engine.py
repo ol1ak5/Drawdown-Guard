@@ -438,3 +438,48 @@ def test_premium_is_booked_at_the_bid_not_the_mid():
     assert cycle.premium < cycle.mid
     assert float(cycle.premium) == pytest.approx(float(cycle.mid) * 0.98, rel=1e-6)
     assert cycle.proceeds == cycle.premium * cycle.contracts * SHARES_PER_CONTRACT
+
+
+def test_idle_collateral_earns_and_the_earning_is_separable():
+    """A cash-secured put ties up cash, and in a real account that cash earns.
+
+    Modelling it at zero understated the strategy by more than the whole
+    premium it collected. The two must stay separable, though: a reader has to
+    be able to see how much of a result is the strategy and how much is the
+    Treasury bill it sat next to, and `cash_rate=0` is how that is shown.
+    """
+    days, bars, chains = flat_world()
+    common = dict(
+        symbol="SPY",
+        bars=bars,
+        pricer=BarPricer(lambda expiry: chains[expiry], haircut_pct=2.0),
+        expiries=[EXPIRY],
+        limits=LIMITS,
+        strategy=STRATEGY,
+        initial_capital=Decimal("1000000"),
+    )
+    without = run_backtest(**common, cash_rate=0.0)
+    with_interest = run_backtest(**common, cash_rate=0.05)
+
+    assert with_interest.equity_curve.iloc[-1] > without.equity_curve.iloc[-1]
+    # The same decisions either way: interest is a return on the collateral,
+    # not an input the strategy trades on.
+    assert len(with_interest.cycles) == len(without.cycles)
+
+
+def test_the_cash_rate_is_reported_as_a_modelled_assumption():
+    """Four quantities are modelled here, and a modelled number that looks
+    measured is what makes a backtest dishonest."""
+    days, bars, chains = flat_world()
+    result = run_backtest(
+        symbol="SPY",
+        bars=bars,
+        pricer=BarPricer(lambda expiry: chains[expiry]),
+        expiries=[EXPIRY],
+        limits=LIMITS,
+        strategy=STRATEGY,
+        initial_capital=Decimal("1000000"),
+        cash_rate=0.045,
+    )
+    assert result.params["cash_rate"] == 0.045
+    assert "modelled" in result.params["cash_rate_note"]

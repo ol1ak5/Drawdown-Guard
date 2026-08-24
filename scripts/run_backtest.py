@@ -53,6 +53,12 @@ def main() -> None:
     parser.add_argument("--end", default="2026-08-21")
     parser.add_argument("--capital", default="1000000")
     parser.add_argument("--haircut-pct", type=float, default=2.0)
+    parser.add_argument(
+        "--cash-rate",
+        type=float,
+        default=None,
+        help="annual yield on idle collateral; 0 to see premium alone",
+    )
     parser.add_argument("--out", default=None, help="write the result as JSON")
     args = parser.parse_args()
 
@@ -81,6 +87,7 @@ def main() -> None:
         limits=load_limits(),
         strategy=strategy,
         initial_capital=Decimal(args.capital),
+        **({} if args.cash_rate is None else {"cash_rate": args.cash_rate}),
     )
 
     curve = result.equity_curve
@@ -101,6 +108,7 @@ def main() -> None:
     print(f"  worst drawdown              : {worst_drawdown:.2f}%")
     print(f"  priced from                 : {result.params['priced_from']}")
     print(f"  execution haircut           : {result.params['haircut_pct']}%")
+    print(f"  cash rate on collateral     : {result.params['cash_rate']:.3%}")
     print(f"  checks disabled             : {result.params['disabled_checks']}")
 
     if result.skipped:
