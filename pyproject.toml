@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
+    "alpaca-mcp-server>=2.2.1",
     "alpaca-py>=0.44.0",
     "cvxpy>=1.9.2",
     "highspy>=1.15.1",
@@ -15,7 +16,9 @@ dependencies = [
     "langchain-anthropic>=1.6.1",
     "langgraph>=1.2.11",
     "matplotlib>=3.11.1",
-    "mcp>=2.0.0",
+    # Capped below 2.0 by alpaca-mcp-server, which reaches mcp through fastmcp;
+    # fastmcp-slim pins mcp<2.0. Raising this floor uninstalls the MCP server.
+    "mcp>=1.24.0,<2.0",
     "numpy>=2.4.6",
     "pandas>=3.0.5",
     "pyarrow>=25.0.1",
@@ -42,6 +45,9 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: needs live Alpaca credentials and a running MCP server",
+]
 
 [tool.ruff]
 line-length = 88
