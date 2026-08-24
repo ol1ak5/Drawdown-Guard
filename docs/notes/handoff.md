@@ -297,3 +297,49 @@ Two consequences, both for Step 8:
 
 Do not adjust these values by hand from one symbol. Recalibrate across SPY,
 QQQ and IWM, and record before-and-after in the report as Step 8 requires.
+
+## The delta band is measured in the wrong unit, 2026-08-24
+
+Recalibrating across SPY, QQQ and IWM as required above produced a stronger
+finding than "the number is too small". Point 1 of the previous section — that
+the band "cannot be below about 600" — is now superseded. Raising the number
+does not fix this.
+
+At `max_position_pct: 25` on a 1,000,000 account, one fully sized position in
+each instrument is:
+
+| symbol | spot | contracts | shares | exposure | share of equity |
+|---|---|---|---|---|---|
+| SPY | 764 | 3 | 300 | 229,200 | 22.9% |
+| QQQ | 620 | 4 | 400 | 248,000 | 24.8% |
+| IWM | 245 | 10 | 1,000 | 245,000 | 24.5% |
+
+The dollar risk is the same in all three rows — about a quarter of equity,
+exactly what `max_position_pct` intends. The **share count differs by 3.3x**.
+
+`max_net_delta` is denominated in share equivalents, and share equivalents are
+not comparable across instruments at different prices. IWM at 245 generates
+more than three times SPY's delta for identical economic exposure. A limit in
+this unit is strict on cheap instruments and permissive on expensive ones, for
+risk that is the same. It is not a conservative setting of a sound limit; it is
+a limit whose unit does not measure the thing it is named after.
+
+All three assigned at once gives 1,700 share equivalents against a band of 150
+— and that state is entirely normal for a wheel, not a runaway position.
+
+**The fix is a change of unit, not of value.** Directional exposure should be
+denominated in dollars as a share of equity, at which point all three rows read
+about 25% and the limit becomes both comparable across instruments and
+independent of account size. A band expressed that way can be set against
+`max_deployed_pct`, which is already in those units, instead of against a share
+count that means something different for every ticker.
+
+Two things this does not settle, and neither should be decided by hand:
+
+- What the band should be. Three symbols fully assigned is roughly 70% of
+  equity in directional exposure, which is close to `max_deployed_pct: 60`. The
+  two limits may be measuring the same constraint twice.
+- Whether shares held as collateral against a covered call belong in a
+  directional measure at all. The wheel intends to hold them; the drawdown
+  kill-switch and the CVaR constraint already price the crash they are exposed
+  to.
