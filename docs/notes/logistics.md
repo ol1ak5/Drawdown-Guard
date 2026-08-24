@@ -201,7 +201,16 @@ themselves rather than reading a claim that it happened.
       point of implied volatility. See `handoff.md`.
 - [x] Decide whether the live agent uses Alpaca's greeks or our own. Ours, for
       consistency with the backtest; Alpaca's logged as a cross-check. See `handoff.md`.
-- [ ] Fill `ANTHROPIC_API_KEY` in `.env`; it is empty, and Task 16 needs it.
+- [x] Settle which LLM drives the analyst. Fixed 2026-08-24: **Gemini**, via
+      `GOOGLE_API_KEY`, which the author already holds. Anthropic was the
+      original plan and would have cost roughly two cents a day, but there is
+      no reason to buy credits for a component whose provider is a cost
+      decision rather than a safety one — the analyst may only tighten the risk
+      parameters, never loosen them, so a weaker or differently-behaved model
+      cannot talk the agent into a bad trade. Model: `gemini-3.7-flash`.
+- [x] Create the public repository. Done 2026-08-24:
+      `github.com/ol1ak5/Flywheel-Agent`. `FLYWHEEL_REPO_URL` still needs
+      setting so the status page footer carries a real source link.
 - [x] Connect Discord and create the team.
 - [x] Confirm whether a demo URL is required — it is, and the answer is a
       GitHub Pages status page.

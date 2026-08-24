@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     alpaca_api_key: str
     alpaca_secret_key: str
     alpaca_paper_trade: bool = True
-    anthropic_api_key: str = ""
+    google_api_key: str = ""
     flywheel_env: Literal["dev", "judging"] = "dev"
 
     @field_validator("alpaca_paper_trade")

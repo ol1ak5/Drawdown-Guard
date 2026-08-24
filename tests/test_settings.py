@@ -9,7 +9,7 @@ def _base(**overrides):
         "alpaca_api_key": "k",
         "alpaca_secret_key": "s",
         "alpaca_paper_trade": True,
-        "anthropic_api_key": "a",
+        "google_api_key": "a",
         "flywheel_env": "dev",
     }
     values.update(overrides)
