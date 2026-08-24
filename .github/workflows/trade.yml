@@ -1,0 +1,58 @@
+name: trade
+
+on:
+  schedule:
+    # 14:00 UTC = 10:00 ET, thirty minutes after the open, Monday to Friday.
+    # GitHub cron is UTC and does not follow daylight saving. This is correct
+    # for EDT, which is in force through 2026-11-01 and so covers the whole
+    # event. It would be an hour late under EST.
+    - cron: "0 14 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  # Never two cycles at once. Both would read the same account, both would
+  # decide against the same free capital, and both would size as if the other
+  # had not traded.
+  group: trade
+  cancel-in-progress: false
+
+jobs:
+  cycle:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --frozen
+
+      - name: Healthcheck
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          ALPACA_PAPER_TRADE: "true"
+          FLYWHEEL_ENV: ${{ vars.FLYWHEEL_ENV }}
+        run: uv run python3 scripts/healthcheck.py
+
+      - name: Run one trading cycle
+        env:
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          ALPACA_PAPER_TRADE: "true"
+          FLYWHEEL_ENV: ${{ vars.FLYWHEEL_ENV }}
+        run: uv run python3 scripts/run_cycle.py
+
+      # `always()` so a failed cycle still commits whatever it journalled
+      # before it died. The record of a crash is the most valuable record
+      # there is, and it is the one a conditional step would throw away.
+      - name: Commit the journal
+        if: always()
+        run: |
+          git config user.name "flywheel-agent"
+          git config user.email "agent@users.noreply.github.com"
+          git add journal/ data/state/ data/iv_history/
+          git diff --staged --quiet || git commit -m "journal: cycle $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git push
