@@ -53,6 +53,11 @@ jobs:
         run: |
           git config user.name "flywheel-agent"
           git config user.email "agent@users.noreply.github.com"
-          git add journal/ data/state/ data/iv_history/
+          # The directories may not exist on a first run, and `bash -e`
+          # turns a git pathspec error into a failed job. Create them
+          # first: a missing journal is not a reason to report the cycle
+          # as broken.
+          mkdir -p journal data/state data/iv_history
+          git add journal data/state data/iv_history
           git diff --staged --quiet || git commit -m "journal: cycle $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           git push
