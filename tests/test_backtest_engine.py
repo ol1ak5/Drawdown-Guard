@@ -462,8 +462,12 @@ def test_idle_collateral_earns_and_the_earning_is_separable():
     with_interest = run_backtest(**common, cash_rate=0.05)
 
     assert with_interest.equity_curve.iloc[-1] > without.equity_curve.iloc[-1]
-    # The same decisions either way: interest is a return on the collateral,
-    # not an input the strategy trades on.
+    # In this flat synthetic world the decisions happen to coincide, but
+    # that is a property of the fixture and not of the strategy. On real
+    # data the funded run has a larger capital budget, takes larger
+    # positions, is assigned more often and therefore opens *fewer* cycles
+    # -- eight against three on SPY. The two runs are alternatives, not a
+    # decomposition, and the report says so.
     assert len(with_interest.cycles) == len(without.cycles)
 
 
