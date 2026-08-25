@@ -21,3 +21,7 @@ graphify-out/
 # The working SQLite store is one run's scratch space. The durable copy is the
 # committed snapshot at data/state/wheels.json — see store.py for why both exist.
 *.db
+# HALT is deliberately NOT ignored. It is the manual kill switch: `touch
+# HALT`, commit, push, and the next scheduled run stops before doing
+# anything. Ignoring it would make the file local-only and the switch
+# would silently do nothing in the environment it exists for.
