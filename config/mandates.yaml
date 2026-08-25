@@ -1,0 +1,68 @@
+# Client mandates: what the portfolio is allowed to want.
+#
+# A mandate is a promise, not a preference. Every field here is checked before
+# an order is sent and audited after the cycle, so a profile that says
+# "conservative" has to mean something a machine can verify.
+#
+# TWO CONSTITUTIONS
+# -----------------
+# `risk.yaml` is the permanent one. It never changes, no mandate may loosen it,
+# and `forbid_naked` in particular has no override anywhere in the system. What
+# follows is the temporary constitution: it may be stricter than the permanent
+# one, never weaker. `load_mandate` enforces that and refuses to construct a
+# mandate that tries.
+#
+# THE CONCENTRATION CAPS ARE NOT ROUND NUMBERS PICKED FOR LOOKS
+# -------------------------------------------------------------
+# Measured 2026-08-25 on cached history. The equity ETFs correlate 0.78 to 0.95
+# with each other, so an all-equity book reports 100% of variance contribution
+# in one bucket. TLT correlates +0.09 to +0.17 with them, but carries much less
+# volatility, so ten TLT contracts against two SPY and two QQQ still leave
+# equity at 94.4%.
+#
+# A cap of 50% would therefore be unreachable and would silence the agent
+# entirely -- exactly what `max_net_delta: 150` did to the wheel for two and a
+# half years before it was found. These caps are set where the measurement says
+# a book can actually live, and `scripts/calibrate_limits.py` is how they get
+# revisited rather than guessed.
+
+conservative:
+  description: >
+    Income is optional. Capital preservation is not. Expect this mandate to
+    refuse most cycles, and expect refusal to be the normal outcome rather
+    than a fault.
+  universe: [SPY, TLT]
+  max_deployed_pct: 30.0
+  target_delta: {min: 0.10, max: 0.20}
+  # Reachable only with a materially rates-weighted book. That is the point:
+  # the cap is what forces the diversification rather than suggesting it.
+  max_concentration_pct: 75.0
+  stress_allows_new_risk: false
+
+balanced:
+  description: >
+    Generate income while keeping the risk being sold from collapsing into a
+    single factor.
+  universe: [SPY, QQQ, IWM, TLT]
+  max_deployed_pct: 60.0
+  target_delta: {min: 0.15, max: 0.30}
+  max_concentration_pct: 90.0
+  stress_allows_new_risk: false
+
+aggressive:
+  description: >
+    Maximise income inside a concentrated risk budget. This mandate does not
+    pretend to be diversified; it declares that it is not.
+  universe: [QQQ, IWM, SPY]
+  # 60, not the 85 first written here. The permanent constitution caps
+  # deployment at 60% and `Mandate.validate_against` refused to build this
+  # mandate at 85 -- correctly. Raising the permanent cap to fit a client
+  # profile would invert the relationship and there would be nothing
+  # permanent left. This is as aggressive as the constitution allows.
+  max_deployed_pct: 60.0
+  target_delta: {min: 0.20, max: 0.40}
+  # No concentration constraint in practice. Stated at 100 rather than omitted,
+  # so the audit reports "declared concentrated and behaved concentrated"
+  # instead of "no opinion".
+  max_concentration_pct: 100.0
+  stress_allows_new_risk: true
