@@ -26,6 +26,21 @@ class Allocation(BaseModel):
     contracts: int
 
 
+def _covered_call_cap(candidates: list[Candidate], portfolio: Portfolio) -> int:
+    """How many call contracts the shares on hand can cover.
+
+    Returns a large number for puts, which are secured by cash and constrained
+    by the capital budget instead. Zero means the position cannot write a
+    covered call at all, and the caller should not trade rather than propose
+    something the gate is obliged to refuse.
+    """
+    if not candidates or candidates[0].right != "C":
+        return MAX_CONTRACTS_PER_LEG * max(len(candidates), 1)
+    wheel = portfolio.wheels.get(candidates[0].symbol)
+    shares = getattr(wheel, "shares", 0) if wheel else 0
+    return int(shares) // SHARES_PER_CONTRACT
+
+
 def optimize(
     candidates: list[Candidate],
     portfolio: Portfolio,
@@ -42,6 +57,22 @@ def optimize(
         return []
 
     n = len(candidates)
+
+    # A covered call cannot exceed the shares that cover it. Without this the
+    # optimizer sizes calls exactly as it sizes puts -- from the capital budget
+    # and the greek limits -- and proposes more contracts than the position can
+    # cover. The gate then refuses every one of them as naked, correctly, and
+    # nothing is ever tried at a size that would have worked.
+    #
+    # That is not hypothetical. It cost this project 819 days: an assignment of
+    # one contract left 100 shares, the optimizer kept proposing four, the gate
+    # kept refusing "naked call: 100 shares held, 400 required", and the wheel
+    # stood still for two years while the backtest reported a cautious strategy
+    # that chose not to trade.
+    covered_cap = _covered_call_cap(candidates, portfolio)
+    if covered_cap == 0:
+        return []
+
     losses = np.vstack([c.losses for c in candidates]).T  # scenarios x candidates
     scenarios = losses.shape[0]
 
@@ -73,6 +104,7 @@ def optimize(
     constraints = [
         x >= 0,
         x <= MAX_CONTRACTS_PER_LEG,
+        cp.sum(x) <= covered_cap,
         slack >= portfolio_loss - zeta,
         collateral @ x <= float(capital_budget),
         # Every candidate in one call belongs to one symbol, so a single

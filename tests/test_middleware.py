@@ -7,7 +7,7 @@ recording both the same way buries the one that means the system is wrong.
 """
 
 import sys
-from datetime import date
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -35,7 +35,9 @@ def journal_dir(tmp_path, monkeypatch):
 
 
 def entries(directory):
-    return writer.read_day(date.today(), directory=directory)
+    # UTC, not local: the journal stamps in UTC and the two dates
+    # disagree between 22:00 UTC and midnight.
+    return writer.read_day(datetime.now(UTC).date(), directory=directory)
 
 
 def portfolio(equity="1000000", peak="1000000"):

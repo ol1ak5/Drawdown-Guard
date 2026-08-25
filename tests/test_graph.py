@@ -6,7 +6,7 @@ nothing — and those are exactly the claims a live test would verify least
 reliably, because a live run that happens not to trade proves nothing.
 """
 
-from datetime import date
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
@@ -29,7 +29,15 @@ def journal_dir(tmp_path, monkeypatch):
 
 
 def entries(directory) -> list[dict]:
-    return writer.read_day(date.today(), directory=directory)
+    """Read the day the journal actually wrote, which is the UTC one.
+
+    `date.today()` is local, and the journal stamps entries in UTC. The two
+    agree for twenty-two hours a day, so this read passed every time it was
+    tried until a run happened to land between 22:00 UTC and midnight. A test
+    that is correct most of the day is a test that fails in someone else's
+    timezone and nobody knows why.
+    """
+    return writer.read_day(datetime.now(UTC).date(), directory=directory)
 
 
 def healthy_portfolio(**overrides) -> Portfolio:
