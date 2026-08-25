@@ -8,6 +8,11 @@ on:
     # event. It would be an hour late under EST.
     - cron: "0 14 * * 1-5"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Decide and journal, but submit no orders"
+        type: boolean
+        default: false
 
 concurrency:
   # Never two cycles at once. Both would read the same account, both would
@@ -60,7 +65,16 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           ALPACA_PAPER_TRADE: "true"
           FLYWHEEL_ENV: ${{ vars.FLYWHEEL_ENV }}
-        run: uv run python3 scripts/run_cycle.py
+        # Scheduled runs always trade. Only a hand-triggered run can ask for
+        # a dry run, and it has to ask explicitly -- a default that silently
+        # stopped submitting would be an agent that looks alive and does
+        # nothing, which is the failure mode hardest to notice.
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            uv run python3 scripts/run_cycle.py --dry-run
+          else
+            uv run python3 scripts/run_cycle.py
+          fi
 
       # `always()` so a failed cycle still commits whatever it journalled
       # before it died. The record of a crash is the most valuable record
