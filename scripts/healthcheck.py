@@ -1,4 +1,17 @@
-"""Preflight. Exit 0 when it is safe to trade, non-zero with a reason when not.
+"""Preflight. Three outcomes, because two would be a lie.
+
+A closed market and a revoked API key are both reasons not to trade, and
+they are not the same event. Reporting both as a failed job means a red
+run every weekend and every holiday, and by the second week nobody opens
+the mail. The one notification that matters then arrives into a folder
+people have learned to ignore.
+
+  exit 0  - safe to trade
+  exit 2  - declined for a normal reason: market shut, half day, HALT file.
+            Not a failure. The job skips the cycle and stays green.
+  exit 1  - something is wrong: bad credentials, blocked account, a broker
+            that cannot be reached. This one should wake somebody.
+
 
 Every check prints its own line whether it passes or fails, so a green run says
 what it verified rather than only that nothing complained. A scheduled job that
@@ -27,7 +40,11 @@ MIN_EQUITY = 25_000.0
 
 
 class Failure(Exception):
-    """A check that says trading must not proceed."""
+    """Something is wrong. Worth a red build and an email."""
+
+
+class Declined(Exception):
+    """A normal reason not to trade today. Not a failure."""
 
 
 def _root_cause(exc: BaseException) -> str:
@@ -45,6 +62,15 @@ async def _read(session, tool: str, args: dict | None = None):
     from flywheel.mcp.alpaca_client import _unwrap
 
     return _unwrap(await session.call_tool(tool, args or {}), tool)["data"]
+
+
+def check_halt_file() -> str:
+    """The manual override, checked before anything costs a network call."""
+    from flywheel.agent.middleware.guards import HALT_FILE, halt_file_present
+
+    if halt_file_present():
+        raise Declined(f"{HALT_FILE} file present — halted by hand")
+    return "no HALT file"
 
 
 def check_paper_interlock() -> str:
@@ -91,7 +117,7 @@ async def check_market_open(session) -> str:
         raise Failure(f"could not read the market clock: {exc}") from exc
 
     if not clock.get("is_open"):
-        raise Failure(f"the market is closed; next open {clock.get('next_open')}")
+        raise Declined(f"the market is closed; next open {clock.get('next_open')}")
 
     today = date.today().isoformat()
     try:
@@ -103,7 +129,7 @@ async def check_market_open(session) -> str:
     for entry in sessions if isinstance(sessions, list) else []:
         close = str(entry.get("close", ""))
         if close and not close.startswith(FULL_SESSION_CLOSE):
-            raise Failure(
+            raise Declined(
                 f"today is a half day, closing {close} — the chains thin out "
                 f"into an early close and the fills are not representative"
             )
@@ -137,11 +163,15 @@ async def check_state_reconciles(session) -> str:
 
 async def run() -> int:
     print(f"flywheel healthcheck {datetime.now().isoformat(timespec='seconds')}")
-    try:
-        print(f"  ok   {check_paper_interlock()}")
-    except Failure as failure:
-        print(f"  FAIL {failure}")
-        return 1
+    for check in (check_halt_file, check_paper_interlock):
+        try:
+            print(f"  ok   {check()}")
+        except Declined as declined:
+            print(f"  SKIP {declined}")
+            return 2
+        except Failure as failure:
+            print(f"  FAIL {failure}")
+            return 1
 
     # The failure is captured rather than raised through the session context.
     #
@@ -152,12 +182,16 @@ async def run() -> int:
     # market is closed". For a script whose entire purpose is to say plainly
     # why it will not trade, swallowing the reason is the worst possible bug.
     failure: Failure | None = None
+    declined: Declined | None = None
     lines: list[str] = []
     try:
         async with alpaca_session(FULL_TOOLSETS) as session:
             for check in (check_account, check_market_open, check_state_reconciles):
                 try:
                     lines.append(await check(session))
+                except Declined as caught:
+                    declined = caught
+                    break
                 except Failure as caught:
                     failure = caught
                     break
@@ -169,6 +203,9 @@ async def run() -> int:
 
     for line in lines:
         print(f"  ok   {line}")
+    if declined is not None:
+        print(f"  SKIP {declined}")
+        return 2
     if failure is not None:
         print(f"  FAIL {failure}")
         return 1

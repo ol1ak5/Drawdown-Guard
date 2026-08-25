@@ -6,10 +6,13 @@ things: a veto is the risk gate working, a defect is the design leaking, and
 recording both the same way buries the one that means the system is wrong.
 """
 
+import sys
 from datetime import date
 from decimal import Decimal
 
 import pytest
+
+sys.path.insert(0, "scripts")
 
 from flywheel.agent.middleware.guards import (
     HALT_FILE,
@@ -187,3 +190,33 @@ def test_the_halt_check_runs_before_anything_that_costs_a_network_call():
     assert isinstance(stack[0], KillSwitchMiddleware)
     assert any(isinstance(m, RiskGateMiddleware) for m in stack)
     assert any(isinstance(m, JournalMiddleware) for m in stack)
+
+
+# --- the healthcheck's three outcomes ---------------------------------------
+
+
+def test_a_decline_and_a_failure_are_different_exit_codes():
+    """Alert fatigue is a safety problem, not a cosmetic one.
+
+    A closed market and a revoked key are both reasons not to trade. Reported
+    identically, the weekend runs teach everyone to ignore the mail, and the
+    one notification that means something arrives into a folder nobody opens.
+    """
+    import scripts.healthcheck as hc
+
+    assert hc.Declined is not hc.Failure
+    assert not issubclass(hc.Declined, hc.Failure)
+    assert not issubclass(hc.Failure, hc.Declined)
+
+
+def test_a_closed_market_is_a_decline_not_a_failure():
+    import inspect
+
+    import scripts.healthcheck as hc
+
+    source = inspect.getsource(hc.check_market_open)
+    assert "raise Declined" in source
+    assert "the market is closed" in source
+    # The credential and account checks must stay Failures: those are real.
+    assert "raise Failure" in inspect.getsource(hc.check_paper_interlock)
+    assert "raise Failure" in inspect.getsource(hc.check_account)

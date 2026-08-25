@@ -28,15 +28,32 @@ jobs:
           python-version: "3.11"
       - run: uv sync --frozen
 
+      # Three outcomes, not two. Exit 2 means "declined for a normal reason"
+      # -- market shut, half day, HALT file -- and must leave the job green.
+      # A red run every weekend trains everyone to ignore the mail, and the one
+      # notification that matters then lands in a folder nobody opens.
       - name: Healthcheck
+        id: preflight
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_PAPER_TRADE: "true"
           FLYWHEEL_ENV: ${{ vars.FLYWHEEL_ENV }}
-        run: uv run python3 scripts/healthcheck.py
+        run: |
+          set +e
+          uv run python3 scripts/healthcheck.py
+          code=$?
+          set -e
+          if [ "$code" -eq 2 ]; then
+            echo "trade=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::declined for a normal reason; skipping the cycle"
+            exit 0
+          fi
+          echo "trade=true" >> "$GITHUB_OUTPUT"
+          exit $code
 
       - name: Run one trading cycle
+        if: steps.preflight.outputs.trade == 'true'
         env:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
