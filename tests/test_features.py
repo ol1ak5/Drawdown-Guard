@@ -14,6 +14,7 @@ from flywheel.domain import OpenContract, WheelState
 from flywheel.market import features
 from flywheel.market.client import position_greeks
 from flywheel.market.features import MIN_OBSERVATIONS, iv_rank, record_iv
+from flywheel.risk.limits import load_limits
 
 TODAY = date(2026, 8, 24)
 
@@ -128,13 +129,38 @@ def test_a_contract_with_no_implied_volatility_is_skipped_not_zeroed():
     assert vega == 0.0
 
 
-def test_four_hundred_shares_against_the_delta_band_is_the_recorded_deadlock():
-    """The finding that stalls the wheel, pinned as an executable fact.
+def test_an_assignment_leaves_an_exposure_the_band_can_actually_measure():
+    """The deadlock this replaced, kept as a regression.
 
-    An assignment of four SPY puts leaves 400 shares, and `max_net_delta` is
-    150. Until that band is recalibrated the gate cannot approve the covered
-    call that would bring it back — see docs/notes/handoff.md.
+    An assignment of four SPY puts leaves 400 shares. Under the old band —
+    `max_net_delta: 150`, in share equivalents — that was an instant breach,
+    and the gate could never approve the covered call that would bring it back.
+    The wheel stalled on its own normal mechanics.
+
+    Measured in dollars against equity it is 30.6% of a 1,000,000 account,
+    inside the 50% band, and the wheel can continue. The same position, the
+    same risk, a unit that describes it.
     """
     wheels = {"SPY": WheelState(symbol="SPY", leg="SHARES", shares=400)}
-    net_delta, _value, _ = position_greeks(wheels, {"SPY": 764.0}, {}, {})
-    assert abs(net_delta) > 150.0
+    net_delta, value, _ = position_greeks(wheels, {"SPY": 764.0}, {}, {})
+
+    assert net_delta == 400.0  # the share count a trader reads
+    assert value == pytest.approx(305_600.0)  # what the limit measures
+
+    equity = 1_000_000.0
+    assert value / equity * 100 == pytest.approx(30.56, abs=0.01)
+    assert value / equity * 100 < load_limits().max_net_delta_pct
+
+
+def test_the_same_dollar_exposure_reads_the_same_on_a_cheap_instrument():
+    """The property the old unit did not have.
+
+    1,247 shares of a 245 dollar instrument is the same money as 400 shares of
+    a 764 dollar one. In share equivalents they differed by more than three
+    times; in dollars they agree.
+    """
+    expensive = {"SPY": WheelState(symbol="SPY", leg="SHARES", shares=400)}
+    cheap = {"IWM": WheelState(symbol="IWM", leg="SHARES", shares=1247)}
+    _, spy_value, _ = position_greeks(expensive, {"SPY": 764.0}, {}, {})
+    _, iwm_value, _ = position_greeks(cheap, {"IWM": 245.0}, {}, {})
+    assert spy_value == pytest.approx(iwm_value, rel=0.001)

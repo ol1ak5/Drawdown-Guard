@@ -7,17 +7,16 @@ returned was SPY appreciating, not premium collected, and reporting that number
 as a strategy result would be the most flattering lie available.
 
 This script measures the cause rather than guessing at it: for each candidate
-value of `max_net_delta`, run the real backtest on each symbol and count how
+value of `max_net_delta_pct`, run the real backtest on each symbol and count
 many cycles actually completed.
 
-WHAT A DELTA BAND IN SHARES MEANS
----------------------------------
-`max_net_delta: 150` is denominated in share equivalents, which is a unit with
-no opinion about account size. 400 SPY shares is 400 delta whether the account
-holds ten thousand dollars or ten million. The same band is either
-unreachable or inert depending on capital the limit never sees, so the sweep
-also reports the exposure as a share of equity, which is the number that
-actually describes the risk being taken.
+THE UNIT THIS SWEEP CHANGED
+---------------------------
+The first run of this script swept `max_net_delta` in share equivalents and
+found saturation at 600. It also found that 600 shares is 45.8% of equity on
+SPY and 14.7% on IWM -- one number meaning three different risks. The limit was
+re-denominated in percent of equity as a result, and this sweep now varies
+`max_net_delta_pct`. The share-based figures are kept in docs/notes/handoff.md.
 """
 
 import argparse
@@ -38,7 +37,8 @@ print = functools.partial(print, flush=True)  # noqa: A001
 
 CACHE = Path("data")
 SYMBOLS = ("SPY", "QQQ", "IWM")
-CANDIDATES = (150.0, 300.0, 600.0, 1000.0, 2000.0)
+# Percentages of equity now, not share equivalents. See the note below.
+CANDIDATES = (10.0, 25.0, 50.0, 75.0, 100.0)
 
 
 def cached_bars(symbol: str) -> pd.DataFrame:
@@ -89,16 +89,16 @@ def main() -> None:
     base = load_limits()
 
     print(f"capital {capital:,}   window {start} to {end}")
-    print(f"current max_net_delta: {base.max_net_delta}\n")
+    print(f"current max_net_delta_pct: {base.max_net_delta_pct}%\n")
     print(
-        f"{'max_net_delta':>14} {'symbol':>7} {'expiries':>9} {'opened':>7} "
+        f"{'delta band %':>14} {'symbol':>7} {'expiries':>9} {'opened':>7} "
         f"{'assigned':>9} {'declined':>9} {'return %':>9} {'maxDD %':>8}"
     )
     print("-" * 80)
 
     summary = {}
     for delta_band in CANDIDATES:
-        limits = base.model_copy(update={"max_net_delta": delta_band})
+        limits = base.model_copy(update={"max_net_delta_pct": delta_band})
         opened_total = 0
         for symbol in SYMBOLS:
             result, n_expiries = run(symbol, start, end, limits, strategy, capital)
@@ -109,7 +109,7 @@ def main() -> None:
             assigned = sum(1 for c in result.cycles if c.outcome == "assigned")
             opened_total += len(result.cycles)
             print(
-                f"{delta_band:>14.0f} {symbol:>7} {n_expiries:>9} "
+                f"{delta_band:>13.0f}% {symbol:>7} {n_expiries:>9} "
                 f"{len(result.cycles):>7} {assigned:>9} {len(result.skipped):>9} "
                 f"{ret:>9.2f} {drawdown:>8.2f}"
             )
@@ -119,7 +119,7 @@ def main() -> None:
     print("\npositions opened across all three symbols:")
     for delta_band, opened in summary.items():
         note = "  <- wheel does not turn" if opened <= 3 else ""
-        print(f"  max_net_delta {delta_band:>6.0f}: {opened:>3}{note}")
+        print(f"  band {delta_band:>5.0f}% of equity: {opened:>3}{note}")
 
     # A wheel that never turns is not a safer wheel. It is a different strategy
     # that nobody chose, running under a name that says otherwise.
