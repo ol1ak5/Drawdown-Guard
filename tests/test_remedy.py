@@ -6,12 +6,19 @@ cannot sell a call it has no shares for, and selling stock is reported as
 costing upside rather than as costing nothing.
 """
 
+import inspect
 from decimal import Decimal
 
 import pytest
 
-from flywheel.risk.remedy import collar, protective_put, reduce_exposure
-from flywheel.risk.stress import Holding, gap_at, ladder
+from flywheel.risk.remedy import (
+    _gap,
+    collar,
+    protective_put,
+    reduce_exposure,
+    release,
+)
+from flywheel.risk.stress import Holding, OptionLeg, gap_at, ladder
 
 SPOT = 500.0
 SHOCK = -0.20
@@ -263,3 +270,170 @@ def test_a_ceiling_above_the_measured_move_reports_no_cost_at_that_move():
     # Move the reading out to +20% and the ceiling shows up.
     further = collar(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS, high, up_move=0.20)
     assert further.forgone_upside > 0
+
+
+# --- giving protection back -------------------------------------------------
+#
+# The fourth action, and the one with the most ways to be wrong. Buying too
+# little protection is visible in the ladder. Releasing the wrong protection is
+# only visible afterwards, in a shock.
+
+
+def long_put(strike: float, contracts: int, premium: float = 5.0) -> OptionLeg:
+    return OptionLeg(
+        "SPY", "P", Decimal(str(strike)), contracts, Decimal(str(premium)), SPOT
+    )
+
+
+# 1,000 shares at 500 loses exactly the budget at -20%, so any protection on top
+# of it is headroom rather than necessity. This is the book releases happen on.
+INSIDE = [Holding("SPY", 1000, SPOT), Holding("CASH", 500_000, 1.0, shocked=False)]
+
+
+def test_protection_that_is_exactly_holding_the_promise_is_not_released():
+    """The single-threshold bug, tested from the side where it bites.
+
+    A 440 put on the 1,200-share book brings the gap to precisely zero. Zero is
+    inside the budget, and an agent releasing at "no gap" would hand this back
+    immediately, reopen the gap, and buy it again — paying the spread twice per
+    round trip to end where it started.
+    """
+    held = [long_put(440, 5)]
+    assert _gap(BOOK, held, BUDGET, SHOCK) == 0.0
+    assert release(BOOK, held, BUDGET, SHOCK, margin_pct=15.0) is None
+
+
+def test_redundant_protection_is_released_only_down_to_the_margin():
+    """Partial, because the margin is a quantity and not a switch.
+
+    Four contracts of the five pay 16,000 at the shock, which is 1,000 more
+    headroom than the 15,000 the margin demands. Releasing a second contract
+    would drop it to 12,000 and break the band, so exactly one goes back.
+    """
+    held = [long_put(440, 5)]
+    given = release(INSIDE, held, BUDGET, SHOCK, margin_pct=15.0)
+
+    assert given is not None
+    assert given.reason == "redundant"
+    assert given.contracts == 1
+    assert given.margin_required == pytest.approx(15_000)
+    assert given.slack_after == pytest.approx(16_000)
+    assert given.slack_after >= given.margin_required
+
+
+def test_a_wider_margin_releases_less_and_a_narrower_one_releases_more():
+    """The band is the client's dial, and it has to actually turn something.
+
+    The first version of this test compared 25% against 10% and proved nothing:
+    at 25% no release is possible at all on this book, so the assertion took its
+    `is None` branch and never reached the comparison. Both margins here release
+    something, which is the only way the ordering is actually exercised.
+    """
+    held = [long_put(440, 5)]
+    cautious = release(INSIDE, held, BUDGET, SHOCK, margin_pct=15.0)
+    eager = release(INSIDE, held, BUDGET, SHOCK, margin_pct=5.0)
+
+    assert cautious.contracts == 1
+    assert eager.contracts == 3
+    # And the conservative mandate's 25% band cannot let go of any of it: five
+    # contracts buy 20,000 of headroom and the band demands 25,000.
+    assert release(INSIDE, held, BUDGET, SHOCK, margin_pct=25.0) is None
+
+
+def test_spent_protection_goes_back_even_though_the_gap_is_open():
+    """The roll, and the reason it is safe.
+
+    A 380 put on a 500 stock pays nothing at -20%: the shocked price is 400 and
+    the strike is below it. It is not holding the promise up, so releasing it
+    cannot widen the gap — the headroom is identical before and after. Without
+    this rule the agent would buy a fresh put on every rally and stack the
+    corpses of the old ones forever.
+    """
+    held = [long_put(380, 2)]
+    before = _gap(BOOK, held, BUDGET, SHOCK)
+    given = release(BOOK, held, BUDGET, SHOCK, margin_pct=15.0)
+
+    assert given is not None
+    assert given.reason == "spent"
+    assert given.contracts == 2
+    assert before > 0, "the gap is still open, and the release happens anyway"
+    assert given.slack_after == pytest.approx(given.slack_before)
+    assert _gap(BOOK, [], BUDGET, SHOCK) == pytest.approx(before)
+
+
+def test_a_spent_leg_still_worth_something_in_the_tail_says_so():
+    """Released, but not silently.
+
+    The 380 put pays nothing at the promised -20% and 55 a share at -35%. The
+    agent closes what it promised and discloses what it did not, so a leg that
+    was still real tail protection leaves a number behind rather than just
+    leaving.
+    """
+    given = release(BOOK, [long_put(380, 2)], BUDGET, SHOCK, margin_pct=15.0)
+    assert given.tail_shock == -0.35
+    assert given.tail_given_up == pytest.approx(55 * 2 * 100)
+    assert f"{given.tail_given_up:,.0f}" in given.line()
+
+
+def test_the_wheels_own_short_puts_are_never_mistaken_for_protection():
+    """A sold put is the risk, not the cover. Releasing one would be an order to
+    close an income position because the client felt safe, which is not what any
+    of this is for."""
+    sold = [OptionLeg("SPY", "P", Decimal("450"), -4, Decimal("3.0"), SPOT)]
+    assert release(INSIDE, sold, BUDGET, SHOCK, margin_pct=15.0) is None
+
+
+def test_dropping_the_floor_under_a_short_call_is_reported():
+    """Disclosed rather than blocked, because positions do not carry intent.
+
+    A short call with no put behind it is either half a collar — the client
+    keeping the ceiling and losing the floor, which is the worst of both — or an
+    ordinary covered call the wheel sold on purpose. Nothing in a list of broker
+    positions distinguishes them, so the caller is told instead of guessed at.
+    """
+    held = [
+        long_put(380, 2),
+        OptionLeg("SPY", "C", Decimal("560"), -2, Decimal("4.0"), SPOT),
+    ]
+    given = release(BOOK, held, BUDGET, SHOCK, margin_pct=15.0)
+    assert given.leaves_ceiling == ["SPY"]
+    assert "ceiling left standing" in given.line()
+
+
+def test_a_release_that_keeps_some_floor_reports_no_orphaned_ceiling():
+    held = [
+        long_put(380, 2),  # spent, goes back
+        long_put(460, 3),  # live, stays
+        OptionLeg("SPY", "C", Decimal("560"), -2, Decimal("4.0"), SPOT),
+    ]
+    given = release(BOOK, held, BUDGET, SHOCK, margin_pct=15.0)
+    assert given.leaves_ceiling == []
+
+
+def test_release_cannot_consult_the_price_of_the_hedge():
+    """Structural, not behavioural, and that is the point.
+
+    A put is worth most exactly when it is needed most, so an agent taking
+    profits on protection sells the hedge into the decline it was bought for.
+    The mark is not weighed and rejected inside the function — it is absent from
+    the signature, so no later edit can quietly start reading it without also
+    changing every caller.
+    """
+    taken = set(inspect.signature(release).parameters)
+    assert not taken & {"mark", "price", "bid", "ask", "quote", "puts", "chain"}
+
+
+def test_what_the_protection_cost_cannot_change_whether_it_is_released():
+    """The same invariant, proved by behaviour rather than by signature.
+
+    One book paid 1.00 for its puts and the other paid 99.00. Sunk cost is the
+    most tempting wrong input here — the expensive hedge is the one it feels
+    worst to give up — and the ladder measures protection against its own
+    zero-shock baseline precisely so the premium cancels.
+    """
+    cheap = release(INSIDE, [long_put(440, 5, premium=1.0)], BUDGET, SHOCK, 15.0)
+    dear = release(INSIDE, [long_put(440, 5, premium=99.0)], BUDGET, SHOCK, 15.0)
+
+    assert cheap.contracts == dear.contracts
+    assert cheap.slack_after == pytest.approx(dear.slack_after)
+    assert cheap.reason == dear.reason

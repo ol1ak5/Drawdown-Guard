@@ -51,6 +51,10 @@ conservative:
   # deficit and nearly always buying protection. That is what conservative
   # means once it is written as arithmetic instead of as a word.
   downside_budget_pct: 5.0
+  # Reluctant to let go. A quarter of the budget in headroom before any hedge
+  # is released, so this client keeps paying for protection through the range
+  # where the other two would have handed it back.
+  release_margin_pct: 25.0
 
 balanced:
   description: >
@@ -65,6 +69,11 @@ balanced:
   # promise unprotected up to 500,000 of exposure. The demonstration book is
   # deliberately sized above that line -- see scripts/build_portfolio.py.
   downside_budget_pct: 10.0
+  # 15% of a 100,000 budget is 15,000 of headroom before protection goes back.
+  # Wide enough that ordinary daily movement cannot walk the book across the
+  # line and back; narrow enough that a hedge against a position which has
+  # actually closed does not survive the week.
+  release_margin_pct: 15.0
 
 aggressive:
   description: >
@@ -89,3 +98,8 @@ aggressive:
   # refuses to construct it, which is the correct outcome: an unkeepable
   # promise should fail loudly at load time, not quietly in a crash.
   downside_budget_pct: 15.0
+  # Quick to hand protection back, because carrying it is the drag this mandate
+  # least wants to pay. The band is still a band -- 10% of the budget rather
+  # than nothing -- since even an impatient client should not fund a round trip
+  # across the spread every time the book crosses its own line.
+  release_margin_pct: 10.0

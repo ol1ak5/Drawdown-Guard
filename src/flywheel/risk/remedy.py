@@ -40,14 +40,31 @@ one, and this module counts the shares actually held rather than assuming the
 underlying is there. The optimizer once proposed four contracts against a
 hundred shares and the risk gate refused it at every expiry for two and a half
 years; that bug is not being reintroduced in a new file.
+
+THE FOURTH ACTION: GIVING PROTECTION BACK
+------------------------------------------
+Buying is only half of it. Protection that is no longer holding the promise up
+is a standing charge against the client, and an agent that only ever bought
+would accumulate a sediment of hedges against positions closed months ago.
+`release` is the symmetric operation, and it is governed by two rules that are
+easy to get wrong:
+
+- **Two thresholds, not one.** Protection is bought at the line and given back
+  only with headroom inside it. A single threshold produces an agent that buys
+  at the boundary, sells at the boundary, and pays the spread twice to stand
+  still.
+- **Never on the hedge's own profit.** A put is worth most exactly when it is
+  needed most. An agent that took profits on protection would be an agent that
+  de-hedges into a decline, which is why nothing in `release` reads a price.
+  The ladder decides; the mark is not consulted and is not even passed in.
 """
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from flywheel.domain import SHARES_PER_CONTRACT
-from flywheel.risk.stress import Holding, OptionLeg, gap_at, ladder
+from flywheel.risk.stress import DEFAULT_SHOCKS, Holding, OptionLeg, gap_at, ladder
 
 # A remedy that leaves less than this much of the gap open is treated as having
 # closed it. Contracts are lumpy — a hundred shares at a time — so demanding an
@@ -102,6 +119,45 @@ class Remedy:
 def _gap(holdings, legs, budget, shock) -> float:
     rung = gap_at(ladder(holdings, legs, budget), shock)
     return rung.gap if rung else 0.0
+
+
+def _slack(holdings, legs, budget, shock) -> float:
+    """Dollars of headroom under the budget at the promised shock.
+
+    The same number as `gap`, read from the other side and allowed to be
+    positive. `gap` clamps at zero because a portfolio inside its budget has no
+    shortfall to close; releasing protection needs to know *how far* inside,
+    which is the part `gap` throws away.
+    """
+    rung = gap_at(ladder(holdings, legs, budget), shock)
+    if rung is None:
+        return 0.0
+    return rung.budget + rung.portfolio_loss  # loss is negative
+
+
+def _is_protection(leg: OptionLeg) -> bool:
+    """A long put. The only thing in this book that pays when the market falls."""
+    return leg.right == "P" and leg.contracts > 0
+
+
+def _protection_at(leg: OptionLeg, shock: float) -> float:
+    """What this leg contributes at `shock`, above where it sits flat.
+
+    Measured the way `ladder` measures it, against the zero-shock baseline, so
+    the premium already paid does not count as protection. A put bought for
+    9.00 that expires worthless protected nothing; it merely cost 9.00.
+    """
+    return leg.pnl_at(shock) - leg.pnl_at(0.0)
+
+
+def _without(legs: list[OptionLeg], plan: dict[int, int]) -> list[OptionLeg]:
+    """The book that remains after releasing `plan` contracts from each leg."""
+    remaining = []
+    for index, leg in enumerate(legs):
+        left = leg.contracts - plan.get(index, 0)
+        if left:
+            remaining.append(replace(leg, contracts=left))
+    return remaining
 
 
 def _contracts_needed(strike: Decimal, spot: float, shock: float, gap: float) -> int:
@@ -306,4 +362,176 @@ def reduce_exposure(
         upside_measured_at=0.10,
         gap_before=gap,
         gap_after=after,
+    )
+
+
+# --- giving protection back -------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Release:
+    """Protection to hand back, and what handing it back gives up.
+
+    Deliberately not a `Remedy`. A remedy is priced, because the client is
+    choosing what to buy and the cost is the choice. A release carries no price
+    at all, and the absence is the design: see `release` for why the mark is
+    never consulted.
+    """
+
+    legs: list[OptionLeg]  # contracts to close, positive, as held
+    reason: str  # "spent" | "redundant" | "spent and redundant"
+    describe: str
+    slack_before: float
+    slack_after: float
+    margin_required: float
+    # Protection at the deepest rung that goes away with these legs. The agent
+    # promises one shock and discloses the rest; releasing a leg that was still
+    # worth something in the tail is allowed, but it is not allowed to be quiet.
+    tail_given_up: float
+    tail_shock: float
+    # Symbols left holding a short call with no long put behind it any more.
+    # Not blocked, because the broker reports positions and not intentions --
+    # see `release`.
+    leaves_ceiling: list[str]
+
+    @property
+    def contracts(self) -> int:
+        return sum(leg.contracts for leg in self.legs)
+
+    def line(self) -> str:
+        """One row for the journal and the status page."""
+        note = ""
+        if self.tail_given_up:
+            note = (
+                f", gives up {self.tail_given_up:,.0f} at "
+                f"{self.tail_shock * 100:.0f}%"
+            )
+        if self.leaves_ceiling:
+            note += f", ceiling left standing on {', '.join(self.leaves_ceiling)}"
+        return (
+            f"{'release':<17} {self.describe:<44} "
+            f"headroom {self.slack_before:,.0f} -> {self.slack_after:,.0f}"
+            f"   {self.reason}{note}"
+        )
+
+
+def release(
+    holdings: list[Holding],
+    legs: list[OptionLeg],
+    budget: float,
+    shock: float,
+    margin_pct: float = 15.0,
+) -> Release | None:
+    """Protection the book no longer needs, in the two senses that differ.
+
+    **Spent** protection pays nothing at the promised shock. A put struck at 440
+    protects a 500 stock at -20%; after a rally to 550 the shocked price is 440
+    itself and the same put pays zero. It is not protecting the promise, so
+    releasing it cannot widen the gap — by definition, removing something worth
+    nothing at that rung leaves the rung where it was. This is what makes a roll
+    possible: the dead leg goes, and `protective_put` buys a live one against
+    the gap that remains. Without it the agent would buy a fresh put every rally
+    and stack the corpses.
+
+    **Redundant** protection still pays, but the promise holds without it and
+    with room to spare. This is the release that needs a margin, and the margin
+    is why there are two thresholds rather than one. Protection is bought the
+    moment the gap opens; it is given back only once the book is `margin_pct` of
+    the budget clear of the line. An agent using one threshold for both would
+    buy at the boundary, sell at the boundary, and pay the spread twice for the
+    privilege of ending where it started.
+
+    WHY A RALLY DOES NOT RELEASE ANYTHING
+    --------------------------------------
+    The intuition that a rising market makes protection unnecessary is exactly
+    backwards here, and the arithmetic says so. The budget is a percentage of
+    equity and the exposure is the thing that grew: a 10% rally on a 600,000
+    sleeve takes the loss at -20% from 120,000 to 132,000 while the budget goes
+    from 100,000 to 106,000. The gap widens by a third. What a rally releases is
+    not the need for protection but the specific strike that used to supply it.
+
+    WHY NOTHING HERE READS A PRICE
+    -------------------------------
+    A put is worth most precisely when it is needed most. An agent that released
+    protection because the position showed a profit would sell the hedge into
+    the decline it was bought for. So the decision is made entirely on the
+    ladder, and the mark is not passed to this function -- not weighed and
+    rejected, but absent, so no future edit can quietly start consulting it.
+
+    WHAT IS DISCLOSED RATHER THAN BLOCKED
+    --------------------------------------
+    If every long put on a symbol is released while a short call on it remains,
+    the client keeps the ceiling and loses the floor. That is the worst half of
+    a collar, and it would be right to refuse -- except that a short call may
+    equally be the wheel's own covered call, which is a legitimate position that
+    stands on its own. The broker reports positions, not intentions, and the
+    difference is not recoverable from a list of holdings. So it is reported in
+    `leaves_ceiling` and left to the caller, rather than guessed at here.
+    """
+    protective = [i for i, leg in enumerate(legs) if _is_protection(leg)]
+    if not protective:
+        return None
+
+    slack_before = _slack(holdings, legs, budget, shock)
+    required = budget * margin_pct / 100
+
+    # Spent first, and unconditionally: a leg worth nothing at the promised
+    # shock is not what is holding the promise up, so the margin has no say.
+    plan = {
+        i: legs[i].contracts
+        for i in protective
+        if _protection_at(legs[i], shock) <= 0
+    }
+    spent = bool(plan)
+
+    # Then the redundant ones, weakest first. Ordering by protection per
+    # contract ascending releases as many contracts as the margin permits: the
+    # legs that do the least work go first, and the ones actually carrying the
+    # promise stay.
+    rest = sorted(
+        (i for i in protective if i not in plan),
+        key=lambda i: _protection_at(legs[i], shock) / legs[i].contracts,
+    )
+    redundant = False
+    for index in rest:
+        for count in range(legs[index].contracts, 0, -1):
+            kept = _without(legs, {**plan, index: count})
+            if _slack(holdings, kept, budget, shock) >= required:
+                plan[index] = count
+                redundant = True
+                break
+
+    if not plan:
+        return None
+
+    released = [replace(legs[i], contracts=count) for i, count in sorted(plan.items())]
+    remaining = _without(legs, plan)
+    tail = DEFAULT_SHOCKS[-1]
+
+    still_protected = {leg.symbol for leg in remaining if _is_protection(leg)}
+    orphaned = {
+        leg.symbol
+        for leg in remaining
+        if leg.right == "C"
+        and leg.contracts < 0
+        and leg.symbol not in still_protected
+    }
+    leaves_ceiling = sorted(orphaned & {leg.symbol for leg in released})
+
+    if spent and redundant:
+        reason = "spent and redundant"
+    else:
+        reason = "spent" if spent else "redundant"
+    return Release(
+        legs=released,
+        reason=reason,
+        describe=", ".join(
+            f"close {leg.contracts}x {leg.symbol} {leg.strike} put" for leg in released
+        ),
+        slack_before=slack_before,
+        slack_after=_slack(holdings, remaining, budget, shock),
+        margin_required=required,
+        tail_given_up=sum(_protection_at(leg, tail) for leg in released),
+        tail_shock=tail,
+        leaves_ceiling=leaves_ceiling,
     )

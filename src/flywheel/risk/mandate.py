@@ -75,6 +75,18 @@ class Mandate(BaseModel):
     # close. See `stress.gap_at` for why promising the deepest rung would be
     # both unclosable and unaffordable.
     stress_shock_pct: float = 20.0
+    # How far inside the budget the book must sit before protection is given
+    # back, as a percentage of the budget. This is the second of two thresholds:
+    # protection is bought the moment the gap opens and released only with this
+    # much headroom, so the agent cannot oscillate across the line paying the
+    # spread each way. Stated by the client in advance, like everything else
+    # here -- a hysteresis band invented by the agent would be a tuning
+    # parameter, and tuning parameters are where forecasts hide.
+    release_margin_pct: float = 15.0
+
+    def release_headroom(self, equity: float | Decimal) -> float:
+        """The dollars of slack required before protection may be released."""
+        return self.budget(equity) * self.release_margin_pct / 100
 
     def budget(self, equity: float | Decimal) -> float:
         """The downside budget in dollars."""
@@ -100,6 +112,13 @@ class Mandate(BaseModel):
             raise ValueError(f"{self.name}: deployment must be within (0, 100]")
         if not 0 < self.downside_budget_pct <= 100:
             raise ValueError(f"{self.name}: a downside budget must be within (0, 100]")
+        if not 0 <= self.release_margin_pct < 100:
+            raise ValueError(
+                f"{self.name}: a release margin of {self.release_margin_pct}% is "
+                f"not a band. At 0 the agent buys and sells at the same line and "
+                f"pays the spread to stand still; at 100 it would have to hold "
+                f"the whole budget in reserve before letting any hedge go."
+            )
         if -self.binding_shock not in [-s for s in DEFAULT_SHOCKS]:
             raise ValueError(
                 f"{self.name}: promises against a {self.stress_shock_pct}% shock, "

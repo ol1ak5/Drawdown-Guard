@@ -217,3 +217,37 @@ def test_the_three_shipped_mandates_imply_three_different_portfolio_sizes():
     assert limits["conservative"] == pytest.approx(250_000)
     assert limits["balanced"] == pytest.approx(500_000)
     assert limits["aggressive"] == pytest.approx(750_000)
+
+
+def test_the_release_band_is_a_band_and_not_a_line():
+    """Both ends refused, for opposite reasons.
+
+    At 0 the agent buys and sells protection at the same threshold and pays the
+    spread twice to end where it started. At 100 it would have to hold the
+    entire budget as unused headroom before letting any hedge go, which is a
+    band so wide nothing ever leaves.
+    """
+    with pytest.raises(ValueError, match="not a band"):
+        mandate(release_margin_pct=-1.0)
+    with pytest.raises(ValueError, match="not a band"):
+        mandate(release_margin_pct=100.0)
+
+
+def test_the_release_headroom_is_dollars_off_the_budget_not_the_account():
+    """15% of the budget, not 15% of the equity. On a 1,000,000 account at a 10%
+    budget that is 15,000 of slack -- a band inside the promise, not a second
+    promise."""
+    m = mandate(downside_budget_pct=10.0, release_margin_pct=15.0)
+    assert m.release_headroom(1_000_000) == pytest.approx(15_000)
+
+
+def test_the_three_mandates_let_go_of_protection_at_three_different_speeds():
+    """The same dial the client already turned for the budget, turned again.
+
+    Conservative demands the widest headroom before releasing a hedge and so
+    carries protection longest; aggressive hands it back soonest. Neither is a
+    tuning constant the agent chose.
+    """
+    margins = {name: m.release_margin_pct for name, m in load_all().items()}
+    assert margins["conservative"] > margins["balanced"] > margins["aggressive"]
+    assert margins["aggressive"] > 0, "even the impatient client keeps a band"
