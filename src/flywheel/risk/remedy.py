@@ -71,6 +71,11 @@ from flywheel.risk.stress import DEFAULT_SHOCKS, Holding, OptionLeg, gap_at, lad
 # exact zero would reject a position that overshoots by eleven dollars.
 CLOSED_ENOUGH = 500.0
 
+# The three, in no order. The order is the client's and lives in the mandate:
+# ranking a certain premium against a contingent ceiling needs a view on the
+# market, and a view the agent invented would be a forecast with a policy label.
+KINDS: tuple[str, ...] = ("protective_put", "collar", "reduce_exposure")
+
 
 @dataclass(frozen=True)
 class Remedy:
@@ -379,6 +384,10 @@ class Release:
     """
 
     legs: list[OptionLeg]  # contracts to close, positive, as held
+    # The book that is left once these are gone. Carried rather than re-derived
+    # because the caller's next question is always "and what do I still need?",
+    # and answering it from the released list means reconstructing the plan.
+    kept: list[OptionLeg]
     reason: str  # "spent" | "redundant" | "spent and redundant"
     describe: str
     slack_before: float
@@ -524,6 +533,7 @@ def release(
         reason = "spent" if spent else "redundant"
     return Release(
         legs=released,
+        kept=remaining,
         reason=reason,
         describe=", ".join(
             f"close {leg.contracts}x {leg.symbol} {leg.strike} put" for leg in released

@@ -17,6 +17,8 @@ from flywheel.execution.orders import OrderResult
 from flywheel.market.features import MarketSnapshot
 from flywheel.optimizer.candidates import Candidate
 from flywheel.optimizer.model import Allocation
+from flywheel.risk.book import Book
+from flywheel.risk.remedy import Release, Remedy
 from flywheel.risk.stress import Rung
 
 
@@ -41,6 +43,17 @@ class FlywheelState(TypedDict, total=False):
     # missing a leg. Carried into the journal rather than dropped: a gap
     # computed from an incomplete book is a weaker claim and has to read as one.
     book_complete: bool
+    # The positions the ladder was built from, carried forward so `protect` can
+    # work on the same book `mandate` measured. Refetching would let the two
+    # nodes disagree about what is held, and the second one would win silently.
+    book: Book | None
+    # Protection handed back this cycle, and the three ways to close what is
+    # left. `protection` is the one the mandate's stated order picked; the other
+    # two stay in `protection_options` because the journal has to show what was
+    # declined, not only what was done.
+    released: Release | None
+    protection: Remedy | None
+    protection_options: list[Remedy]
     regime: Regime
     regime_rationale: str
     actionable: list[str]
@@ -67,6 +80,10 @@ def initial_state(dry_run: bool = False) -> FlywheelState:
         ladder=[],
         protection_gap=0.0,
         book_complete=True,
+        book=None,
+        released=None,
+        protection=None,
+        protection_options=[],
         regime="calm",
         regime_rationale="",
         actionable=[],

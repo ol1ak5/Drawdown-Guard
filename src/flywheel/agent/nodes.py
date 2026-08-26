@@ -1,16 +1,21 @@
-"""The nine nodes of one trading cycle.
+"""The ten nodes of one trading cycle.
 
 The plan asked for one file per node. They are together here because they are
-one sequence over one state type, each is a dozen lines, and eight files whose
+one sequence over one state type, each is a dozen lines, and ten files whose
 contents only make sense read in order is not better separation — it is the
 same function with import statements between the paragraphs. The boundaries
 that matter are enforced by the state, not by the filesystem: a node returns a
 partial update and can touch nothing else.
 
-Order: reconcile, mandate, snapshot, regime, route, candidates, optimize,
-execute, journal. A halt after reconcile jumps straight to the journal, because
-a cycle that stopped and said nothing is indistinguishable from one that
-crashed.
+Order: reconcile, mandate, protect, snapshot, regime, route, candidates,
+optimize, execute, journal. A halt after reconcile jumps straight to the
+journal, because a cycle that stopped and said nothing is indistinguishable
+from one that crashed.
+
+The first three run before any market data is fetched, and that is the argument
+of the whole project rather than an accident of wiring. The agent finds out what
+it already owes the client, and what it would take to make good on it, before it
+is allowed to look at what it might like to buy.
 """
 
 from datetime import date
@@ -30,6 +35,7 @@ from flywheel.optimizer.model import optimize
 from flywheel.risk.book import to_book
 from flywheel.risk.limits import load_limits
 from flywheel.risk.mandate import load_mandate
+from flywheel.risk.remedy import collar, protective_put, reduce_exposure, release
 from flywheel.risk.stress import gap_at, ladder, unhedged_limit, worst_gap
 from flywheel.wheel import next_action
 
@@ -170,10 +176,188 @@ async def mandate_node(state: FlywheelState) -> FlywheelState:
         ladder=rungs,
         protection_gap=gap,
         book_complete=book.complete,
+        book=book,
     )
 
 
-# --- 3. snapshot ------------------------------------------------------------
+# --- 3. protect -------------------------------------------------------------
+
+
+async def protect_node(state: FlywheelState) -> FlywheelState:
+    """Close the gap the ladder found, the way the client said to close it.
+
+    Works on the book `mandate` measured, carried in state rather than fetched
+    again. Two reads of the same account a second apart can disagree, and the
+    second one would win without saying so — the gap would then be closed
+    against a book nobody reported.
+
+    RELEASING COMES FIRST, EVEN WITH A GAP OPEN
+    --------------------------------------------
+    Protection that pays nothing at the promised shock is cleared out before
+    anything is bought. That is what makes this a roll rather than an
+    accumulation: after a rally the old strike is dead weight, and an agent that
+    only ever added would carry every dead strike it had ever bought. Releasing
+    it cannot widen the gap, because a leg worth nothing at that rung was not
+    holding the promise up.
+
+    ONE SYMBOL, AND THE ASSUMPTION THAT MAKES IT HONEST
+    -----------------------------------------------------
+    The hedge is placed on the largest exposed holding rather than spread across
+    every one. That works because the ladder shocks every equity holding by the
+    same percentage, so protection sized on the total gap does close the gap the
+    ladder measures. The assumption is uniform, the book is not — QQQ and IWM
+    move more than SPY in a real decline — so the assumption is written into the
+    journal beside the number rather than left for a reader to discover.
+
+    AN INCOMPLETE BOOK STILL GETS PROTECTED
+    ----------------------------------------
+    If a position could not be priced the gap is a weaker claim, and the
+    temptation is to refuse to act on it. Refusing is not the cautious choice
+    here: it leaves a breach open for as long as one quote is missing. Buying
+    protection against a partially known book errs toward being over-insured,
+    which costs premium; skipping it errs toward being uncovered.
+
+    THE CHOICE IS NOT MADE HERE
+    ----------------------------
+    All three remedies are computed and all three are journalled. Which one is
+    taken comes from `protection_order`, stated by the client in advance. The
+    agent has no ranking of its own, because ranking a certain premium against a
+    contingent ceiling requires a view on the market and this project does not
+    have one.
+    """
+    portfolio = state.get("portfolio")
+    book = state.get("book")
+    if portfolio is None or book is None:
+        return FlywheelState()
+
+    mandate = load_mandate(strategy().get("mandate", "balanced"))
+    budget = mandate.budget(portfolio.equity)
+    shock = mandate.binding_shock
+
+    given = release(
+        book.holdings, book.legs, budget, shock, mandate.release_margin_pct
+    )
+    legs = given.kept if given else list(book.legs)
+    if given:
+        writer.write(
+            "protection.released",
+            {
+                "reason": given.reason,
+                "contracts": given.contracts,
+                "detail": given.describe,
+                "headroom_before": round(given.slack_before, 2),
+                "headroom_after": round(given.slack_after, 2),
+                "margin_required": round(given.margin_required, 2),
+                "tail_given_up": round(given.tail_given_up, 2),
+                "tail_shock": given.tail_shock,
+                "leaves_ceiling": given.leaves_ceiling,
+            },
+            severity="info",
+        )
+
+    rung = gap_at(ladder(book.holdings, legs, budget), shock)
+    gap = rung.gap if rung else 0.0
+    if gap <= 0:
+        return FlywheelState(released=given, protection_gap=gap)
+
+    exposed = [h for h in book.holdings if h.shocked and h.shares > 0]
+    if not exposed:
+        # A gap with no shares behind it is a short-option gap, and the answer
+        # to that is to stop selling rather than to buy a hedge for it.
+        writer.write(
+            "protection.no_underlying",
+            {"gap": round(gap, 2)},
+            severity="breach",
+        )
+        return FlywheelState(released=given, protection_gap=gap)
+
+    # Imported here rather than at module scope for the same reason
+    # `candidates_node` does it: the name is resolved at call time, so a test
+    # patching `flywheel.market.chain.load_chain` reaches this node too. A
+    # top-level import would bind the real function before any patch was applied
+    # and the test would exercise the network it meant to replace.
+    from flywheel.market.chain import load_chain
+
+    holding = max(exposed, key=lambda h: h.value)
+    config = strategy()
+    try:
+        puts = await load_chain(
+            holding.symbol, "P", config["dte"]["min"], config["dte"]["max"]
+        )
+        calls = await load_chain(
+            holding.symbol, "C", config["dte"]["min"], config["dte"]["max"]
+        )
+    except Exception as exc:  # noqa: BLE001 — reported, and the gap stays open
+        writer.write(
+            "protection.chain_unreadable",
+            {"symbol": holding.symbol, "gap": round(gap, 2), "detail": str(exc)},
+            severity="breach",
+        )
+        return FlywheelState(released=given, protection_gap=gap)
+
+    offers = [
+        remedy
+        for remedy in (
+            protective_put(
+                book.holdings, legs, budget, shock, holding.symbol, holding.price, puts
+            ),
+            collar(
+                book.holdings,
+                legs,
+                budget,
+                shock,
+                holding.symbol,
+                holding.price,
+                puts,
+                calls,
+            ),
+            reduce_exposure(book.holdings, legs, budget, shock, holding.symbol),
+        )
+        if remedy is not None
+    ]
+    rank = {kind: order for order, kind in enumerate(mandate.protection_order)}
+    closing = [remedy for remedy in offers if remedy.closes_the_gap]
+    chosen = min(closing, key=lambda r: rank[r.kind]) if closing else None
+
+    writer.write(
+        "protection.plan",
+        {
+            "mandate": mandate.name,
+            "symbol": holding.symbol,
+            "spot": holding.price,
+            "gap": round(gap, 2),
+            "book_complete": book.complete,
+            # Stated, not implied: the ladder moves every equity holding by the
+            # same percentage, so one symbol can carry the whole hedge.
+            "assumes": "a uniform shock across every exposed holding",
+            "preference": list(mandate.protection_order),
+            "offers": [
+                {
+                    "kind": remedy.kind,
+                    "detail": remedy.describe,
+                    "premium_cost": round(remedy.premium_cost, 2),
+                    "forgone_upside": round(remedy.forgone_upside, 2),
+                    "upside_measured_at": remedy.upside_measured_at,
+                    "gap_after": round(remedy.gap_after, 2),
+                    "closes_the_gap": remedy.closes_the_gap,
+                }
+                for remedy in offers
+            ],
+            "chosen": chosen.kind if chosen else None,
+        },
+        # Still a breach until something is actually placed. A plan is not a
+        # position, and the journal should not read as though it were.
+        severity="breach",
+    )
+    return FlywheelState(
+        released=given,
+        protection=chosen,
+        protection_options=offers,
+        protection_gap=gap,
+    )
+
+
+# --- 4. snapshot ------------------------------------------------------------
 
 
 async def snapshot_node(state: FlywheelState) -> FlywheelState:
@@ -196,7 +380,7 @@ async def snapshot_node(state: FlywheelState) -> FlywheelState:
     return FlywheelState(snapshots=snapshots)
 
 
-# --- 4. regime --------------------------------------------------------------
+# --- 5. regime --------------------------------------------------------------
 
 
 async def regime_node(state: FlywheelState) -> FlywheelState:
@@ -226,7 +410,7 @@ async def regime_node(state: FlywheelState) -> FlywheelState:
     return FlywheelState(regime=regime, regime_rationale=rationale)
 
 
-# --- 5. route ---------------------------------------------------------------
+# --- 6. route ---------------------------------------------------------------
 
 
 async def route_node(state: FlywheelState) -> FlywheelState:
@@ -251,7 +435,7 @@ def _resting(symbol: str):
     return WheelState(symbol=symbol)
 
 
-# --- 6. candidates ----------------------------------------------------------
+# --- 7. candidates ----------------------------------------------------------
 
 
 async def candidates_node(state: FlywheelState) -> FlywheelState:
@@ -304,7 +488,7 @@ async def candidates_node(state: FlywheelState) -> FlywheelState:
     return FlywheelState(candidates=candidates)
 
 
-# --- 7. optimize ------------------------------------------------------------
+# --- 8. optimize ------------------------------------------------------------
 
 
 async def optimize_node(state: FlywheelState) -> FlywheelState:
@@ -332,7 +516,7 @@ async def optimize_node(state: FlywheelState) -> FlywheelState:
     return FlywheelState(allocations=[a for a in allocations if a.contracts > 0])
 
 
-# --- 8. execute -------------------------------------------------------------
+# --- 9. execute -------------------------------------------------------------
 
 
 async def execute_node(state: FlywheelState) -> FlywheelState:
@@ -367,7 +551,7 @@ async def execute_node(state: FlywheelState) -> FlywheelState:
     return FlywheelState(results=results)
 
 
-# --- 9. journal -------------------------------------------------------------
+# --- 10. journal -------------------------------------------------------------
 
 
 async def journal_node(state: FlywheelState) -> FlywheelState:
@@ -396,6 +580,17 @@ async def journal_node(state: FlywheelState) -> FlywheelState:
             "refused": sum(1 for r in state.get("results", []) if not r.submitted),
             "protection_gap": state.get("protection_gap", 0.0),
             "book_complete": state.get("book_complete", True),
+            # What the agent would do about the gap, and what it gave back.
+            # `protection` being None with a non-zero gap is the case worth
+            # spotting in a week of logs: the promise is broken and nothing on
+            # offer closes it.
+            "protection": (
+                state["protection"].kind if state.get("protection") else None
+            ),
+            "protection_offers": len(state.get("protection_options") or []),
+            "released": (
+                state["released"].contracts if state.get("released") else 0
+            ),
             "discrepancies": state.get("discrepancies", []),
             "dry_run": state.get("dry_run", False),
         },

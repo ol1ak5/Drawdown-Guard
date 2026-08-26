@@ -3,10 +3,16 @@
 Linear from reconcile to journal, with exactly one conditional edge: a halt
 after reconcile jumps straight to the journal.
 
-`mandate` sits second, before any market data is fetched. The stress ladder is
-built from the positions already held, so it needs nothing from the market, and
-running it first means the protection gap is an input to the cycle's decisions
-rather than a report written after them.
+`mandate` sits second and `protect` third, both before any market data is
+fetched for the wheel. The stress ladder is built from the positions already
+held, so it needs nothing from the market, and running it first means the
+protection gap is an input to the cycle's decisions rather than a report written
+after them. `protect` then decides what closing that gap would take — while the
+agent still has no idea what it might prefer to sell.
+
+The order is the claim. An agent that picked its trades and then measured the
+risk would be checking its own homework, and every number it published would be
+a justification rather than a constraint.
 
 That edge is the whole point of using a graph rather than a function that
 returns early. An early return can skip the journal — and a cycle that stopped
@@ -23,6 +29,7 @@ from flywheel.agent.nodes import (
     journal_node,
     mandate_node,
     optimize_node,
+    protect_node,
     reconcile_node,
     regime_node,
     route_node,
@@ -33,6 +40,7 @@ from flywheel.agent.state import FlywheelState, initial_state
 NODES = (
     ("reconcile", reconcile_node),
     ("mandate", mandate_node),
+    ("protect", protect_node),
     ("snapshot", snapshot_node),
     ("regime", regime_node),
     ("route", route_node),

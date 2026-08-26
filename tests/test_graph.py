@@ -6,7 +6,7 @@ nothing — and those are exactly the claims a live test would verify least
 reliably, because a live run that happens not to trade proves nothing.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 
 from flywheel.agent.graph import build_graph
+from flywheel.agent.nodes import strategy
 from flywheel.agent.state import initial_state
 from flywheel.domain import Portfolio, WheelState
 from flywheel.journal import writer
@@ -64,19 +65,39 @@ def snapshot(symbol: str) -> MarketSnapshot:
 
 
 async def run(
-    portfolio, chain_rows=None, journal_dir=None, positions=None, positions_error=None
+    portfolio,
+    chain_rows=None,
+    journal_dir=None,
+    positions=None,
+    positions_error=None,
+    chain_error=None,
 ):
     """Invoke the graph with the broker and the market replaced.
 
     `positions_error` belongs here rather than in a `patch` around the call:
     this helper patches `get_positions` itself, so an outer patch of the same
     name is shadowed by the inner one and the test silently exercises nothing.
+
+    The chain mock filters by `right`, because two nodes now ask for chains and
+    they want different things: `protect` needs puts and calls in the same cycle
+    to price a collar, while `candidates` asks for one side at a time. Handing
+    both nodes the same undifferentiated list would let the collar sell a put as
+    though it were a call and still pass.
     """
     chain_rows = chain_rows if chain_rows is not None else []
     reader = (
         AsyncMock(side_effect=positions_error)
         if positions_error
         else AsyncMock(return_value=positions if positions is not None else [])
+    )
+
+    def by_right(symbol, right, *args, **kwargs):
+        return [row for row in chain_rows if row.get("right", right) == right]
+
+    chain = (
+        AsyncMock(side_effect=chain_error)
+        if chain_error
+        else AsyncMock(side_effect=by_right)
     )
     with (
         patch(
@@ -88,10 +109,7 @@ async def run(
             "flywheel.agent.nodes.build_snapshot",
             new=AsyncMock(side_effect=lambda s, *a, **k: snapshot(s)),
         ),
-        patch(
-            "flywheel.market.chain.load_chain",
-            new=AsyncMock(return_value=chain_rows),
-        ),
+        patch("flywheel.market.chain.load_chain", new=chain),
         patch("flywheel.journal.writer.JOURNAL_DIR", journal_dir),
         patch(
             "flywheel.execution.orders.call_tool",
@@ -257,6 +275,196 @@ async def test_a_halted_cycle_never_reaches_the_ladder(journal_dir):
     drawn = healthy_portfolio(equity=Decimal("800000"), peak_equity=Decimal("1000000"))
     _, _ = await run(drawn, journal_dir=journal_dir)
     assert not [e for e in entries(journal_dir) if e["event"] == "mandate.stress"]
+
+
+# --- closing the gap --------------------------------------------------------
+
+
+def chain_row(strike: float, bid: float, ask: float, right: str) -> dict:
+    """One tradable contract, with every field both consumers read."""
+    return {
+        "occ_symbol": f"SPY__{right}{strike:.0f}",
+        "strike": Decimal(str(strike)),
+        "expiry": date.today() + timedelta(days=28),
+        "right": right,
+        "bid": Decimal(str(bid)),
+        "ask": Decimal(str(ask)),
+        "open_interest": 5_000,
+        "implied_vol": 0.20,
+    }
+
+
+# A put that pays 40 a share at the promised shock, and a call above spot rich
+# enough to fund it. Together they make all three remedies available, which is
+# what lets a test about *choosing* mean anything.
+CHAIN = [chain_row(440, 3.90, 4.00, "P"), chain_row(540, 5.00, 5.10, "C")]
+
+EXPOSED = [
+    {"symbol": "SPY", "qty": "1200", "current_price": "500", "avg_entry_price": "500"}
+]
+
+
+async def test_the_gap_is_closed_the_way_the_mandate_said_to_close_it(journal_dir):
+    """The choice is the client's, and the journal has to show it was theirs.
+
+    All three remedies close this gap. `balanced` ranks the collar first —
+    staying invested and paying in ceiling rather than in cash — so the collar
+    is what comes out. Nothing here scored them against each other, because
+    scoring a certain premium against a contingent ceiling needs a view on the
+    market that this project does not have.
+    """
+    final, _ = await run(
+        healthy_portfolio(), chain_rows=CHAIN, journal_dir=journal_dir,
+        positions=EXPOSED,
+    )
+
+    assert final["protection"].kind == "collar"
+    plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
+    assert plan["payload"]["chosen"] == "collar"
+    assert plan["payload"]["preference"][0] == "collar"
+    assert plan["payload"]["symbol"] == "SPY"
+    assert plan["severity"] == "breach", "a plan is not a position"
+
+
+async def test_the_two_remedies_that_were_declined_are_recorded_too(journal_dir):
+    """An agent that logged only what it did would be unfalsifiable.
+
+    The reader has to be able to see the alternatives and check that the one
+    taken was the one the mandate named, rather than the one that happened to
+    come out of a loop first.
+    """
+    final, _ = await run(
+        healthy_portfolio(), chain_rows=CHAIN, journal_dir=journal_dir,
+        positions=EXPOSED,
+    )
+    plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
+    kinds = {o["kind"] for o in plan["payload"]["offers"]}
+
+    assert kinds == {"protective_put", "collar", "reduce_exposure"}
+    assert all(o["closes_the_gap"] for o in plan["payload"]["offers"])
+    assert len(final["protection_options"]) == 3
+    # The three prices, in the three units they are actually paid in.
+    priced = {o["kind"]: o for o in plan["payload"]["offers"]}
+    assert priced["protective_put"]["forgone_upside"] == 0.0
+    assert priced["collar"]["premium_cost"] < priced["protective_put"]["premium_cost"]
+    assert priced["reduce_exposure"]["premium_cost"] == 0.0
+
+
+async def test_a_different_client_gets_a_different_answer_to_the_same_gap(journal_dir):
+    """The proof that the preference is doing the deciding.
+
+    Same book, same chain, same shock. `conservative` ranks owning less risk
+    above insuring it, and gets told to sell shares; `balanced` wants to stay
+    invested and gets a collar. If the agent had a ranking of its own, both
+    clients would receive the same advice and one of them would be getting
+    somebody else's.
+
+    It also rules out the dull way this could pass: the offers are built in the
+    order put, collar, sell, so an implementation that ignored the mandate and
+    took the first would answer `protective_put` for everyone.
+    """
+    careful = {**strategy(), "mandate": "conservative"}
+    with patch("flywheel.agent.nodes.strategy", return_value=careful):
+        final, _ = await run(
+            healthy_portfolio(),
+            chain_rows=CHAIN,
+            journal_dir=journal_dir,
+            positions=EXPOSED,
+        )
+
+    assert final["protection"].kind == "reduce_exposure"
+    # And the gap it was answering is four times the balanced one, because a 5%
+    # budget on the same book is a stricter promise about the same positions.
+    plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
+    assert plan["payload"]["mandate"] == "conservative"
+    assert plan["payload"]["gap"] == pytest.approx(70_000, abs=1)
+
+
+async def test_the_uniform_shock_assumption_is_written_down_next_to_the_hedge(
+    journal_dir,
+):
+    """One symbol carries the whole hedge, and that only works because the
+    ladder moves every equity holding by the same percentage. Real declines do
+    not, so the assumption is recorded rather than left to be discovered."""
+    _, _ = await run(
+        healthy_portfolio(), chain_rows=CHAIN, journal_dir=journal_dir,
+        positions=EXPOSED,
+    )
+    plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
+    assert "uniform shock" in plan["payload"]["assumes"]
+
+
+async def test_spent_protection_is_handed_back_before_anything_is_bought(journal_dir):
+    """The roll, in the live cycle.
+
+    A 380 put against a 500 stock pays nothing at -20%, so it is not holding the
+    promise up and it goes back. The gap it leaves behind is unchanged, and the
+    same cycle then buys a strike that actually reaches.
+    """
+    held = [
+        *EXPOSED,
+        {
+            "symbol": "SPY260925P00380000",
+            "qty": "2",
+            "current_price": "1.00",
+            "avg_entry_price": "5.00",
+        },
+    ]
+    final, _ = await run(
+        healthy_portfolio(), chain_rows=CHAIN, journal_dir=journal_dir, positions=held
+    )
+
+    given = [e for e in entries(journal_dir) if e["event"] == "protection.released"]
+    assert given, "a spent leg has to be released even while the gap is open"
+    assert given[-1]["payload"]["reason"] == "spent"
+    assert given[-1]["payload"]["contracts"] == 2
+    # Releasing it cost no headroom, which is what makes it safe to do first.
+    assert given[-1]["payload"]["headroom_after"] == pytest.approx(
+        given[-1]["payload"]["headroom_before"]
+    )
+    # And the cycle still closed the gap afterwards.
+    assert final["protection"] is not None
+
+
+async def test_a_chain_that_cannot_be_read_leaves_the_gap_open_and_says_so(journal_dir):
+    """The failure that must never be quiet.
+
+    No chain means no protection can be priced, so the client's promise stays
+    broken. That is a breach in the journal and an unclosed gap in the state —
+    not a skipped cycle, and not a zero.
+    """
+    final, _ = await run(
+        healthy_portfolio(),
+        chain_rows=CHAIN,
+        journal_dir=journal_dir,
+        positions=EXPOSED,
+        chain_error=RuntimeError("chain endpoint down"),
+    )
+
+    written = entries(journal_dir)
+    failed = [e for e in written if e["event"] == "protection.chain_unreadable"]
+    assert failed and failed[-1]["severity"] == "breach"
+    assert final["protection"] is None
+    assert final["protection_gap"] == pytest.approx(20_000, abs=1)
+    assert final["halted"] is False, "one bad chain is not a reason to stop"
+
+
+async def test_a_book_inside_its_budget_is_offered_no_protection(journal_dir):
+    """No gap, no plan, no journal noise. An agent that produced a protection
+    plan every cycle would be an agent with a reason to find a gap."""
+    inside = [
+        {
+            "symbol": "SPY",
+            "qty": "1000",
+            "current_price": "500",
+            "avg_entry_price": "500",
+        }
+    ]
+    final, _ = await run(
+        healthy_portfolio(), chain_rows=CHAIN, journal_dir=journal_dir, positions=inside
+    )
+    assert final["protection"] is None
+    assert not [e for e in entries(journal_dir) if e["event"] == "protection.plan"]
 
 
 async def test_symbols_already_holding_a_position_are_not_traded_again(journal_dir):

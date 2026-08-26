@@ -55,6 +55,10 @@ conservative:
   # is released, so this client keeps paying for protection through the range
   # where the other two would have handed it back.
   release_margin_pct: 25.0
+  # Owning less risk beats insuring it. No expiry, no counterparty, no spread to
+  # cross again in three weeks -- the cost is participation, and this client
+  # said in the first line that income is optional.
+  protection_order: [reduce_exposure, protective_put, collar]
 
 balanced:
   description: >
@@ -74,6 +78,10 @@ balanced:
   # line and back; narrow enough that a hedge against a position which has
   # actually closed does not survive the week.
   release_margin_pct: 15.0
+  # Stay invested and pay for it with ceiling rather than with cash. A collar
+  # keeps the capital working; selling shares to fix a temporary breach is the
+  # last resort for a client whose whole purpose is to remain in the market.
+  protection_order: [collar, protective_put, reduce_exposure]
 
 aggressive:
   description: >
@@ -103,3 +111,7 @@ aggressive:
   # than nothing -- since even an impatient client should not fund a round trip
   # across the spread every time the book crosses its own line.
   release_margin_pct: 10.0
+  # Pays cash first, because cash is the only one of the three prices that does
+  # not cost upside. A collar's ceiling is exactly what this mandate exists to
+  # keep, so it ranks second despite usually being cheaper.
+  protection_order: [protective_put, collar, reduce_exposure]

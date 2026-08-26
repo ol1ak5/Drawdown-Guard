@@ -34,6 +34,7 @@ import yaml
 from pydantic import BaseModel, model_validator
 
 from flywheel.risk.limits import Limits
+from flywheel.risk.remedy import KINDS
 from flywheel.risk.stress import DEFAULT_SHOCKS
 
 MANDATES_PATH = Path("config/mandates.yaml")
@@ -83,6 +84,13 @@ class Mandate(BaseModel):
     # here -- a hysteresis band invented by the agent would be a tuning
     # parameter, and tuning parameters are where forecasts hide.
     release_margin_pct: float = 15.0
+    # Which way to close a gap, in the client's order of preference. This is the
+    # field that exists because the agent refuses to invent a ranking: certain
+    # premium, a contingent ceiling and permanent participation are three
+    # different currencies, and putting them on one axis needs a view on where
+    # the market goes. Stated by the client, it is policy. Computed by the
+    # agent, it would be a forecast wearing a policy's clothes.
+    protection_order: list[str] = list(KINDS)
 
     def release_headroom(self, equity: float | Decimal) -> float:
         """The dollars of slack required before protection may be released."""
@@ -112,6 +120,14 @@ class Mandate(BaseModel):
             raise ValueError(f"{self.name}: deployment must be within (0, 100]")
         if not 0 < self.downside_budget_pct <= 100:
             raise ValueError(f"{self.name}: a downside budget must be within (0, 100]")
+        if sorted(self.protection_order) != sorted(KINDS):
+            raise ValueError(
+                f"{self.name}: protection_order must rank all three remedies "
+                f"exactly once, got {self.protection_order}. A partial order "
+                f"would leave the agent to invent a preference for whatever was "
+                f"omitted, which is the decision this field exists to take away "
+                f"from it."
+            )
         if not 0 <= self.release_margin_pct < 100:
             raise ValueError(
                 f"{self.name}: a release margin of {self.release_margin_pct}% is "
