@@ -35,6 +35,19 @@ not options. Measured at the time of writing: SPY 1.6 bp, QQQ 1.1 bp, IWM
 8.7 bp, BIL 1.1 bp. Crossing a spread of one hundredth of a percent once, to
 establish a position held for months, is not the same act.
 
+WHEN THE AGENT ALREADY HAS AN OVERLAY OPEN
+-------------------------------------------
+The first version refused if the account held any position at all, which was
+too blunt: it counted the agent's own short puts as an established portfolio
+and blocked the very thing it exists to do. It now refuses only if a *target
+holding* already exists, and otherwise reserves the collateral those puts
+require and sizes around it.
+
+The reduction comes out of BIL. The equity sleeve is sized by the mandate, and
+shrinking it to make room would quietly shrink the protection gap as well --
+the portfolio would stop demonstrating the thing it was built to demonstrate,
+and the demo would look better for the wrong reason.
+
 BIL IS BALLAST, NOT A HEDGE
 ---------------------------
 Short-duration Treasury bills sit where capital waits. They are not protection
@@ -50,6 +63,8 @@ import argparse
 import asyncio
 from decimal import Decimal
 
+from flywheel.domain import SHARES_PER_CONTRACT
+from flywheel.execution.reconcile import parse_occ
 from flywheel.journal import writer
 from flywheel.mcp.alpaca_client import FULL_TOOLSETS, _unwrap, alpaca_session
 
@@ -61,6 +76,10 @@ TARGET = {
     "BIL": Decimal("250000"),
 }
 
+# Cash held back beyond the collateral, so a fill a few cents through the quote
+# cannot leave a short put uncovered by rounding.
+CASH_BUFFER = Decimal("10000")
+
 # What each holding is for. Carried into the journal so the roles are recorded
 # with the position rather than living only in someone's memory.
 ROLE = {
@@ -69,6 +88,28 @@ ROLE = {
     "IWM": "equity exposure",
     "BIL": "ballast — not protection",
 }
+
+
+def short_put_collateral(positions: list[dict]) -> Decimal:
+    """Cash the existing overlay ties up, at full strike value.
+
+    Alpaca reports four million of buying power on this account, because it is
+    a margin account and margin is how a broker prices a short put. This
+    project does not use it: `forbid_naked` requires every short put to be
+    covered by the whole strike in cash, and that rule has no override
+    anywhere. So the reservation is computed here rather than read from the
+    broker, and the number is deliberately larger than the one Alpaca would
+    demand.
+    """
+    total = Decimal("0")
+    for position in positions:
+        occ = parse_occ(str(position["symbol"]))
+        if occ is None or occ["right"] != "P":
+            continue
+        qty = int(Decimal(str(position.get("qty", 0))))
+        if qty < 0:
+            total += occ["strike"] * abs(qty) * SHARES_PER_CONTRACT
+    return total
 
 
 async def quote(session, symbol: str) -> float:
@@ -99,12 +140,30 @@ async def main() -> int:
             ).get("result")
             or []
         )
-        if positions:
-            print(f"refusing: the account already holds {len(positions)} positions.")
+        held_shares = [
+            p
+            for p in positions
+            if parse_occ(str(p["symbol"])) is None and str(p["symbol"]) in TARGET
+        ]
+        if held_shares:
+            print(f"refusing: {len(held_shares)} of the target holdings already exist.")
             print("This script establishes a portfolio; it does not adjust one.")
-            for p in positions:
+            for p in held_shares:
                 print(f"  {p.get('symbol')}  qty {p.get('qty')}")
             return 1
+
+        reserved = short_put_collateral(positions)
+        if reserved:
+            print("the agent already has an overlay open. Collateral reserved:")
+            for p in positions:
+                occ = parse_occ(str(p["symbol"]))
+                if occ and occ["right"] == "P" and int(Decimal(str(p["qty"]))) < 0:
+                    qty = abs(int(Decimal(str(p["qty"]))))
+                    print(
+                        f"  {p['symbol']}  {qty} short  "
+                        f"{occ['strike'] * qty * SHARES_PER_CONTRACT:,.0f}"
+                    )
+            print(f"  {'total':<26}{reserved:>14,.0f}\n")
 
         clock = _unwrap(await session.call_tool("get_clock", {}), "c")["data"]
         if not clock.get("is_open"):
@@ -114,12 +173,34 @@ async def main() -> int:
                 return 1
 
         print(f"equity {equity:,.0f}   cash {cash:,.0f}\n")
+
+        targets = dict(TARGET)
+        # Room for the collateral comes out of the ballast, never out of the
+        # equity sleeve. The equity sleeve is sized by the mandate -- shrinking
+        # it to fit an overlay would quietly shrink the protection gap too, and
+        # the portfolio would stop demonstrating the thing it exists to
+        # demonstrate. BIL is where capital waits, so BIL is what waits.
+        shortfall = reserved + CASH_BUFFER - (cash - sum(targets.values()))
+        if shortfall > 0:
+            if targets["BIL"] - shortfall < 0:
+                print(
+                    f"refusing: {reserved:,.0f} of collateral plus a "
+                    f"{CASH_BUFFER:,.0f} buffer leaves no room for the "
+                    f"{sum(v for k, v in targets.items() if k != 'BIL'):,.0f} "
+                    f"equity sleeve. Close the overlay first, or size it smaller."
+                )
+                return 1
+            targets["BIL"] -= shortfall
+            print(
+                f"ballast reduced by {shortfall:,.0f} to keep the short puts "
+                f"cash-secured. Equity exposure is unchanged.\n"
+            )
+
         print(f"{'symbol':<7}{'role':<26}{'price':>9}{'shares':>9}{'value':>13}")
         print("-" * 64)
-
         plan = []
         spent = Decimal("0")
-        for symbol, target in TARGET.items():
+        for symbol, target in targets.items():
             price = await quote(session, symbol)
             shares = int(target / Decimal(str(price)))
             value = Decimal(str(price)) * shares
@@ -134,6 +215,12 @@ async def main() -> int:
         equity_value = sum(v for s, _, _, v in plan if s != "BIL")
         print(f"{'':<42}{'deployed':>9}{spent:>13,.0f}")
         print(f"{'':<42}{'cash left':>9}{remaining:>13,.0f}")
+        if reserved:
+            print(f"{'':<42}{'reserved':>9}{reserved:>13,.0f}")
+            print(f"{'':<42}{'free':>9}{remaining - reserved:>13,.0f}")
+            if remaining < reserved:
+                print("\nrefusing: this plan would leave a short put uncovered.")
+                return 1
         print(
             f"\nequity exposure {equity_value:,.0f} "
             f"({equity_value / equity * 100:.1f}% of capital)"
