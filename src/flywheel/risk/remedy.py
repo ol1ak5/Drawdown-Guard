@@ -26,6 +26,24 @@ and the mandate names the order it prefers. A preference stated in advance by
 the client is a policy; a score invented by the agent is a forecast wearing a
 lab coat.
 
+There is a sharper reason than fastidiousness. The obvious score is cash, and
+cash is the one axis on which selling shares always wins: it costs nothing to
+sell. An agent ranking on cost would therefore liquidate the portfolio one
+breach at a time and report an excellent cost record while doing it. The score
+would not be merely unfounded, it would be reliably wrong in one direction.
+
+WHAT *CAN* BE COMPARED, AND IS
+------------------------------
+Within one currency the arithmetic is honest and gets done. `cash_per_1k`
+prices the two option remedies against each other -- dollars of premium per
+thousand dollars of gap closed -- and it is a fact, not a view. It is `None`
+for anything that costs no cash, so a remedy that is not competing on that axis
+cannot win on it by scoring zero. Across currencies there is nothing to
+compute, and `permanent` is the reason: a put expires and the book returns to
+where it was, while a share sold does not come back. The client is told which
+remedies are undoable and ranks them; the agent does not decide how much a
+one-way door is worth.
+
 WHY `gap_after` IS RECOMPUTED, NOT ESTIMATED
 ---------------------------------------------
 Every remedy reports the gap it would leave by building the proposed position
@@ -102,6 +120,41 @@ class Remedy:
     @property
     def closes_the_gap(self) -> bool:
         return self.gap_after <= CLOSED_ENOUGH
+
+    @property
+    def gap_closed(self) -> float:
+        """Dollars of shortfall this removes. Never negative."""
+        return max(self.gap_before - self.gap_after, 0.0)
+
+    @property
+    def permanent(self) -> bool:
+        """True when the remedy has no expiry and cannot be undone.
+
+        Keyed on shares actually sold rather than on `kind`, because it is a
+        fact about the position and not about the label. A put and a collar both
+        expire and hand the book back unchanged; a share sold is a decision the
+        client cannot reverse by waiting, and the only way back is to buy it
+        again at whatever it then costs.
+
+        This is the field that stops a temporary breach from being answered
+        permanently. A gap opened by a 3% move can close on a 3% move back, and
+        a three-week put is sized to exactly that kind of cause.
+        """
+        return bool(self.shares_sold)
+
+    @property
+    def cash_per_1k(self) -> float | None:
+        """Premium per 1,000 dollars of gap closed, or None if it costs no cash.
+
+        The one comparison this module is willing to make, because both sides
+        of it are dollars leaving the account today. `None` rather than zero for
+        a credit or a share sale: zero would read as "free" and win a ranking it
+        is not standing in. A remedy that costs no cash is not cheap, it is
+        priced in something else, and the something else is on the next line.
+        """
+        if self.premium_cost <= 0 or self.gap_closed <= 0:
+            return None
+        return self.premium_cost * 1000 / self.gap_closed
 
     def line(self) -> str:
         """One row for the journal and the status page."""

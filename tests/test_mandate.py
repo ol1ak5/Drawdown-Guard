@@ -251,3 +251,35 @@ def test_the_three_mandates_let_go_of_protection_at_three_different_speeds():
     margins = {name: m.release_margin_pct for name, m in load_all().items()}
     assert margins["conservative"] > margins["balanced"] > margins["aggressive"]
     assert margins["aggressive"] > 0, "even the impatient client keeps a band"
+
+
+def test_no_shipped_mandate_reaches_for_the_shares_first():
+    """A correction, pinned so it cannot drift back.
+
+    `conservative` once ranked `reduce_exposure` first, on the argument that
+    owning less risk beats insuring it. At a 5% budget that mandate is in
+    deficit almost every cycle, so "first" meant "every time": the agent would
+    sell on every gap and buy back on none, and a profile named for preserving
+    capital would spend itself down to a quarter invested through a series of
+    permanent answers to temporary breaches.
+
+    Selling shares stays available to all three -- last.
+    """
+    for name, m in load_all().items():
+        assert m.protection_order[-1] == "reduce_exposure", name
+        assert m.allow_reduce_exposure, name
+
+
+def test_permission_to_sell_shares_is_a_separate_field_from_preference():
+    """Ranking a remedy last still leaves it reachable, which is the point.
+
+    A client who will not sell a holding at all is not expressing a mild
+    dislike, and an order alone cannot say so. The two fields answer different
+    questions and neither implies the other.
+    """
+    m = mandate(
+        protection_order=["protective_put", "collar", "reduce_exposure"],
+        allow_reduce_exposure=False,
+    )
+    assert m.protection_order[-1] == "reduce_exposure"
+    assert not m.allow_reduce_exposure

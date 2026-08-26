@@ -55,10 +55,28 @@ conservative:
   # is released, so this client keeps paying for protection through the range
   # where the other two would have handed it back.
   release_margin_pct: 25.0
-  # Owning less risk beats insuring it. No expiry, no counterparty, no spread to
-  # cross again in three weeks -- the cost is participation, and this client
-  # said in the first line that income is optional.
-  protection_order: [reduce_exposure, protective_put, collar]
+  # Corrected on 2026-08-26. This read [reduce_exposure, protective_put, collar]
+  # on the argument that owning less risk beats insuring it -- no expiry, no
+  # counterparty, no spread to cross again in three weeks. That argument is
+  # one-sided and the arithmetic shows how.
+  #
+  # At a 5% budget this mandate permits unprotected exposure of only a quarter of
+  # capital, so it is in deficit nearly every cycle. Ranked first, selling shares
+  # is therefore not the occasional honest answer, it is the standing one: the
+  # agent would sell on every cycle a gap is open and buy back on none of them,
+  # because nothing in this system buys shares deliberately. The portfolio would
+  # walk down to the 25% line through a sequence of permanent decisions taken in
+  # response to a condition that is usually temporary -- a gap opened by a 3%
+  # move closes on a 3% move back, and a three-week put is priced for exactly
+  # that. Preservation of capital is not the same as disposal of it.
+  #
+  # So protection first, and shares last: still reachable on a day when no strike
+  # closes the gap, never the default.
+  protection_order: [protective_put, collar, reduce_exposure]
+  # Left available. A mandate that forbids it outright can end a cycle in breach
+  # with no remedy at all, which is a decision for a client to take knowingly
+  # rather than one to inherit from a profile name.
+  allow_reduce_exposure: true
 
 balanced:
   description: >

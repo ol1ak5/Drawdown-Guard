@@ -19,6 +19,7 @@ from flywheel.agent.state import initial_state
 from flywheel.domain import Portfolio, WheelState
 from flywheel.journal import writer
 from flywheel.market.features import MarketSnapshot
+from flywheel.risk.mandate import load_mandate
 
 SYMBOLS = ["SPY", "QQQ", "IWM"]
 
@@ -353,15 +354,15 @@ async def test_the_two_remedies_that_were_declined_are_recorded_too(journal_dir)
 async def test_a_different_client_gets_a_different_answer_to_the_same_gap(journal_dir):
     """The proof that the preference is doing the deciding.
 
-    Same book, same chain, same shock. `conservative` ranks owning less risk
-    above insuring it, and gets told to sell shares; `balanced` wants to stay
-    invested and gets a collar. If the agent had a ranking of its own, both
-    clients would receive the same advice and one of them would be getting
-    somebody else's.
+    Same book, same chain, same shock. `conservative` buys the floor outright;
+    `balanced` wants to stay invested and pays with ceiling instead of cash, so
+    it gets a collar. If the agent had a ranking of its own, both clients would
+    receive the same advice and one of them would be getting somebody else's.
 
-    It also rules out the dull way this could pass: the offers are built in the
-    order put, collar, sell, so an implementation that ignored the mandate and
-    took the first would answer `protective_put` for everyone.
+    The dull way this could pass is ruled out by the balanced half: offers are
+    built in the order put, collar, sell, so an implementation that ignored the
+    mandate and took the first would answer `protective_put` for everyone --
+    including the client that must come back with a collar.
     """
     careful = {**strategy(), "mandate": "conservative"}
     with patch("flywheel.agent.nodes.strategy", return_value=careful):
@@ -372,12 +373,60 @@ async def test_a_different_client_gets_a_different_answer_to_the_same_gap(journa
             positions=EXPOSED,
         )
 
-    assert final["protection"].kind == "reduce_exposure"
-    # And the gap it was answering is four times the balanced one, because a 5%
-    # budget on the same book is a stricter promise about the same positions.
+    assert final["protection"].kind == "protective_put"
+    # And the gap it was answering is three and a half times the balanced one,
+    # because a 5% budget on the same book is a stricter promise about the same
+    # positions.
     plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
     assert plan["payload"]["mandate"] == "conservative"
     assert plan["payload"]["gap"] == pytest.approx(70_000, abs=1)
+
+    balanced, _ = await run(
+        healthy_portfolio(),
+        chain_rows=CHAIN,
+        journal_dir=journal_dir,
+        positions=EXPOSED,
+    )
+    assert balanced["protection"].kind == "collar"
+
+
+async def test_a_client_who_will_not_sell_shares_is_never_offered_the_sale(
+    journal_dir,
+):
+    """The switch, and the reason it is not just a ranking.
+
+    Ranked last, selling shares is still reachable on a day when no strike
+    closes the gap. For a client who will not sell a legacy holding at all that
+    is not a fallback, it is the one mistake available. So permission is a
+    separate field from preference.
+
+    The exclusion is journalled rather than left as an absence: an option
+    missing from the record is indistinguishable from an option that never
+    existed, and the client needs to be able to see their own instruction being
+    obeyed.
+    """
+    plain = {**strategy(), "mandate": "balanced"}
+    forbidden = load_mandate("balanced").model_copy(
+        update={"allow_reduce_exposure": False}
+    )
+    with (
+        patch("flywheel.agent.nodes.strategy", return_value=plain),
+        patch("flywheel.agent.nodes.load_mandate", return_value=forbidden),
+    ):
+        final, _ = await run(
+            healthy_portfolio(),
+            chain_rows=CHAIN,
+            journal_dir=journal_dir,
+            positions=EXPOSED,
+        )
+
+    kinds = [remedy.kind for remedy in final["protection_options"]]
+    assert "reduce_exposure" not in kinds
+    # The other two are still offered, so the gap is still closed. Forbidding a
+    # remedy is not the same as refusing to act.
+    assert final["protection"] is not None
+    plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
+    assert plan["payload"]["excluded"] == ["reduce_exposure"]
 
 
 async def test_the_uniform_shock_assumption_is_written_down_next_to_the_hedge(

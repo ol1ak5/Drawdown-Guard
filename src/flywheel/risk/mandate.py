@@ -91,6 +91,17 @@ class Mandate(BaseModel):
     # the market goes. Stated by the client, it is policy. Computed by the
     # agent, it would be a forecast wearing a policy's clothes.
     protection_order: list[str] = list(KINDS)
+    # Whether the agent may sell the client's shares to close a gap at all.
+    # Separate from `protection_order` on purpose: order is a preference and
+    # permission is a fact, and a client who will never sell a legacy holding is
+    # not expressing a mild dislike of it. Ranking it last would still let the
+    # agent reach for it on a day when the chain is thin, which for that client
+    # is not a fallback but a mistake.
+    #
+    # Off, the gap can end a cycle unclosed, and that is the honest outcome: the
+    # agent reports a promise it was not permitted to keep rather than keeping it
+    # by doing the one thing it was told not to do.
+    allow_reduce_exposure: bool = True
 
     def release_headroom(self, equity: float | Decimal) -> float:
         """The dollars of slack required before protection may be released."""

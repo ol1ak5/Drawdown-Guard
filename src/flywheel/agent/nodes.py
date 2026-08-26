@@ -311,7 +311,9 @@ async def protect_node(state: FlywheelState) -> FlywheelState:
                 puts,
                 calls,
             ),
-            reduce_exposure(book.holdings, legs, budget, shock, holding.symbol),
+            reduce_exposure(book.holdings, legs, budget, shock, holding.symbol)
+            if mandate.allow_reduce_exposure
+            else None,
         )
         if remedy is not None
     ]
@@ -331,6 +333,10 @@ async def protect_node(state: FlywheelState) -> FlywheelState:
             # same percentage, so one symbol can carry the whole hedge.
             "assumes": "a uniform shock across every exposed holding",
             "preference": list(mandate.protection_order),
+            # Stated even when nothing was excluded. An option missing from the
+            # journal is indistinguishable from an option that was never
+            # available, and the difference is the whole point of the field.
+            "excluded": [] if mandate.allow_reduce_exposure else ["reduce_exposure"],
             "offers": [
                 {
                     "kind": remedy.kind,
@@ -338,6 +344,15 @@ async def protect_node(state: FlywheelState) -> FlywheelState:
                     "premium_cost": round(remedy.premium_cost, 2),
                     "forgone_upside": round(remedy.forgone_upside, 2),
                     "upside_measured_at": remedy.upside_measured_at,
+                    # The comparable number and the reason it is not the whole
+                    # comparison. `cash_per_1k` is None for anything not priced
+                    # in cash; `permanent` marks the remedies that cannot expire.
+                    "cash_per_1k": (
+                        round(remedy.cash_per_1k, 2)
+                        if remedy.cash_per_1k is not None
+                        else None
+                    ),
+                    "permanent": remedy.permanent,
                     "gap_after": round(remedy.gap_after, 2),
                     "closes_the_gap": remedy.closes_the_gap,
                 }

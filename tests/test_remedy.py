@@ -229,6 +229,75 @@ def test_the_three_are_priced_in_three_currencies_and_never_summed():
         assert "premium" in remedy.line() or "credit" in remedy.line()
 
 
+# A chain whose calls are too far out to pay for the puts, so the collar costs
+# cash instead of collecting it. The default CALLS above collect 4,500 against
+# 2,000 of puts and open for a credit, which is a real outcome and the reason
+# the claim below is about remedies that cost premium rather than about all of
+# them.
+THIN_CALLS = [call_row(560, 2.00)]
+
+
+def test_ranking_on_cash_alone_reaches_for_the_one_way_door():
+    """Why the single score is not merely unfounded but wrong in one direction.
+
+    Selling shares costs no premium ever, so against any remedy that costs
+    premium it wins on cash by construction -- not on this chain, on every
+    chain. An agent scoring on cost would answer a temporary breach by
+    permanently disposing of the portfolio and publish an excellent cost record
+    while doing it. This test pins the trap rather than the fix: the naive
+    ranking picks the door that does not open again, and `permanent` is the
+    field that says so out loud.
+    """
+    offers = [
+        protective_put(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS),
+        collar(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS, THIN_CALLS),
+        reduce_exposure(BOOK, [], BUDGET, SHOCK, "SPY"),
+    ]
+    assert all(r.premium_cost > 0 for r in offers if r.kind != "reduce_exposure")
+    cheapest = min(offers, key=lambda r: r.premium_cost)
+    assert cheapest.kind == "reduce_exposure"
+    assert cheapest.permanent
+
+    # And it is the only one of the three that cannot be undone by waiting.
+    assert [r.kind for r in offers if r.permanent] == ["reduce_exposure"]
+
+
+def test_the_one_comparison_that_is_arithmetic_is_made():
+    """Cash against cash is a fact, so it gets computed.
+
+    Both option remedies are priced in dollars leaving the account today, and
+    dollars per thousand of gap closed ranks them without any view on the
+    market. The put here buys 20,000 of gap closed for 2,000 of premium: 100
+    per thousand. The collar is part-funded by the call it sells, so it closes
+    the same gap for less cash and reports a smaller number.
+    """
+    put_only = protective_put(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS)
+    ringed = collar(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS, THIN_CALLS)
+
+    assert put_only.gap_closed == pytest.approx(20_000)
+    assert put_only.cash_per_1k == pytest.approx(100.0)
+    assert ringed.cash_per_1k == pytest.approx(50.0)
+
+
+def test_a_remedy_that_costs_no_cash_does_not_score_zero_on_the_cash_axis():
+    """None, not 0.0. Zero would win a race it is not running.
+
+    A share sale and a credit collar both cost nothing today. Reported as zero
+    dollars per thousand they would sort to the front of any cheapest-first
+    list, which is exactly the ranking this module refuses to make.
+    """
+    sold = reduce_exposure(BOOK, [], BUDGET, SHOCK, "SPY")
+    assert sold.premium_cost == 0.0
+    assert sold.cash_per_1k is None
+
+    # The default chain already opens for a credit: 4,500 collected against
+    # 2,000 of puts. A collar that pays the client to be protected is cheaper
+    # than free, and it too has to stay off the cash ranking.
+    credit = collar(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS, CALLS)
+    assert credit.premium_cost < 0
+    assert credit.cash_per_1k is None
+
+
 def test_a_partial_remedy_is_not_reported_as_closing_the_gap():
     """Contracts are lumpy, but "nearly" is not "yes"."""
     far = [put_row(410, 1.00)]
