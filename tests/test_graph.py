@@ -281,7 +281,9 @@ async def test_a_halted_cycle_never_reaches_the_ladder(journal_dir):
 # --- closing the gap --------------------------------------------------------
 
 
-def chain_row(strike: float, bid: float, ask: float, right: str) -> dict:
+def chain_row(
+    strike: float, bid: float, ask: float, right: str, iv: float = 0.20
+) -> dict:
     """One tradable contract, with every field both consumers read."""
     return {
         "occ_symbol": f"SPY__{right}{strike:.0f}",
@@ -291,7 +293,7 @@ def chain_row(strike: float, bid: float, ask: float, right: str) -> dict:
         "bid": Decimal(str(bid)),
         "ask": Decimal(str(ask)),
         "open_interest": 5_000,
-        "implied_vol": 0.20,
+        "implied_vol": iv,
     }
 
 
@@ -305,14 +307,13 @@ EXPOSED = [
 ]
 
 
-async def test_the_gap_is_closed_the_way_the_mandate_said_to_close_it(journal_dir):
-    """The choice is the client's, and the journal has to show it was theirs.
+async def test_the_gap_is_closed_the_way_todays_prices_favour(journal_dir):
+    """The choice is made on the chain, and the journal has to show the working.
 
-    All three remedies close this gap. `balanced` ranks the collar first —
-    staying invested and paying in ceiling rather than in cash — so the collar
-    is what comes out. Nothing here scored them against each other, because
-    scoring a certain premium against a contingent ceiling needs a view on the
-    market that this project does not have.
+    Both option remedies close this gap. The call is quoted at the same implied
+    volatility as the put, so selling it finances the protection on terms that
+    are fair by the market's own measure, and the collar comes out. Nothing was
+    read from a config file to get here.
     """
     final, _ = await run(
         healthy_portfolio(), chain_rows=CHAIN, journal_dir=journal_dir,
@@ -322,96 +323,90 @@ async def test_the_gap_is_closed_the_way_the_mandate_said_to_close_it(journal_di
     assert final["protection"].kind == "collar"
     plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
     assert plan["payload"]["chosen"] == "collar"
-    assert plan["payload"]["preference"][0] == "collar"
     assert plan["payload"]["symbol"] == "SPY"
+    # The reason travels with the answer rather than being reconstructed later.
+    assert "richer leg" in plan["payload"]["because"]
     assert plan["severity"] == "breach", "a plan is not a position"
 
 
-async def test_the_two_remedies_that_were_declined_are_recorded_too(journal_dir):
+async def test_the_same_client_gets_a_different_answer_from_a_different_chain(
+    journal_dir,
+):
+    """What a stated preference could never do.
+
+    Same mandate, same book, same budget, same shock, same puts. Only the call's
+    implied volatility differs, and the answer flips. This is the test that
+    replaced one asserting `conservative` and `balanced` diverge: they diverged
+    because a config file said so, which proved that the file was being read,
+    not that anything was being decided.
+    """
+    cheap_calls = [CHAIN[0], chain_row(540, 5.00, 5.10, "C", iv=0.10)]
+    final, _ = await run(
+        healthy_portfolio(), chain_rows=cheap_calls, journal_dir=journal_dir,
+        positions=EXPOSED,
+    )
+
+    assert final["protection"].kind == "protective_put"
+    plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
+    assert "underpriced upside" in plan["payload"]["because"]
+
+    # And back again on the original chain, with nothing about the client
+    # touched in between.
+    again, _ = await run(
+        healthy_portfolio(), chain_rows=CHAIN, journal_dir=journal_dir,
+        positions=EXPOSED,
+    )
+    assert again["protection"].kind == "collar"
+
+
+async def test_the_remedy_that_was_declined_is_recorded_too(journal_dir):
     """An agent that logged only what it did would be unfalsifiable.
 
-    The reader has to be able to see the alternatives and check that the one
-    taken was the one the mandate named, rather than the one that happened to
-    come out of a loop first.
+    The reader has to be able to see the alternative and check the comparison
+    that rejected it, rather than take the answer on trust.
     """
     final, _ = await run(
         healthy_portfolio(), chain_rows=CHAIN, journal_dir=journal_dir,
         positions=EXPOSED,
     )
     plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
-    kinds = {o["kind"] for o in plan["payload"]["offers"]}
-
-    assert kinds == {"protective_put", "collar", "reduce_exposure"}
-    assert all(o["closes_the_gap"] for o in plan["payload"]["offers"])
-    assert len(final["protection_options"]) == 3
-    # The three prices, in the three units they are actually paid in.
     priced = {o["kind"]: o for o in plan["payload"]["offers"]}
+
+    # Two, not three: no shipped mandate may sell the client's shares, and the
+    # exclusion is stated rather than left as a silence.
+    assert set(priced) == {"protective_put", "collar"}
+    assert plan["payload"]["excluded"] == ["reduce_exposure"]
+    assert len(final["protection_options"]) == 2
+    assert all(o["closes_the_gap"] for o in priced.values())
+
+    # The two prices in the two units they are actually paid in, plus the terms
+    # of the financing that decided between them.
     assert priced["protective_put"]["forgone_upside"] == 0.0
     assert priced["collar"]["premium_cost"] < priced["protective_put"]["premium_cost"]
-    assert priced["reduce_exposure"]["premium_cost"] == 0.0
+    assert priced["collar"]["financed_fairly"] is True
+    assert priced["collar"]["upside_price"] > 0
+    assert priced["protective_put"]["financed_fairly"] is None
 
 
-async def test_a_different_client_gets_a_different_answer_to_the_same_gap(journal_dir):
-    """The proof that the preference is doing the deciding.
+async def test_the_sale_appears_only_for_a_client_who_granted_it(journal_dir):
+    """Both directions of the switch, because only one of them is the default.
 
-    Same book, same chain, same shock. `conservative` buys the floor outright;
-    `balanced` wants to stay invested and pays with ceiling instead of cash, so
-    it gets a collar. If the agent had a ranking of its own, both clients would
-    receive the same advice and one of them would be getting somebody else's.
+    No shipped mandate may sell, so the excluded path is what every other test
+    in this file already exercises. What needs its own test is the granted one:
+    the machinery must still work for a client who says yes, or the permission
+    is decorative and the default is not a choice.
 
-    The dull way this could pass is ruled out by the balanced half: offers are
-    built in the order put, collar, sell, so an implementation that ignored the
-    mandate and took the first would answer `protective_put` for everyone --
-    including the client that must come back with a collar.
-    """
-    careful = {**strategy(), "mandate": "conservative"}
-    with patch("flywheel.agent.nodes.strategy", return_value=careful):
-        final, _ = await run(
-            healthy_portfolio(),
-            chain_rows=CHAIN,
-            journal_dir=journal_dir,
-            positions=EXPOSED,
-        )
-
-    assert final["protection"].kind == "protective_put"
-    # And the gap it was answering is three and a half times the balanced one,
-    # because a 5% budget on the same book is a stricter promise about the same
-    # positions.
-    plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
-    assert plan["payload"]["mandate"] == "conservative"
-    assert plan["payload"]["gap"] == pytest.approx(70_000, abs=1)
-
-    balanced, _ = await run(
-        healthy_portfolio(),
-        chain_rows=CHAIN,
-        journal_dir=journal_dir,
-        positions=EXPOSED,
-    )
-    assert balanced["protection"].kind == "collar"
-
-
-async def test_a_client_who_will_not_sell_shares_is_never_offered_the_sale(
-    journal_dir,
-):
-    """The switch, and the reason it is not just a ranking.
-
-    Ranked last, selling shares is still reachable on a day when no strike
-    closes the gap. For a client who will not sell a legacy holding at all that
-    is not a fallback, it is the one mistake available. So permission is a
-    separate field from preference.
-
-    The exclusion is journalled rather than left as an absence: an option
-    missing from the record is indistinguishable from an option that never
-    existed, and the client needs to be able to see their own instruction being
-    obeyed.
+    Granted, the sale is computed and offered. It is still not taken here --
+    `choose` prefers anything that expires -- and the record shows both facts,
+    which is the point of journalling the declined options at all.
     """
     plain = {**strategy(), "mandate": "balanced"}
-    forbidden = load_mandate("balanced").model_copy(
-        update={"allow_reduce_exposure": False}
+    permitted = load_mandate("balanced").model_copy(
+        update={"allow_reduce_exposure": True}
     )
     with (
         patch("flywheel.agent.nodes.strategy", return_value=plain),
-        patch("flywheel.agent.nodes.load_mandate", return_value=forbidden),
+        patch("flywheel.agent.nodes.load_mandate", return_value=permitted),
     ):
         final, _ = await run(
             healthy_portfolio(),
@@ -420,13 +415,16 @@ async def test_a_client_who_will_not_sell_shares_is_never_offered_the_sale(
             positions=EXPOSED,
         )
 
-    kinds = [remedy.kind for remedy in final["protection_options"]]
-    assert "reduce_exposure" not in kinds
-    # The other two are still offered, so the gap is still closed. Forbidding a
-    # remedy is not the same as refusing to act.
-    assert final["protection"] is not None
+    kinds = {remedy.kind for remedy in final["protection_options"]}
+    assert kinds == {"protective_put", "collar", "reduce_exposure"}
     plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
-    assert plan["payload"]["excluded"] == ["reduce_exposure"]
+    assert plan["payload"]["excluded"] == []
+    # Offered, priced, and passed over: the one-way door loses to a remedy that
+    # expires even though it costs no cash at all.
+    priced = {o["kind"]: o for o in plan["payload"]["offers"]}
+    assert priced["reduce_exposure"]["permanent"] is True
+    assert priced["reduce_exposure"]["premium_cost"] == 0.0
+    assert plan["payload"]["chosen"] == "collar"
 
 
 async def test_the_uniform_shock_assumption_is_written_down_next_to_the_hedge(

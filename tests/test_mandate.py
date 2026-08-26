@@ -253,33 +253,46 @@ def test_the_three_mandates_let_go_of_protection_at_three_different_speeds():
     assert margins["aggressive"] > 0, "even the impatient client keeps a band"
 
 
-def test_no_shipped_mandate_reaches_for_the_shares_first():
+def test_no_shipped_mandate_may_sell_the_clients_shares():
     """A correction, pinned so it cannot drift back.
 
-    `conservative` once ranked `reduce_exposure` first, on the argument that
+    `conservative` once ranked selling shares *first*, on the argument that
     owning less risk beats insuring it. At a 5% budget that mandate is in
-    deficit almost every cycle, so "first" meant "every time": the agent would
-    sell on every gap and buy back on none, and a profile named for preserving
-    capital would spend itself down to a quarter invested through a series of
-    permanent answers to temporary breaches.
+    deficit almost every cycle, so "first" meant "every time": sell on every
+    gap, buy back on none, and a profile named for preserving capital would
+    have spent itself down to a quarter invested through a series of permanent
+    answers to temporary breaches.
 
-    Selling shares stays available to all three -- last.
+    None of the three may now sell. The machinery stays -- a client who grants
+    the power gets it -- but a profile name does not grant it.
     """
     for name, m in load_all().items():
-        assert m.protection_order[-1] == "reduce_exposure", name
-        assert m.allow_reduce_exposure, name
+        assert not m.allow_reduce_exposure, name
 
 
-def test_permission_to_sell_shares_is_a_separate_field_from_preference():
-    """Ranking a remedy last still leaves it reachable, which is the point.
+def test_a_mandate_that_says_nothing_has_not_granted_the_power_to_sell():
+    """The one default in this file that points at less freedom, not more.
 
-    A client who will not sell a holding at all is not expressing a mild
-    dislike, and an order alone cannot say so. The two fields answer different
-    questions and neither implies the other.
+    Every other field is a limit the client relaxes, so silence sensibly means
+    the permissive value. This one is a power the client grants, and silence
+    cannot mean yes: inheriting permission to dispose of somebody's assets from
+    an unwritten line is exactly the failure the mandate exists to prevent.
     """
-    m = mandate(
-        protection_order=["protective_put", "collar", "reduce_exposure"],
-        allow_reduce_exposure=False,
-    )
-    assert m.protection_order[-1] == "reduce_exposure"
-    assert not m.allow_reduce_exposure
+    assert not mandate().allow_reduce_exposure
+    assert mandate(allow_reduce_exposure=True).allow_reduce_exposure
+
+
+def test_the_mandate_no_longer_ranks_the_option_remedies():
+    """Removed, not renamed, and this test is the reason it stays removed.
+
+    `protection_order` gave the same answer on every day of every market. An
+    agent reading it was replaying a decision somebody made once, which is the
+    opposite of the behaviour a mandate is supposed to constrain. Choosing
+    between a put and a collar is an observation about today's prices and lives
+    in `remedy.choose`; the mandate keeps the constraints.
+    """
+    m = mandate()
+    assert not hasattr(m, "protection_order")
+    # Pydantic ignores unknown keys by default, so this asserts the field is
+    # gone rather than merely unset.
+    assert "protection_order" not in m.model_dump()

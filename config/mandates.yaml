@@ -55,28 +55,20 @@ conservative:
   # is released, so this client keeps paying for protection through the range
   # where the other two would have handed it back.
   release_margin_pct: 25.0
-  # Corrected on 2026-08-26. This read [reduce_exposure, protective_put, collar]
-  # on the argument that owning less risk beats insuring it -- no expiry, no
-  # counterparty, no spread to cross again in three weeks. That argument is
-  # one-sided and the arithmetic shows how.
+  # Removed on 2026-08-26: this ranked the three remedies, and a ranking in a
+  # config file gives the same answer on every day of every market. An agent
+  # reading it was not choosing between a put and a collar, it was replaying a
+  # decision taken once by whoever wrote the line. `remedy.choose` reads the
+  # chain instead. What a client fixes in advance is a constraint; which of two
+  # structures is better value this Tuesday is an observation, and observations
+  # are not the client's job.
   #
-  # At a 5% budget this mandate permits unprotected exposure of only a quarter of
-  # capital, so it is in deficit nearly every cycle. Ranked first, selling shares
-  # is therefore not the occasional honest answer, it is the standing one: the
-  # agent would sell on every cycle a gap is open and buy back on none of them,
-  # because nothing in this system buys shares deliberately. The portfolio would
-  # walk down to the 25% line through a sequence of permanent decisions taken in
-  # response to a condition that is usually temporary -- a gap opened by a 3%
-  # move closes on a 3% move back, and a three-week put is priced for exactly
-  # that. Preservation of capital is not the same as disposal of it.
-  #
-  # So protection first, and shares last: still reachable on a day when no strike
-  # closes the gap, never the default.
-  protection_order: [protective_put, collar, reduce_exposure]
-  # Left available. A mandate that forbids it outright can end a cycle in breach
-  # with no remedy at all, which is a decision for a client to take knowingly
-  # rather than one to inherit from a profile name.
-  allow_reduce_exposure: true
+  # Shares are not sold. Off by default in the model as well, so this line is a
+  # restatement rather than the thing doing the work -- and at a 5% budget this
+  # mandate is in deficit nearly every cycle, so a permission granted here would
+  # not be an occasional last resort but a standing instruction to sell. A
+  # profile named for preserving capital would have disposed of it.
+  allow_reduce_exposure: false
 
 balanced:
   description: >
@@ -96,10 +88,10 @@ balanced:
   # line and back; narrow enough that a hedge against a position which has
   # actually closed does not survive the week.
   release_margin_pct: 15.0
-  # Stay invested and pay for it with ceiling rather than with cash. A collar
-  # keeps the capital working; selling shares to fix a temporary breach is the
-  # last resort for a client whose whole purpose is to remain in the market.
-  protection_order: [collar, protective_put, reduce_exposure]
+  # Whether a collar beats a bare put is decided per cycle on the chain, not
+  # here. A client whose whole purpose is to remain in the market does not sell
+  # shares to fix a breach that expires.
+  allow_reduce_exposure: false
 
 aggressive:
   description: >
@@ -129,7 +121,7 @@ aggressive:
   # than nothing -- since even an impatient client should not fund a round trip
   # across the spread every time the book crosses its own line.
   release_margin_pct: 10.0
-  # Pays cash first, because cash is the only one of the three prices that does
-  # not cost upside. A collar's ceiling is exactly what this mandate exists to
-  # keep, so it ranks second despite usually being cheaper.
-  protection_order: [protective_put, collar, reduce_exposure]
+  # Even here. This mandate is willing to be concentrated and willing to pay for
+  # protection; it is not willing to answer a three-week problem by permanently
+  # shrinking the book it exists to run.
+  allow_reduce_exposure: false

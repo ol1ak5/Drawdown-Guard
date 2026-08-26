@@ -34,7 +34,6 @@ import yaml
 from pydantic import BaseModel, model_validator
 
 from flywheel.risk.limits import Limits
-from flywheel.risk.remedy import KINDS
 from flywheel.risk.stress import DEFAULT_SHOCKS
 
 MANDATES_PATH = Path("config/mandates.yaml")
@@ -84,24 +83,24 @@ class Mandate(BaseModel):
     # here -- a hysteresis band invented by the agent would be a tuning
     # parameter, and tuning parameters are where forecasts hide.
     release_margin_pct: float = 15.0
-    # Which way to close a gap, in the client's order of preference. This is the
-    # field that exists because the agent refuses to invent a ranking: certain
-    # premium, a contingent ceiling and permanent participation are three
-    # different currencies, and putting them on one axis needs a view on where
-    # the market goes. Stated by the client, it is policy. Computed by the
-    # agent, it would be a forecast wearing a policy's clothes.
-    protection_order: list[str] = list(KINDS)
     # Whether the agent may sell the client's shares to close a gap at all.
-    # Separate from `protection_order` on purpose: order is a preference and
-    # permission is a fact, and a client who will never sell a legacy holding is
-    # not expressing a mild dislike of it. Ranking it last would still let the
-    # agent reach for it on a day when the chain is thin, which for that client
-    # is not a fallback but a mistake.
     #
-    # Off, the gap can end a cycle unclosed, and that is the honest outcome: the
-    # agent reports a promise it was not permitted to keep rather than keeping it
-    # by doing the one thing it was told not to do.
-    allow_reduce_exposure: bool = True
+    # Default off, which is the unusual direction for a default and the right
+    # one. Every other field here is a limit the client relaxes; this is a power
+    # the client grants. Disposing of somebody's assets is not a thing to
+    # inherit from a profile name, and a mandate silent on the question has not
+    # said yes.
+    #
+    # Off, a cycle can end with the gap still open. That is the honest outcome:
+    # the agent reports a promise it was not permitted to keep, rather than
+    # keeping it by doing the one thing it was told not to do.
+    #
+    # There is deliberately no companion field ranking the two option remedies.
+    # A ranking stated in a config gives the same answer on every day of every
+    # market, which is not a choice but a replay; `remedy.choose` decides it
+    # from the chain instead. What a client can usefully fix in advance is a
+    # constraint, not an observation.
+    allow_reduce_exposure: bool = False
 
     def release_headroom(self, equity: float | Decimal) -> float:
         """The dollars of slack required before protection may be released."""
@@ -131,14 +130,6 @@ class Mandate(BaseModel):
             raise ValueError(f"{self.name}: deployment must be within (0, 100]")
         if not 0 < self.downside_budget_pct <= 100:
             raise ValueError(f"{self.name}: a downside budget must be within (0, 100]")
-        if sorted(self.protection_order) != sorted(KINDS):
-            raise ValueError(
-                f"{self.name}: protection_order must rank all three remedies "
-                f"exactly once, got {self.protection_order}. A partial order "
-                f"would leave the agent to invent a preference for whatever was "
-                f"omitted, which is the decision this field exists to take away "
-                f"from it."
-            )
         if not 0 <= self.release_margin_pct < 100:
             raise ValueError(
                 f"{self.name}: a release margin of {self.release_margin_pct}% is "

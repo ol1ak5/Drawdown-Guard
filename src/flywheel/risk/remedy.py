@@ -40,9 +40,31 @@ thousand dollars of gap closed -- and it is a fact, not a view. It is `None`
 for anything that costs no cash, so a remedy that is not competing on that axis
 cannot win on it by scoring zero. Across currencies there is nothing to
 compute, and `permanent` is the reason: a put expires and the book returns to
-where it was, while a share sold does not come back. The client is told which
-remedies are undoable and ranks them; the agent does not decide how much a
-one-way door is worth.
+where it was, while a share sold does not come back.
+
+HOW THE CHOICE IS MADE WITHOUT A FORECAST
+------------------------------------------
+Once the permanent remedy is set aside, the field narrows to two, and they are
+not two philosophies. A collar *is* the protective put, plus one extra trade:
+selling a call. So the agent never has to answer "do I prefer cash or ceiling
+in the abstract." It only has to answer "is selling this particular call, at
+today's price, a good trade" -- and the chain answers that itself.
+
+The criterion is relative value, not direction. A call sold at an implied
+volatility at or above the put's is protection financed on fair terms: the
+client parts with something the market prices at least as dearly, per unit of
+risk, as the thing being bought. A call sold below the put's volatility is the
+reverse trade -- surrendering cheap upside to buy expensive downside -- and it
+is the worse deal at every outcome, not merely at the ones a forecast would
+favour. No view on where the market goes is needed to see that, and none is
+taken. See `choose`.
+
+Two consequences worth stating in advance rather than discovering. On equity
+indices the skew usually puts put volatility above call volatility, so this
+rule will usually buy the bare put; that is the skew being real, not the rule
+failing, and the days it flips are the days it earns its keep. And when either
+volatility is missing the rule declines to sell -- an unmeasurable trade in the
+client's upside is not one to take on the grounds that it looked cheap.
 
 WHY `gap_after` IS RECOMPUTED, NOT ESTIMATED
 ---------------------------------------------
@@ -116,6 +138,17 @@ class Remedy:
     upside_measured_at: float  # the up-move `forgone_upside` is quoted at
     gap_before: float
     gap_after: float
+    # The two volatilities the financing decision turns on: what the client is
+    # buying, and what the client is selling to pay for it. Both None on a
+    # remedy that sells nothing. Either None when the chain did not supply it,
+    # which `financed_fairly` reads as "do not sell" rather than as "proceed".
+    protection_iv: float | None = None
+    financing_iv: float | None = None
+    # Dollars the sold call brings in, and how far above spot the ceiling sits,
+    # in percent. Kept apart from `premium_cost` so the terms of the financing
+    # stay legible after the netting.
+    financing_credit: float = 0.0
+    ceiling_pct: float = 0.0
 
     @property
     def closes_the_gap(self) -> bool:
@@ -155,6 +188,37 @@ class Remedy:
         if self.premium_cost <= 0 or self.gap_closed <= 0:
             return None
         return self.premium_cost * 1000 / self.gap_closed
+
+    @property
+    def upside_price(self) -> float | None:
+        """Dollars collected per 1% of upside surrendered.
+
+        The terms of the financing in one number, and the one that actually
+        moves day to day: it rises when calls are dear and falls when they are
+        cheap. Reported rather than thresholded -- a cutoff would be a constant
+        somebody picked, and `financed_fairly` answers the same question against
+        the market instead of against a constant.
+        """
+        if self.ceiling_pct <= 0 or self.financing_credit <= 0:
+            return None
+        return self.financing_credit / self.ceiling_pct
+
+    @property
+    def financed_fairly(self) -> bool | None:
+        """Is the call being sold at least as dearly as the put being bought?
+
+        Implied volatility is the comparison because it is the price per unit
+        of risk, which is what makes two different strikes comparable at all.
+        Raw premium cannot do this job: a near call costs more than a far put
+        for reasons that have nothing to do with which is the better sale.
+
+        None when either volatility is missing, and callers must not read that
+        as a yes. The chain not saying what something is worth is not evidence
+        that selling it is a good idea.
+        """
+        if self.protection_iv is None or self.financing_iv is None:
+            return None
+        return self.financing_iv >= self.protection_iv
 
     def line(self) -> str:
         """One row for the journal and the status page."""
@@ -277,6 +341,7 @@ def protective_put(
             upside_measured_at=0.0,
             gap_before=gap,
             gap_after=after,
+            protection_iv=row.get("implied_vol"),
         )
         if best is None or candidate.premium_cost < best.premium_cost:
             best = candidate
@@ -365,6 +430,10 @@ def collar(
         upside_measured_at=up_move,
         gap_before=protection.gap_before,
         gap_after=after,
+        protection_iv=protection.protection_iv,
+        financing_iv=row.get("implied_vol"),
+        financing_credit=received,
+        ceiling_pct=(float(strike) - spot) / spot * 100 if spot > 0 else 0.0,
     )
 
 
@@ -420,6 +489,79 @@ def reduce_exposure(
         upside_measured_at=0.10,
         gap_before=gap,
         gap_after=after,
+    )
+
+
+# --- choosing between them --------------------------------------------------
+
+
+def choose(offers: list[Remedy]) -> tuple[Remedy | None, str]:
+    """The remedy today's prices favour, and the sentence explaining why.
+
+    The reason is returned rather than logged here because a decision whose
+    justification is written somewhere else can drift from it. They are one
+    value, and the journal records the value.
+
+    The order of the questions is the design:
+
+    1. **Does it close the gap?** A remedy that leaves the promise broken is not
+       a cheaper way of keeping it.
+    2. **Is it reversible?** Everything that expires is preferred to anything
+       that does not, and no price improves a one-way door enough to reorder
+       this. Selling shares answers a condition that is usually temporary with a
+       decision that is permanent, so it is reached for only when nothing else
+       on the chain closes the gap at all.
+    3. **Are the financing terms fair?** This is the only step where prices
+       decide, and it compares like with like: the volatility sold against the
+       volatility bought. Everything else is settled before any number from the
+       chain is consulted.
+
+    There is no client-stated ranking here and there used to be. It was
+    `protection_order` in the mandate, and it was wrong for a reason worth
+    keeping: it gave the same answer on every day of every market, so an agent
+    reading it was not choosing, it was replaying a config file. What a client
+    can usefully state in advance is a constraint -- how much may be lost, what
+    may never be sold. Which of two option structures is better value this
+    Tuesday is not a preference, it is an observation, and the chain makes it.
+    """
+    closing = [remedy for remedy in offers if remedy.closes_the_gap]
+    if not closing:
+        return None, "nothing on today's chain closes the gap"
+
+    reversible = [remedy for remedy in closing if not remedy.permanent]
+    if not reversible:
+        return (
+            min(closing, key=lambda r: r.premium_cost),
+            "no remedy that expires closes the gap today, so the only one left "
+            "is permanent",
+        )
+
+    ring = next((r for r in reversible if r.kind == "collar"), None)
+    put = next((r for r in reversible if r.kind == "protective_put"), None)
+    if ring is None or put is None:
+        only = ring or put or min(reversible, key=lambda r: r.premium_cost)
+        return only, f"the only remedy that closes the gap today is a {only.kind}"
+
+    fair = ring.financed_fairly
+    if fair is None:
+        return put, (
+            "bought outright: the chain did not price both legs, and upside is "
+            "not sold on terms that cannot be checked"
+        )
+    saved = put.premium_cost - ring.premium_cost
+    terms = (
+        f"call at {ring.financing_iv:.1%} vol against a put at "
+        f"{ring.protection_iv:.1%}"
+    )
+    if fair:
+        return ring, (
+            f"financed by selling the richer leg -- {terms} -- saving "
+            f"{saved:,.0f} for a ceiling {ring.ceiling_pct:.1f}% above spot"
+        )
+    return put, (
+        f"bought outright: the call would be sold below the put's price per "
+        f"unit of risk -- {terms} -- so the {saved:,.0f} saved would come out "
+        f"of underpriced upside"
     )
 
 

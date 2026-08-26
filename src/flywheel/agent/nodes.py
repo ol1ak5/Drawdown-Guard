@@ -35,7 +35,13 @@ from flywheel.optimizer.model import optimize
 from flywheel.risk.book import to_book
 from flywheel.risk.limits import load_limits
 from flywheel.risk.mandate import load_mandate
-from flywheel.risk.remedy import collar, protective_put, reduce_exposure, release
+from flywheel.risk.remedy import (
+    choose,
+    collar,
+    protective_put,
+    reduce_exposure,
+    release,
+)
 from flywheel.risk.stress import gap_at, ladder, unhedged_limit, worst_gap
 from flywheel.wheel import next_action
 
@@ -217,13 +223,14 @@ async def protect_node(state: FlywheelState) -> FlywheelState:
     protection against a partially known book errs toward being over-insured,
     which costs premium; skipping it errs toward being uncovered.
 
-    THE CHOICE IS NOT MADE HERE
-    ----------------------------
-    All three remedies are computed and all three are journalled. Which one is
-    taken comes from `protection_order`, stated by the client in advance. The
-    agent has no ranking of its own, because ranking a certain premium against a
-    contingent ceiling requires a view on the market and this project does not
-    have one.
+    THE CHOICE IS MADE ON THE CHAIN, NOT IN THE CONFIG
+    ---------------------------------------------------
+    Every remedy the mandate permits is computed and every one is journalled.
+    Which is taken comes from `remedy.choose`, which reads today's prices, and
+    the sentence it returns is written down beside the answer. This replaced a
+    ranking stated once in the mandate: a config-file preference gives the same
+    answer on every day of every market, so the agent reading it was replaying
+    a decision rather than making one.
     """
     portfolio = state.get("portfolio")
     book = state.get("book")
@@ -317,9 +324,7 @@ async def protect_node(state: FlywheelState) -> FlywheelState:
         )
         if remedy is not None
     ]
-    rank = {kind: order for order, kind in enumerate(mandate.protection_order)}
-    closing = [remedy for remedy in offers if remedy.closes_the_gap]
-    chosen = min(closing, key=lambda r: rank[r.kind]) if closing else None
+    chosen, why = choose(offers)
 
     writer.write(
         "protection.plan",
@@ -332,7 +337,6 @@ async def protect_node(state: FlywheelState) -> FlywheelState:
             # Stated, not implied: the ladder moves every equity holding by the
             # same percentage, so one symbol can carry the whole hedge.
             "assumes": "a uniform shock across every exposed holding",
-            "preference": list(mandate.protection_order),
             # Stated even when nothing was excluded. An option missing from the
             # journal is indistinguishable from an option that was never
             # available, and the difference is the whole point of the field.
@@ -353,12 +357,27 @@ async def protect_node(state: FlywheelState) -> FlywheelState:
                         else None
                     ),
                     "permanent": remedy.permanent,
+                    # The terms of the financing, on the remedy that has any.
+                    # `upside_price` is the number that moves day to day;
+                    # `financed_fairly` is the one the decision turns on.
+                    "protection_iv": remedy.protection_iv,
+                    "financing_iv": remedy.financing_iv,
+                    "upside_price": (
+                        round(remedy.upside_price, 2)
+                        if remedy.upside_price is not None
+                        else None
+                    ),
+                    "financed_fairly": remedy.financed_fairly,
                     "gap_after": round(remedy.gap_after, 2),
                     "closes_the_gap": remedy.closes_the_gap,
                 }
                 for remedy in offers
             ],
             "chosen": chosen.kind if chosen else None,
+            # The justification travels with the answer rather than being
+            # reconstructed from the numbers later. A decision whose reason is
+            # rebuilt after the fact is a decision nobody can audit.
+            "because": why,
         },
         # Still a breach until something is actually placed. A plan is not a
         # position, and the journal should not read as though it were.

@@ -13,6 +13,7 @@ import pytest
 
 from flywheel.risk.remedy import (
     _gap,
+    choose,
     collar,
     protective_put,
     reduce_exposure,
@@ -29,14 +30,28 @@ BUDGET = 100_000.0
 BOOK = [Holding("SPY", 1200, SPOT), Holding("CASH", 400_000, 1.0, shocked=False)]
 
 
-def put_row(strike: float, ask: float) -> dict:
-    return {"strike": strike, "ask": ask, "bid": ask - 0.10, "right": "P"}
+def put_row(strike: float, ask: float, iv: float | None = 0.22) -> dict:
+    return {
+        "strike": strike,
+        "ask": ask,
+        "bid": ask - 0.10,
+        "right": "P",
+        "implied_vol": iv,
+    }
 
 
-def call_row(strike: float, bid: float) -> dict:
-    return {"strike": strike, "bid": bid, "ask": bid + 0.10, "right": "C"}
+def call_row(strike: float, bid: float, iv: float | None = 0.18) -> dict:
+    return {
+        "strike": strike,
+        "bid": bid,
+        "ask": bid + 0.10,
+        "right": "C",
+        "implied_vol": iv,
+    }
 
 
+# The default volatilities are the equity-index shape: puts dearer than calls.
+# Tests that need the other shape say so, because it is the exception.
 PUTS = [put_row(460, 6.00), put_row(440, 4.00), put_row(420, 2.50)]
 CALLS = [call_row(520, 9.00), call_row(540, 5.00), call_row(560, 2.00)]
 
@@ -339,6 +354,138 @@ def test_a_ceiling_above_the_measured_move_reports_no_cost_at_that_move():
     # Move the reading out to +20% and the ceiling shows up.
     further = collar(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS, high, up_move=0.20)
     assert further.forgone_upside > 0
+
+
+# --- the choice ---------------------------------------------------------------
+
+
+def offers_on(calls: list[dict], puts: list[dict] | None = None) -> list:
+    """The reversible pair, priced against one chain."""
+    puts = puts if puts is not None else PUTS
+    return [
+        remedy
+        for remedy in (
+            protective_put(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, puts),
+            collar(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, puts, calls),
+        )
+        if remedy is not None
+    ]
+
+
+def test_the_same_book_gets_two_different_answers_from_two_chains():
+    """The whole point of choosing on the chain instead of on a config file.
+
+    Nothing about the client changes between these two runs. Same book, same
+    budget, same shock, same puts. Only the calls are priced differently, and
+    the answer flips -- which a stated preference could never do, because a
+    stated preference does not know what day it is.
+    """
+    rich = [call_row(540, 5.00, iv=0.30)]
+    cheap = [call_row(540, 5.00, iv=0.15)]
+
+    ringed, why_ringed = choose(offers_on(rich))
+    bare, why_bare = choose(offers_on(cheap))
+
+    assert ringed.kind == "collar"
+    assert bare.kind == "protective_put"
+    # And each says which way the comparison went, in the same sentence that
+    # carries the decision.
+    assert "richer leg" in why_ringed
+    assert "below the put's price per unit of risk" in why_bare
+
+
+def test_the_comparison_is_volatility_and_not_premium():
+    """Why raw premium cannot do this job.
+
+    Here the call collects far more cash than the put costs, so on any
+    cash-based test the collar wins in a landslide. It is still the wrong sale:
+    per unit of risk the market prices this call below the put being bought, so
+    the client would be handing over cheap upside to buy expensive downside --
+    a worse trade at every outcome, not merely at the ones a forecast dislikes.
+    """
+    generous_but_cheap = [call_row(520, 40.00, iv=0.10)]
+    chosen, why = choose(offers_on(generous_but_cheap))
+    ring = next(r for r in offers_on(generous_but_cheap) if r.kind == "collar")
+
+    assert ring.premium_cost < 0, "the collar is opened for a large credit"
+    assert chosen.kind == "protective_put"
+    assert "underpriced upside" in why
+
+
+def test_upside_that_cannot_be_priced_is_not_sold():
+    """Missing volatility reads as "do not", never as "proceed".
+
+    The chain not saying what something is worth is not evidence that selling
+    it is a good idea, and this is the direction the failure has to go: the
+    fallback costs the client premium, while the other fallback would cost them
+    an unbounded ceiling they were never quoted a price for.
+    """
+    unquoted = [call_row(540, 5.00, iv=None)]
+    chosen, why = choose(offers_on(unquoted))
+    assert chosen.kind == "protective_put"
+    assert "cannot be checked" in why
+
+    ring = next(r for r in offers_on(unquoted) if r.kind == "collar")
+    assert ring.financed_fairly is None, "not False -- unknown is its own answer"
+
+
+def test_the_terms_of_the_financing_are_reported_whichever_way_it_goes():
+    """`upside_price` is the number that actually moves day to day.
+
+    Dollars collected per 1% of upside surrendered: 2,500 for a ceiling 8%
+    above spot is 312.50 per point. It is reported rather than thresholded,
+    because a cutoff would be a constant somebody picked.
+    """
+    ring = next(r for r in offers_on([call_row(540, 5.00)]) if r.kind == "collar")
+    assert ring.financing_credit == pytest.approx(2_500)
+    assert ring.ceiling_pct == pytest.approx(8.0)
+    assert ring.upside_price == pytest.approx(312.5)
+
+    # A nearer ceiling collects more cash but sells more of the range, and the
+    # per-point price is what makes the two comparable.
+    near = next(r for r in offers_on([call_row(520, 9.00)]) if r.kind == "collar")
+    assert near.financing_credit > ring.financing_credit
+    assert near.upside_price > ring.upside_price
+
+
+def test_a_reversible_remedy_beats_a_permanent_one_at_any_price():
+    """Step two of `choose` runs before any price is consulted, and this pins it.
+
+    The sale costs no cash at all and would win any cost ranking. It still
+    loses, because it answers a condition that usually reverses with a decision
+    that never does.
+    """
+    # A chain whose calls are too far out to fully fund the put, so both option
+    # remedies cost cash and the sale is genuinely the cheapest of the three.
+    # On the default chain the collar opens for a credit and wins on cost by
+    # itself, which would prove nothing about the ordering being tested.
+    debit = [call_row(560, 2.00)]
+    sale = reduce_exposure(BOOK, [], BUDGET, SHOCK, "SPY")
+    chosen, _ = choose([*offers_on(debit), sale])
+    assert sale.premium_cost < min(r.premium_cost for r in offers_on(debit))
+    assert chosen.kind != "reduce_exposure"
+
+
+def test_the_permanent_remedy_is_taken_when_it_is_the_only_one_that_works():
+    """Last, not never. A gap left open because no strike was deep enough is
+    still a broken promise, and refusing the one remedy that closes it would be
+    fastidiousness rather than caution."""
+    useless = [put_row(300, 0.05)]
+    sale = reduce_exposure(BOOK, [], BUDGET, SHOCK, "SPY")
+    offers = [r for r in offers_on(CALLS, puts=useless)] + [sale]
+
+    chosen, why = choose(offers)
+    assert chosen.kind == "reduce_exposure"
+    assert "no remedy that expires closes the gap" in why
+
+
+def test_choosing_nothing_says_so_rather_than_returning_a_near_miss():
+    """A remedy that leaves the promise broken is not a cheaper way of keeping
+    it, so it is not returned as though it were."""
+    useless = [put_row(300, 0.05)]
+    chosen, why = choose(offers_on(CALLS, puts=useless))
+    assert chosen is None
+    assert "closes the gap" in why
 
 
 # --- giving protection back -------------------------------------------------
