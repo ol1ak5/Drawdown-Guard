@@ -168,3 +168,52 @@ def test_the_counterfactual_never_reports_a_negative_saving():
         concentration_available=40,
     )
     assert cost.forgone == 0
+
+
+# --- the downside budget ----------------------------------------------------
+
+
+def test_a_budget_the_kill_switch_would_never_let_you_reach_is_refused():
+    """The promise has to be one the system can actually be around to keep.
+
+    The permanent kill-switch halts the agent at a 15% drawdown. A mandate
+    offering the client a 20% downside budget would be selling tolerance the
+    agent stops trading before it could ever exercise -- true on paper, useless
+    in fact. It fails at load time rather than quietly on the worst day.
+    """
+    with pytest.raises(ValueError, match="kill-switch"):
+        mandate(downside_budget_pct=20.0).validate_against(load_limits())
+
+
+def test_a_mandate_may_not_invent_its_own_shock():
+    """The ladder is fixed and published, and a mandate picks a rung from it.
+
+    Left free, a mandate could promise against a 3% shock and report a perfect
+    record forever. The rungs are the same every day for every client, which is
+    what makes two mandates comparable at all.
+    """
+    with pytest.raises(ValueError, match="not a rung"):
+        mandate(stress_shock_pct=7.0)
+
+
+def test_the_budget_is_dollars_and_scales_with_the_account():
+    """A promise stated in percent has to survive the account changing size."""
+    m = mandate(downside_budget_pct=10.0)
+    assert m.budget(1_000_000) == 100_000
+    assert m.budget(400_000) == 40_000
+
+
+def test_the_three_shipped_mandates_imply_three_different_portfolio_sizes():
+    """The mandate sizes the book. This is the demonstration, in one assertion.
+
+    Same market, same shock, three clients: the exposure each can carry
+    unprotected differs by 3x, and nobody had to have a view on the market to
+    work that out.
+    """
+    limits = {
+        name: m.budget(1_000_000) / (m.stress_shock_pct / 100)
+        for name, m in load_all().items()
+    }
+    assert limits["conservative"] == pytest.approx(250_000)
+    assert limits["balanced"] == pytest.approx(500_000)
+    assert limits["aggressive"] == pytest.approx(750_000)

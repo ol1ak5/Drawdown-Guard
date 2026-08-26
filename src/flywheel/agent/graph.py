@@ -3,6 +3,11 @@
 Linear from reconcile to journal, with exactly one conditional edge: a halt
 after reconcile jumps straight to the journal.
 
+`mandate` sits second, before any market data is fetched. The stress ladder is
+built from the positions already held, so it needs nothing from the market, and
+running it first means the protection gap is an input to the cycle's decisions
+rather than a report written after them.
+
 That edge is the whole point of using a graph rather than a function that
 returns early. An early return can skip the journal — and a cycle that stopped
 without writing anything is indistinguishable, six days later, from a cycle
@@ -16,6 +21,7 @@ from flywheel.agent.nodes import (
     candidates_node,
     execute_node,
     journal_node,
+    mandate_node,
     optimize_node,
     reconcile_node,
     regime_node,
@@ -26,6 +32,7 @@ from flywheel.agent.state import FlywheelState, initial_state
 
 NODES = (
     ("reconcile", reconcile_node),
+    ("mandate", mandate_node),
     ("snapshot", snapshot_node),
     ("regime", regime_node),
     ("route", route_node),
@@ -37,7 +44,7 @@ NODES = (
 
 
 def _after_reconcile(state: FlywheelState) -> str:
-    return "journal" if state.get("halted") else "snapshot"
+    return "journal" if state.get("halted") else "mandate"
 
 
 def build_graph():
@@ -48,7 +55,7 @@ def build_graph():
 
     graph.add_edge(START, "reconcile")
     graph.add_conditional_edges(
-        "reconcile", _after_reconcile, {"journal": "journal", "snapshot": "snapshot"}
+        "reconcile", _after_reconcile, {"journal": "journal", "mandate": "mandate"}
     )
     linear = [name for name, _ in NODES[1:]]
     for source, target in zip(linear, linear[1:], strict=False):

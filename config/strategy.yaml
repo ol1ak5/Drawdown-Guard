@@ -35,3 +35,9 @@ size_multiplier:   # applied to the optimizer's capital budget
 roll:
   profit_take_pct: 50.0   # buy back at 50% of premium captured
   defend_dte: 2           # roll if still open this close to expiry
+
+# Which client this account is run for. The mandate carries the downside budget
+# the stress ladder is measured against, so changing this one word changes what
+# the agent considers an acceptable loss -- and `load_mandate` refuses any
+# profile that would be looser than config/risk.yaml.
+mandate: balanced

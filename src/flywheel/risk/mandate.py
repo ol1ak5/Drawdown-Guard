@@ -15,18 +15,26 @@ loosen a limit would not be a promise, it would be a preference.
 
 WHAT A MANDATE PROMISES
 -----------------------
-Four checkable things: which instruments may be traded at all, how much capital
-may be deployed, how far out of the money the agent must stay, and how much of
-the portfolio's risk may sit in one factor. Every one is verified before an
-order and audited after the cycle.
+Five checkable things: which instruments may be traded at all, how much capital
+may be deployed, how far out of the money the agent must stay, how much of the
+portfolio's risk may sit in one factor, and how much the client accepts losing
+in a market shock. Every one is verified before an order and audited after the
+cycle.
+
+The last is different in kind from the other four. Those constrain what may be
+opened; the downside budget constrains what the book already held would cost if
+the market moved, which is a promise no single order can keep or break on its
+own. `risk/stress.py` is where it is measured.
 """
 
+from decimal import Decimal
 from pathlib import Path
 
 import yaml
 from pydantic import BaseModel, model_validator
 
 from flywheel.risk.limits import Limits
+from flywheel.risk.stress import DEFAULT_SHOCKS
 
 MANDATES_PATH = Path("config/mandates.yaml")
 
@@ -56,6 +64,26 @@ class Mandate(BaseModel):
     target_delta: dict[str, float]
     max_concentration_pct: float = 100.0
     stress_allows_new_risk: bool = False
+    # The most of the account the client accepts losing in a market shock,
+    # stated in advance and in the calm. This is the number the stress ladder is
+    # measured against, and the only one in this file that is forward-looking:
+    # everything else constrains what may be opened today, while this constrains
+    # what today's book would cost if the market moved.
+    downside_budget_pct: float = 10.0
+    # The shock the budget is promised against, as a positive percentage. The
+    # ladder reports deeper ones too; this is the one the agent is obliged to
+    # close. See `stress.gap_at` for why promising the deepest rung would be
+    # both unclosable and unaffordable.
+    stress_shock_pct: float = 20.0
+
+    def budget(self, equity: float | Decimal) -> float:
+        """The downside budget in dollars."""
+        return float(equity) * self.downside_budget_pct / 100
+
+    @property
+    def binding_shock(self) -> float:
+        """The promised shock as a negative fraction, the way the ladder uses it."""
+        return -self.stress_shock_pct / 100
 
     @property
     def delta_band(self) -> tuple[float, float]:
@@ -70,6 +98,15 @@ class Mandate(BaseModel):
             raise ValueError(f"{self.name}: an empty universe can never trade")
         if not 0 < self.max_deployed_pct <= 100:
             raise ValueError(f"{self.name}: deployment must be within (0, 100]")
+        if not 0 < self.downside_budget_pct <= 100:
+            raise ValueError(f"{self.name}: a downside budget must be within (0, 100]")
+        if -self.binding_shock not in [-s for s in DEFAULT_SHOCKS]:
+            raise ValueError(
+                f"{self.name}: promises against a {self.stress_shock_pct}% shock, "
+                f"which is not a rung on the published ladder. The ladder is fixed "
+                f"so a bad day cannot redefine what safe means; a mandate that "
+                f"picked its own shock could pick a flattering one."
+            )
         return self
 
     def validate_against(self, limits: Limits) -> "Mandate":
@@ -85,6 +122,13 @@ class Mandate(BaseModel):
                 f"{self.name} asks to deploy {self.max_deployed_pct}% of capital, "
                 f"more than the permanent limit of {limits.max_deployed_pct}%. "
                 f"A mandate may be stricter than the constitution, never weaker."
+            )
+        if self.downside_budget_pct > limits.max_drawdown_pct:
+            raise ValueError(
+                f"{self.name} promises the client a "
+                f"{self.downside_budget_pct}% downside budget, but the kill-switch "
+                f"halts the agent at a {limits.max_drawdown_pct}% drawdown. The "
+                f"promise could never be exercised, because trading stops first."
             )
         return self
 

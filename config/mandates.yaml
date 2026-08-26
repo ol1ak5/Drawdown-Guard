@@ -12,6 +12,14 @@
 # one, never weaker. `load_mandate` enforces that and refuses to construct a
 # mandate that tries.
 #
+# THE DOWNSIDE BUDGET IS THE ONE PROMISE ABOUT LOSSES
+# ----------------------------------------------------
+# Every other field here limits what may be *opened*. `downside_budget_pct`
+# limits what the book already held would *cost* if the market fell, which no
+# single order can keep or break by itself. It is checked every cycle by
+# `risk/stress.py`, against the positions that actually exist, and the shortfall
+# it reports is what the agent is hired to close.
+#
 # THE CONCENTRATION CAPS ARE NOT ROUND NUMBERS PICKED FOR LOOKS
 # -------------------------------------------------------------
 # Measured 2026-08-25 on cached history. The equity ETFs correlate 0.78 to 0.95
@@ -38,6 +46,11 @@ conservative:
   # the cap is what forces the diversification rather than suggesting it.
   max_concentration_pct: 75.0
   stress_allows_new_risk: false
+  # 5% of the account. Under a 20% equity shock this permits an unprotected
+  # exposure of only a quarter of capital, so this mandate is nearly always in
+  # deficit and nearly always buying protection. That is what conservative
+  # means once it is written as arithmetic instead of as a word.
+  downside_budget_pct: 5.0
 
 balanced:
   description: >
@@ -48,6 +61,10 @@ balanced:
   target_delta: {min: 0.15, max: 0.30}
   max_concentration_pct: 90.0
   stress_allows_new_risk: false
+  # 10%. On a 1,000,000 account that is 100,000, and a 20% shock keeps the
+  # promise unprotected up to 500,000 of exposure. The demonstration book is
+  # deliberately sized above that line -- see scripts/build_portfolio.py.
+  downside_budget_pct: 10.0
 
 aggressive:
   description: >
@@ -66,3 +83,9 @@ aggressive:
   # instead of "no opinion".
   max_concentration_pct: 100.0
   stress_allows_new_risk: true
+  # 15%, which is the ceiling rather than a choice. The permanent kill-switch
+  # halts the agent at a 15% drawdown, so a larger budget would be a promise
+  # the system stops trading before it could ever honour. `validate_against`
+  # refuses to construct it, which is the correct outcome: an unkeepable
+  # promise should fail loudly at load time, not quietly in a crash.
+  downside_budget_pct: 15.0

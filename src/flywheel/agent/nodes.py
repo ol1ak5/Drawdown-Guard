@@ -1,4 +1,4 @@
-"""The eight nodes of one trading cycle.
+"""The nine nodes of one trading cycle.
 
 The plan asked for one file per node. They are together here because they are
 one sequence over one state type, each is a dozen lines, and eight files whose
@@ -7,9 +7,10 @@ same function with import statements between the paragraphs. The boundaries
 that matter are enforced by the state, not by the filesystem: a node returns a
 partial update and can touch nothing else.
 
-Order: reconcile, snapshot, regime, route, candidates, optimize, execute,
-journal. A halt after reconcile jumps straight to the journal, because a cycle
-that stopped and said nothing is indistinguishable from a cycle that crashed.
+Order: reconcile, mandate, snapshot, regime, route, candidates, optimize,
+execute, journal. A halt after reconcile jumps straight to the journal, because
+a cycle that stopped and said nothing is indistinguishable from one that
+crashed.
 """
 
 from datetime import date
@@ -22,11 +23,14 @@ import yaml
 from flywheel.agent.state import FlywheelState
 from flywheel.execution.orders import submit_order, to_proposed_order
 from flywheel.journal import writer
-from flywheel.market.client import get_account
+from flywheel.market.client import get_account, get_positions
 from flywheel.market.features import build_snapshot
 from flywheel.optimizer.candidates import build_candidates
 from flywheel.optimizer.model import optimize
+from flywheel.risk.book import to_book
 from flywheel.risk.limits import load_limits
+from flywheel.risk.mandate import load_mandate
+from flywheel.risk.stress import gap_at, ladder, unhedged_limit, worst_gap
 from flywheel.wheel import next_action
 
 STRATEGY_PATH = Path("config/strategy.yaml")
@@ -85,7 +89,91 @@ async def reconcile_node(state: FlywheelState) -> FlywheelState:
     )
 
 
-# --- 2. snapshot ------------------------------------------------------------
+# --- 2. mandate -------------------------------------------------------------
+
+
+async def mandate_node(state: FlywheelState) -> FlywheelState:
+    """Rebuild the stress ladder from the positions that actually exist.
+
+    This runs before the agent looks at the market, and that ordering is the
+    argument of the whole project. A cycle that first decided what it wanted to
+    trade and then measured the risk would be checking its homework. Measuring
+    first means the gap is an input to the decision rather than a report on it.
+
+    Recomputed from scratch every cycle rather than carried forward, because
+    the gap moves without anyone trading: an option expires overnight and the
+    protection it provided is simply gone the next morning. Nothing but
+    recomputation notices that.
+
+    The gap the agent acts on is the one at the shock the mandate names, not
+    the worst row on the ladder. The deepest rung breaches for any normally
+    invested portfolio, so acting on it would mean reporting an unclosable
+    deficit every cycle — and hedging a 35% tail costs more than the loss it
+    insures. It is disclosed instead. `stress.gap_at` carries the argument.
+
+    A book that cannot be fully priced still produces a ladder, marked
+    incomplete. The alternative — refusing to report anything — would leave the
+    agent with no risk estimate at all on the day a single quote is missing,
+    which is worse than a labelled partial one.
+    """
+    portfolio = state.get("portfolio")
+    if portfolio is None:
+        return FlywheelState()
+
+    mandate = load_mandate(strategy().get("mandate", "balanced"))
+    try:
+        positions = await get_positions()
+    except Exception as exc:  # noqa: BLE001 — a missing ladder is not a dead cycle
+        writer.write("mandate.unreadable", {"detail": str(exc)}, severity="info")
+        return FlywheelState()
+
+    book = to_book(positions, portfolio.cash)
+    budget = mandate.budget(portfolio.equity)
+    rungs = ladder(book.holdings, book.legs, budget)
+    # What the agent is obliged to close, and what it merely has to disclose.
+    binding = gap_at(rungs, mandate.binding_shock)
+    worst = worst_gap(rungs)
+    gap = binding.gap if binding else 0.0
+
+    writer.write(
+        "mandate.stress",
+        {
+            "mandate": mandate.name,
+            "downside_budget_pct": mandate.downside_budget_pct,
+            "budget": round(budget, 2),
+            "equity_exposure": round(book.equity_exposure, 2),
+            "binding_shock": mandate.binding_shock,
+            "gap": round(gap, 2),
+            "unprotected_limit": round(
+                unhedged_limit(budget, mandate.binding_shock), 2
+            ),
+            "complete": book.complete,
+            "unpriced": book.unpriced,
+            "ladder": [
+                {
+                    "shock": r.shock,
+                    "loss": round(r.portfolio_loss, 2),
+                    "from_options": round(r.protected_by_options, 2),
+                    "gap": round(r.gap, 2),
+                }
+                for r in rungs
+            ],
+            # Disclosed, not promised. The deepest rung nearly always breaches
+            # and closing it costs more than it insures; the client is still
+            # owed the number.
+            "worst_gap": round(worst.gap, 2) if worst else 0.0,
+            "worst_shock": worst.shock if worst else None,
+        },
+        severity="breach" if gap > 0 else "info",
+    )
+    return FlywheelState(
+        ladder=rungs,
+        protection_gap=gap,
+        book_complete=book.complete,
+    )
+
+
+# --- 3. snapshot ------------------------------------------------------------
 
 
 async def snapshot_node(state: FlywheelState) -> FlywheelState:
@@ -108,7 +196,7 @@ async def snapshot_node(state: FlywheelState) -> FlywheelState:
     return FlywheelState(snapshots=snapshots)
 
 
-# --- 3. regime --------------------------------------------------------------
+# --- 4. regime --------------------------------------------------------------
 
 
 async def regime_node(state: FlywheelState) -> FlywheelState:
@@ -138,7 +226,7 @@ async def regime_node(state: FlywheelState) -> FlywheelState:
     return FlywheelState(regime=regime, regime_rationale=rationale)
 
 
-# --- 4. route ---------------------------------------------------------------
+# --- 5. route ---------------------------------------------------------------
 
 
 async def route_node(state: FlywheelState) -> FlywheelState:
@@ -163,7 +251,7 @@ def _resting(symbol: str):
     return WheelState(symbol=symbol)
 
 
-# --- 5. candidates ----------------------------------------------------------
+# --- 6. candidates ----------------------------------------------------------
 
 
 async def candidates_node(state: FlywheelState) -> FlywheelState:
@@ -216,7 +304,7 @@ async def candidates_node(state: FlywheelState) -> FlywheelState:
     return FlywheelState(candidates=candidates)
 
 
-# --- 6. optimize ------------------------------------------------------------
+# --- 7. optimize ------------------------------------------------------------
 
 
 async def optimize_node(state: FlywheelState) -> FlywheelState:
@@ -244,7 +332,7 @@ async def optimize_node(state: FlywheelState) -> FlywheelState:
     return FlywheelState(allocations=[a for a in allocations if a.contracts > 0])
 
 
-# --- 7. execute -------------------------------------------------------------
+# --- 8. execute -------------------------------------------------------------
 
 
 async def execute_node(state: FlywheelState) -> FlywheelState:
@@ -279,7 +367,7 @@ async def execute_node(state: FlywheelState) -> FlywheelState:
     return FlywheelState(results=results)
 
 
-# --- 8. journal -------------------------------------------------------------
+# --- 9. journal -------------------------------------------------------------
 
 
 async def journal_node(state: FlywheelState) -> FlywheelState:
@@ -306,6 +394,8 @@ async def journal_node(state: FlywheelState) -> FlywheelState:
             "allocations": len(state.get("allocations") or []),
             "submitted": sum(1 for r in state.get("results", []) if r.submitted),
             "refused": sum(1 for r in state.get("results", []) if not r.submitted),
+            "protection_gap": state.get("protection_gap", 0.0),
+            "book_complete": state.get("book_complete", True),
             "discrepancies": state.get("discrepancies", []),
             "dry_run": state.get("dry_run", False),
         },

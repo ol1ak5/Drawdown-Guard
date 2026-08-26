@@ -25,7 +25,13 @@ JOURNAL_DIR = Path("journal")
 # proposed, examined and refused. A defect means the middleware fired, which can
 # only happen if the toolset let something through that should never have
 # reached it. One is evidence the design holds; the other is evidence it leaks.
-SEVERITIES = ("info", "veto", "defect")
+#
+# `breach` is about neither. Those three describe the agent's own machinery;
+# a breach describes the client's portfolio — the stress ladder says today's
+# book would lose more than the mandate allows. Nothing has malfunctioned and
+# nothing was refused. It is the one severity that means work to do rather than
+# something to inspect, which is why it is not folded into `info`.
+SEVERITIES = ("info", "veto", "defect", "breach")
 
 
 def _path_for(day: date, directory: str | Path) -> Path:

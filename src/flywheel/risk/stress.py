@@ -159,9 +159,41 @@ def ladder(
 
 
 def worst_gap(rungs: list[Rung]) -> Rung | None:
-    """The rung that breaches the mandate by the most, or None if none do."""
+    """The rung that breaches the mandate by the most, or None if none do.
+
+    Reported, but not what the agent acts on — see `gap_at`.
+    """
     breaches = [r for r in rungs if r.breached]
     return max(breaches, key=lambda r: r.gap) if breaches else None
+
+
+def gap_at(rungs: list[Rung], shock: float) -> Rung | None:
+    """The rung at one specific shock: the one the mandate actually promises.
+
+    THE REASON THIS EXISTS RATHER THAN JUST `worst_gap`
+    ----------------------------------------------------
+    The deepest rung essentially always breaches. At a 10% budget, holding the
+    promise through a 35% shock means capping equity exposure at 28.6% of
+    capital — so a normally invested portfolio is permanently in deficit
+    against that row, and an agent that acted on the worst rung would report an
+    unclosable gap every single cycle. A warning that is always on is not a
+    warning.
+
+    Worse, closing a 35% tail with puts is the expensive problem this project
+    started from. Deep protection is bought far out of the money, decays to
+    nothing in most years, and costs more than the loss it insures against
+    across any ordinary decade.
+
+    So the mandate names one shock it promises against, and that is what the
+    agent closes. The deeper rungs stay on the ladder and stay in the journal,
+    because "a 2008 would cost you this much and we are deliberately not
+    hedging all of it" is a disclosure the client is owed. Reporting it is
+    honest; promising it would not be affordable.
+    """
+    for rung in rungs:
+        if abs(rung.shock - shock) < 1e-9:
+            return rung
+    return None
 
 
 def unhedged_limit(budget: float, shock: float) -> float:

@@ -17,6 +17,7 @@ from flywheel.execution.orders import OrderResult
 from flywheel.market.features import MarketSnapshot
 from flywheel.optimizer.candidates import Candidate
 from flywheel.optimizer.model import Allocation
+from flywheel.risk.stress import Rung
 
 
 class FlywheelState(TypedDict, total=False):
@@ -31,6 +32,15 @@ class FlywheelState(TypedDict, total=False):
     snapshots: dict[str, MarketSnapshot]
     wheels: dict[str, WheelState]
     portfolio: Portfolio | None
+    # What today's book loses at each published shock, and by how much the
+    # worst of them breaks the client's promise. `protection_gap` is dollars,
+    # zero when the mandate holds.
+    ladder: list[Rung]
+    protection_gap: float
+    # False when a held position could not be priced, so the ladder above is
+    # missing a leg. Carried into the journal rather than dropped: a gap
+    # computed from an incomplete book is a weaker claim and has to read as one.
+    book_complete: bool
     regime: Regime
     regime_rationale: str
     actionable: list[str]
@@ -54,6 +64,9 @@ def initial_state(dry_run: bool = False) -> FlywheelState:
         snapshots={},
         wheels={},
         portfolio=None,
+        ladder=[],
+        protection_gap=0.0,
+        book_complete=True,
         regime="calm",
         regime_rationale="",
         actionable=[],
