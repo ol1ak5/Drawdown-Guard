@@ -26,7 +26,7 @@ from typing import Any
 import yaml
 
 from drawdownguard.agent.state import GuardState
-from drawdownguard.execution.orders import submit_order, to_proposed_order
+from drawdownguard.execution.orders import submit_order
 from drawdownguard.journal import writer
 from drawdownguard.market.client import get_account, get_positions
 from drawdownguard.market.features import build_snapshot
@@ -554,16 +554,43 @@ async def optimize_node(state: GuardState) -> GuardState:
 
 
 async def execute_node(state: GuardState) -> GuardState:
-    """Submit each allocation. Every one goes through the gate inside
-    `submit_order`; nothing here can skip it."""
+    """Send the protection `protect` chose. Every order goes through the gate
+    inside `submit_order`; nothing here can skip it.
+
+    The remedy arrives already carrying its orders, built where the chain row
+    was in hand. Nothing is re-priced here: a second read of the chain can
+    return a different quote, and an order sent at a price nobody journalled is
+    an order nobody can check afterwards.
+
+    A cycle with no chosen remedy sends nothing and says so. That is the common
+    case and the correct one -- a promise that is holding needs no trade, and
+    an agent that found something to do every morning would be an agent looking
+    for a reason.
+    """
     portfolio = state.get("portfolio")
     if portfolio is None:
         return GuardState(results=[])
 
+    chosen = state.get("protection")
+    orders = list(chosen.orders) if chosen else []
+
+    if chosen is not None and not orders:
+        # A remedy was chosen and it cannot be placed. Loud, because the gap is
+        # open and the agent has nothing on the way to close it.
+        writer.write(
+            "protection.unplaceable",
+            {
+                "kind": chosen.kind,
+                "detail": chosen.describe,
+                "gap": round(state.get("protection_gap") or 0.0, 2),
+                "reason": "the remedy carries no order; the chain row was thin",
+            },
+            severity="breach",
+        )
+
     limits = load_limits()
     results = []
-    for allocation in state.get("allocations", []):
-        order = to_proposed_order(allocation)
+    for order in orders:
         result = await submit_order(
             order, portfolio, limits, dry_run=state.get("dry_run", False)
         )

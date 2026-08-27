@@ -100,10 +100,12 @@ easy to get wrong:
 """
 
 import math
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
+from datetime import date
 from decimal import Decimal
 
-from drawdownguard.domain import SHARES_PER_CONTRACT
+from drawdownguard.domain import SHARES_PER_CONTRACT, ProposedOrder
+from drawdownguard.optimizer.payoff import assignment_prob, bs_delta, contract_vega
 from drawdownguard.risk.stress import (
     DEFAULT_SHOCKS,
     Holding,
@@ -149,6 +151,16 @@ class Remedy:
     # buying, and what the client is selling to pay for it. Both None on a
     # remedy that sells nothing. Either None when the chain did not supply it,
     # which `financed_fairly` reads as "do not sell" rather than as "proceed".
+    # The same position again, in the shape that can actually be sent. `legs`
+    # carry a strike and a premium -- enough to stress the payoff, not enough
+    # to trade -- while these carry the expiry and the greeks the risk gate
+    # reads. Empty on `reduce_exposure`, which sells shares and files no option
+    # order at all.
+    #
+    # Built where the chain row is in hand rather than looked up again later:
+    # a second read of the chain can return a different quote, and an order
+    # priced off a row nobody journalled is an order nobody can check.
+    orders: tuple[ProposedOrder, ...] = field(default_factory=tuple)
     protection_iv: float | None = None
     financing_iv: float | None = None
     # Dollars the sold call brings in, and how far above spot the ceiling sits,
@@ -315,6 +327,55 @@ def _contracts_needed(strike: Decimal, spot: float, shock: float, gap: float) ->
     return math.ceil(gap / (intrinsic * SHARES_PER_CONTRACT))
 
 
+def _tradable(row: dict) -> bool:
+    """Whether a chain row carries what an order needs.
+
+    The rows the live chain returns always do. The rows the tests build are
+    deliberately thin -- a strike and a price, which is all a payoff needs --
+    and a remedy that could not be priced without an expiry would force every
+    arithmetic test to invent one. So a thin row still produces a remedy, with
+    no order attached, and `execute` finds nothing to send rather than sending
+    something malformed.
+    """
+    return bool(row.get("expiry")) and bool(row.get("implied_vol"))
+
+
+def order_for(symbol: str, row: dict, contracts: int, spot: float) -> ProposedOrder:
+    """One chain row as an order the gate can rule on and the broker can fill.
+
+    A `Remedy` describes a position in `OptionLeg`s, which carry a strike and a
+    premium and nothing else -- enough to stress the payoff, and not enough to
+    trade. Expiry and the greeks come back off the chain row here, so a remedy
+    arrives at `execute` already in the shape the risk gate reads.
+
+    The greeks are recomputed from the row's own implied volatility rather than
+    taken from a vendor field, because `contract_vega` is the project's
+    convention and three incompatible ones are in circulation. `limit_price` is
+    the ask on a purchase and the bid on a sale: the side being crossed to,
+    never the mid, which is a price nobody is offering.
+    """
+    tau = max((row["expiry"] - date.today()).days, 0) / 365.0
+    strike, vol = float(row["strike"]), float(row["implied_vol"])
+    buying = contracts > 0
+    price = row["ask"] if buying else row["bid"]
+    bid, ask = float(row["bid"]), float(row["ask"])
+    mid = (bid + ask) / 2
+    return ProposedOrder(
+        symbol=symbol,
+        right=row["right"],
+        strike=Decimal(str(row["strike"])),
+        expiry=row["expiry"],
+        contracts=contracts,
+        limit_price=Decimal(str(price)),
+        delta=bs_delta(spot, strike, tau, vol, row["right"]),
+        vega=contract_vega(spot, strike, tau, vol),
+        assignment_prob=assignment_prob(spot, strike, tau, vol, row["right"]),
+        open_interest=int(row.get("open_interest") or 0),
+        spread_pct=((ask - bid) / mid * 100) if mid > 0 else 100.0,
+        spot=spot,
+    )
+
+
 def contracts_to_match(holdings: list[Holding], spot: float) -> int:
     """Enough puts to stand behind every share the client owns.
 
@@ -427,6 +488,7 @@ def protective_put(
         upside_measured_at=0.0,
         gap_before=gap,
         gap_after=_gap(holdings, [*legs, leg], budget, shock),
+        orders=(order_for(symbol, row, count, spot),) if _tradable(row) else (),
         protection_iv=row.get("implied_vol"),
     )
 

@@ -683,3 +683,90 @@ def test_what_the_protection_cost_cannot_change_whether_it_is_released():
     assert cheap.contracts == dear.contracts
     assert cheap.slack_after == pytest.approx(dear.slack_after)
     assert cheap.reason == dear.reason
+
+
+# --- from a remedy to an order --------------------------------------------
+
+
+def full_put_row(strike: float, ask: float) -> dict:
+    """A chain row shaped the way `load_chain` returns them.
+
+    The thin rows above carry a strike and a price, which is all a payoff
+    needs. An order needs the expiry and the greeks as well, so the tests that
+    are about orders say so by using this.
+    """
+    from datetime import date, timedelta
+
+    return {
+        "occ_symbol": "SPY271231P00420000",
+        "strike": strike,
+        "expiry": date.today() + timedelta(days=365),
+        "right": "P",
+        "bid": ask - 0.10,
+        "ask": ask,
+        "open_interest": 5_000,
+        "implied_vol": 0.22,
+    }
+
+
+def test_a_remedy_arrives_carrying_the_order_that_places_it():
+    """`legs` describe the payoff; they cannot be sent to a broker.
+
+    A leg has a strike and a premium and no expiry, so an agent holding only
+    legs has priced a hedge it has no way to buy. The order is built where the
+    chain row is in hand -- re-reading the chain later can return a different
+    quote, and an order priced off a row nobody journalled is one nobody can
+    check afterwards.
+    """
+    rows = [full_put_row(420, 2.50)]
+    remedy = protective_put(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, rows)
+
+    assert len(remedy.orders) == 1
+    order = remedy.orders[0]
+    assert order.contracts == 12  # bought, so positive
+    assert order.strike == Decimal("420")
+    assert order.expiry == rows[0]["expiry"]
+    assert order.limit_price == Decimal("2.5")  # the ask, not the mid
+    assert order.delta < 0  # a long put shortens the book
+    assert order.open_interest == 5_000
+
+
+def test_the_order_a_remedy_carries_is_one_the_gate_approves():
+    """The end of the chain that matters. A remedy the gate would refuse is a
+    plan, not a hedge, and the agent would report a closed gap it never closed.
+    """
+    from drawdownguard.domain import Portfolio, WheelState
+    from drawdownguard.risk.gate import veto
+    from drawdownguard.risk.limits import Limits
+
+    rows = [full_put_row(420, 2.50)]
+    remedy = protective_put(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, rows)
+    client = Portfolio(
+        equity=Decimal("1000000"),
+        cash=Decimal("400000"),
+        peak_equity=Decimal("1000000"),
+        net_delta_value=600_000.0,
+        wheels={"SPY": WheelState(symbol="SPY", leg="SHARES", shares=1200)},
+    )
+    limits = Limits(
+        max_position_pct=25.0,
+        max_deployed_pct=60.0,
+        max_drawdown_pct=15.0,
+        max_net_delta_pct=50.0,
+        max_vega=500.0,
+        max_assignment_prob=0.35,
+        min_open_interest=500,
+        max_spread_pct=5.0,
+        forbid_naked=True,
+    )
+    verdict = veto(remedy.orders[0], client, limits)
+    assert verdict.approved, verdict.reason
+
+
+def test_a_row_too_thin_to_trade_yields_a_price_but_no_order():
+    """Silence rather than a malformed order. `execute` then journals that the
+    remedy could not be placed, at breach severity, instead of sending an order
+    with no expiry on it."""
+    remedy = protective_put(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS)
+    assert remedy is not None
+    assert remedy.orders == ()
