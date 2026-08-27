@@ -406,6 +406,58 @@ def order_for(symbol: str, row: dict, contracts: int, spot: float) -> ProposedOr
     )
 
 
+def sleeves(
+    holdings: list[Holding], budget: float
+) -> list[tuple[str, list[Holding], float]]:
+    """The book split by symbol, each with its own share of the promise.
+
+    Returns `(symbol, holdings, budget)` largest first.
+
+    WHY ONE HEDGE FOR THE WHOLE BOOK WAS WRONG
+    -------------------------------------------
+    The agent used to buy puts on its largest holding and size them to the
+    total exposure, treating SPY, QQQ and IWM as one thing that falls by one
+    number. They do not. Measured on this project's own bars, 2019 to 2026, QQQ
+    carries a beta of 1.17 to SPY and IWM 1.12 -- so a 20% fall in SPY is
+    roughly 23% in QQQ, and a put matched by notional pays for the 20%.
+
+    On the demonstration book that is 6,821 short on the QQQ sleeve and 4,879
+    on the IWM sleeve: 11,700 against a 100,000 budget, or 11.7% of a promise
+    reported as kept. The same class of error as excluding the premium from
+    sizing, and found the same way -- by someone asking what happens to the
+    positions that are not the one being hedged.
+
+    Each sleeve now buys puts on its own underlying, which needs no beta at
+    all. A QQQ put pays on QQQ however far QQQ falls, and an estimate that
+    could be wrong is replaced by an instrument that cannot be.
+
+    THE SPLIT IS BY EXPOSURE, AND THAT IS NOT A PREFERENCE
+    -------------------------------------------------------
+    A symbol holding half the book can lose half the money, so it is allowed
+    half the budget. Each sleeve is then floored inside its own share, and the
+    shares sum to the promise -- so the book is floored inside the promise
+    without any sleeve needing to know about the others.
+
+    Unshocked holdings get no sleeve. Bills do not fall in an equity shock and
+    there is nothing there to protect; giving them a share of the budget would
+    hand part of the client's protection to the one position that cannot lose.
+    """
+    exposed = [h for h in holdings if h.shocked and h.value > 0]
+    total = sum(h.value for h in exposed)
+    if total <= 0:
+        return []
+
+    by_symbol: dict[str, list[Holding]] = {}
+    for holding in exposed:
+        by_symbol.setdefault(holding.symbol, []).append(holding)
+
+    out = [
+        (symbol, group, budget * sum(h.value for h in group) / total)
+        for symbol, group in by_symbol.items()
+    ]
+    return sorted(out, key=lambda row: -sum(h.value for h in row[1]))
+
+
 def contracts_to_match(holdings: list[Holding], spot: float) -> int:
     """Enough puts to stand behind every share the client owns.
 
@@ -414,12 +466,10 @@ def contracts_to_match(holdings: list[Holding], spot: float) -> int:
     away again -- a hedge over half the book is not half a promise kept, it is
     no promise kept with half the bill.
 
-    The whole shocked book is counted, not just the hedge instrument's own
-    shares. A diversified equity portfolio is hedged with index puts because
-    that is what a liquid chain exists for, and `risk/concentration.py` measured
-    these ETFs correlating 0.78 to 0.95 with one another. That is the assumption
-    being made and it is worth naming: in a shock where the client's holdings
-    part company with the index, the floor is approximate rather than exact.
+    Counts whatever holdings it is given, which is now one symbol's sleeve
+    rather than the whole book -- see `sleeves`. Handed the whole book and one
+    symbol's price it would convert everything into that symbol's shares, which
+    is the notional match that under-hedged the higher-beta sleeves by 11,700.
 
     Rounded up. The leftover fraction of a contract protects slightly more than
     the client owns, which errs toward the promise rather than away from it.

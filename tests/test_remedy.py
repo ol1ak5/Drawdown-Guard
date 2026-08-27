@@ -770,3 +770,66 @@ def test_a_row_too_thin_to_trade_yields_a_price_but_no_order():
     remedy = protective_put(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS)
     assert remedy is not None
     assert remedy.orders == ()
+
+
+# --- one hedge per holding --------------------------------------------------
+
+
+def test_the_budget_is_split_by_what_each_holding_can_lose():
+    """A symbol holding half the book may lose half the money.
+
+    The shares sum to the promise, so each sleeve floored inside its own share
+    leaves the book floored inside the whole -- and no sleeve has to know
+    anything about the others.
+    """
+    from drawdownguard.risk.remedy import sleeves
+
+    book = [
+        Holding("SPY", 800, 500.0),  # 400,000
+        Holding("QQQ", 400, 500.0),  # 200,000
+        Holding("IWM", 400, 500.0),  # 200,000
+        Holding("CASH", 200_000, 1.0, shocked=False),
+    ]
+    split = {symbol: budget for symbol, _, budget in sleeves(book, 100_000.0)}
+    assert split["SPY"] == pytest.approx(50_000)
+    assert split["QQQ"] == pytest.approx(25_000)
+    assert split["IWM"] == pytest.approx(25_000)
+    assert sum(split.values()) == pytest.approx(100_000)
+
+
+def test_what_cannot_fall_gets_no_share_of_the_protection():
+    """Bills do not move in an equity shock, so there is nothing there to
+    protect. Giving them a slice of the budget would hand part of the client's
+    protection to the one position that cannot lose it."""
+    from drawdownguard.risk.remedy import sleeves
+
+    book = [Holding("SPY", 100, 500.0), Holding("BIL", 500_000, 1.0, shocked=False)]
+    assert [symbol for symbol, _, _ in sleeves(book, 100_000.0)] == ["SPY"]
+
+
+def test_a_book_with_nothing_exposed_has_no_sleeves_rather_than_a_zero_one():
+    from drawdownguard.risk.remedy import sleeves
+
+    assert sleeves([Holding("BIL", 1000, 91.6, shocked=False)], 100_000.0) == []
+
+
+def test_each_sleeve_is_hedged_on_its_own_underlying():
+    """The defect this replaced.
+
+    The agent used to buy puts on its largest holding and size them to the
+    whole book, which treats three indices as one thing falling by one number.
+    Measured on this project's own bars, QQQ carries a beta of 1.17 to SPY and
+    IWM 1.12, so a notional match left 11,700 of a 100,000 promise uncovered.
+
+    A QQQ put pays on QQQ however far QQQ falls. No beta is estimated because
+    none is needed -- an estimate that could be wrong is replaced by an
+    instrument that cannot be.
+    """
+    from drawdownguard.risk.remedy import contracts_to_match, sleeves
+
+    book = [Holding("SPY", 800, 500.0), Holding("QQQ", 400, 500.0)]
+    for symbol, sleeve, budget in sleeves(book, 100_000.0):
+        assert [h.symbol for h in sleeve] == [symbol]
+        # Contracts follow the sleeve's own shares, not the book's total.
+        assert contracts_to_match(sleeve, 500.0) == sum(h.shares for h in sleeve) // 100
+        assert budget < 100_000.0

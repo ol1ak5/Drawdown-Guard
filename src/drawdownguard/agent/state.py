@@ -50,8 +50,11 @@ class GuardState(TypedDict, total=False):
     # two stay in `protection_options` because the journal has to show what was
     # declined, not only what was done.
     released: Release | None
-    protection: Remedy | None
-    protection_options: list[Remedy]
+    # One per sleeve. Each symbol is hedged on its own underlying, because a
+    # put matched by notional on the largest holding under-covers the
+    # higher-beta ones -- 11,700 of a 100,000 promise on the demonstration
+    # book. See `remedy.sleeves`.
+    protection: list[Remedy]
     regime: Regime
     regime_rationale: str
     results: list[OrderResult]
@@ -77,8 +80,7 @@ def initial_state(dry_run: bool = False) -> GuardState:
         book_complete=True,
         book=None,
         released=None,
-        protection=None,
-        protection_options=[],
+        protection=[],
         regime="calm",
         regime_rationale="",
         results=[],

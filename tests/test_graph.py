@@ -65,6 +65,22 @@ def snapshot(symbol: str) -> MarketSnapshot:
     )
 
 
+
+def only_sleeve(plan: dict) -> dict:
+    """The one sleeve in a plan, for tests whose book holds a single symbol.
+
+    `protection.plan` carries a list now: each symbol is hedged on its own
+    underlying, because a put matched by notional on the largest holding
+    under-covers the higher-beta ones. Tests written against a one-symbol book
+    are asking about its only sleeve, and say so here rather than indexing
+    into a list at every call site.
+    """
+    sleeves = plan["payload"]["sleeves"]
+    assert len(sleeves) == 1, f"expected one sleeve, got {len(sleeves)}"
+    return sleeves[0]
+
+
+
 async def run(
     portfolio,
     chain_rows=None,
@@ -326,12 +342,12 @@ async def test_the_gap_is_closed_the_way_todays_prices_favour(journal_dir):
         positions=EXPOSED,
     )
 
-    assert final["protection"].kind == "collar"
+    assert final["protection"][0].kind == "collar"
     plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
-    assert plan["payload"]["chosen"] == "collar"
-    assert plan["payload"]["symbol"] == "SPY"
+    assert only_sleeve(plan)["chosen"] == "collar"
+    assert only_sleeve(plan)["symbol"] == "SPY"
     # The reason travels with the answer rather than being reconstructed later.
-    assert "richer leg" in plan["payload"]["because"]
+    assert "richer leg" in only_sleeve(plan)["because"]
     assert plan["severity"] == "breach", "a plan is not a position"
 
 
@@ -352,9 +368,9 @@ async def test_the_same_client_gets_a_different_answer_from_a_different_chain(
         positions=EXPOSED,
     )
 
-    assert final["protection"].kind == "protective_put"
+    assert final["protection"][0].kind == "protective_put"
     plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
-    assert "underpriced upside" in plan["payload"]["because"]
+    assert "underpriced upside" in only_sleeve(plan)["because"]
 
     # And back again on the original chain, with nothing about the client
     # touched in between.
@@ -362,7 +378,7 @@ async def test_the_same_client_gets_a_different_answer_from_a_different_chain(
         healthy_portfolio(), chain_rows=CHAIN, journal_dir=journal_dir,
         positions=EXPOSED,
     )
-    assert again["protection"].kind == "collar"
+    assert again["protection"][0].kind == "collar"
 
 
 async def test_the_remedy_that_was_declined_is_recorded_too(journal_dir):
@@ -376,13 +392,13 @@ async def test_the_remedy_that_was_declined_is_recorded_too(journal_dir):
         positions=EXPOSED,
     )
     plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
-    priced = {o["kind"]: o for o in plan["payload"]["offers"]}
+    priced = {o["kind"]: o for o in only_sleeve(plan)["offers"]}
 
     # Two, not three: no shipped mandate may sell the client's shares, and the
     # exclusion is stated rather than left as a silence.
     assert set(priced) == {"protective_put", "collar"}
     assert plan["payload"]["excluded"] == ["reduce_exposure"]
-    assert len(final["protection_options"]) == 2
+    assert len(only_sleeve(plan)["offers"]) == 2
     assert all(o["closes_the_gap"] for o in priced.values())
 
     # The two prices in the two units they are actually paid in, plus the terms
@@ -421,16 +437,16 @@ async def test_the_sale_appears_only_for_a_client_who_granted_it(journal_dir):
             positions=EXPOSED,
         )
 
-    kinds = {remedy.kind for remedy in final["protection_options"]}
-    assert kinds == {"protective_put", "collar", "reduce_exposure"}
     plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
+    kinds = {o["kind"] for o in only_sleeve(plan)["offers"]}
+    assert kinds == {"protective_put", "collar", "reduce_exposure"}
     assert plan["payload"]["excluded"] == []
     # Offered, priced, and passed over: the one-way door loses to a remedy that
     # expires even though it costs no cash at all.
-    priced = {o["kind"]: o for o in plan["payload"]["offers"]}
+    priced = {o["kind"]: o for o in only_sleeve(plan)["offers"]}
     assert priced["reduce_exposure"]["permanent"] is True
     assert priced["reduce_exposure"]["premium_cost"] == 0.0
-    assert plan["payload"]["chosen"] == "collar"
+    assert only_sleeve(plan)["chosen"] == "collar"
 
 
 async def test_the_uniform_shock_assumption_is_written_down_next_to_the_hedge(
@@ -444,7 +460,11 @@ async def test_the_uniform_shock_assumption_is_written_down_next_to_the_hedge(
         positions=EXPOSED,
     )
     plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
-    assert "uniform shock" in plan["payload"]["assumes"]
+    # The assumption is gone because the approximation is gone: each sleeve
+    # is hedged on its own underlying, so nothing is being assumed uniform.
+    assert [s["symbol"] for s in plan["payload"]["sleeves"]]
+    for sleeve in plan["payload"]["sleeves"]:
+        assert sleeve["budget"] > 0
 
 
 async def test_spent_protection_is_handed_back_before_anything_is_bought(journal_dir):
@@ -497,7 +517,7 @@ async def test_a_chain_that_cannot_be_read_leaves_the_gap_open_and_says_so(journ
     written = entries(journal_dir)
     failed = [e for e in written if e["event"] == "protection.chain_unreadable"]
     assert failed and failed[-1]["severity"] == "breach"
-    assert final["protection"] is None
+    assert final["protection"] == []
     assert final["protection_gap"] == pytest.approx(20_000, abs=1)
     assert final["halted"] is False, "one bad chain is not a reason to stop"
 
@@ -516,7 +536,7 @@ async def test_a_book_inside_its_budget_is_offered_no_protection(journal_dir):
     final, _ = await run(
         healthy_portfolio(), chain_rows=CHAIN, journal_dir=journal_dir, positions=inside
     )
-    assert final["protection"] is None
+    assert final["protection"] == []
     assert not [e for e in entries(journal_dir) if e["event"] == "protection.plan"]
 
 

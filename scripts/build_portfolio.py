@@ -105,11 +105,10 @@ ROLE = {
 }
 
 # Everything the client may end up holding, for the guard that refuses to run
-# on an account that already has a portfolio on it. TLT
-# is here because the scenario has the client buy it mid-week believing it
-# diversifies; it is not in TARGET, and the agent counts it as exposure rather
-# than protection for the reason written in risk/book.py.
-KNOWN = (*TARGET, "TLT")
+# on an account that already has a portfolio on it. AAPL is not in TARGET --
+# the client buys it mid-week in the scenario -- but an account carrying it
+# is an account partway through a run, not an empty one.
+KNOWN = (*TARGET, "AAPL")
 
 
 def short_put_collateral(positions: list[dict]) -> Decimal:

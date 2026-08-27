@@ -50,6 +50,7 @@ from drawdownguard.risk.remedy import (
     protective_put,
     reduce_exposure,
     release,
+    sleeves,
 )
 from drawdownguard.risk.stress import gap_at, ladder, unhedged_limit, worst_gap
 
@@ -275,8 +276,7 @@ async def protect_node(state: GuardState) -> GuardState:
     if gap <= 0:
         return GuardState(released=given, protection_gap=gap)
 
-    exposed = [h for h in book.holdings if h.shocked and h.shares > 0]
-    if not exposed:
+    if not sleeves(book.holdings, budget):
         # A gap with no shares behind it is a short-option gap, and the answer
         # to that is to stop selling rather than to buy a hedge for it.
         writer.write(
@@ -293,117 +293,122 @@ async def protect_node(state: GuardState) -> GuardState:
     # and the test would exercise the network it meant to replace.
     from drawdownguard.market.chain import load_chain
 
-    holding = max(exposed, key=lambda h: h.value)
     min_dte, max_dte = mandate.protection_dte
-    try:
-        puts = await load_chain(holding.symbol, "P", min_dte, max_dte)
-        calls = await load_chain(holding.symbol, "C", min_dte, max_dte)
-    except Exception as exc:  # noqa: BLE001 — reported, and the gap stays open
-        writer.write(
-            "protection.chain_unreadable",
-            {"symbol": holding.symbol, "gap": round(gap, 2), "detail": str(exc)},
-            severity="breach",
-        )
-        return GuardState(released=given, protection_gap=gap)
-
-    # Narrowed to what can actually be traded before anything is priced. The
-    # gate applies the same two rules, but it applies them last, and a remedy
-    # solved over the whole chain finds the cheapest strike by finding the one
-    # nobody trades. That order of events produced a real cycle that measured
-    # the gap correctly, chose a put with an open interest of 209, was refused,
-    # and left the promise broken with nothing on the way to fix it.
     gate_limits = load_limits()
-    offered, offered_calls = len(puts), len(calls)
-    puts = liquid(puts, gate_limits)
-    calls = liquid(calls, gate_limits)
-    writer.write(
-        "protection.chain_filtered",
-        {
-            "symbol": holding.symbol,
-            "puts": {"offered": offered, "tradable": len(puts)},
-            "calls": {"offered": offered_calls, "tradable": len(calls)},
-            "min_open_interest": gate_limits.min_open_interest,
-            "max_spread_pct": gate_limits.max_spread_pct,
-        },
-        severity="info",
-    )
+    chosen_all: list = []
+    planned: list[dict] = []
 
-    offers = [
-        remedy
-        for remedy in (
-            protective_put(
-                book.holdings, legs, budget, shock, holding.symbol, holding.price, puts
-            ),
-            collar(
-                book.holdings,
-                legs,
-                budget,
-                shock,
-                holding.symbol,
-                holding.price,
-                puts,
-                calls,
-            ),
-            reduce_exposure(book.holdings, legs, budget, shock, holding.symbol)
-            if mandate.allow_reduce_exposure
-            else None,
+    # One sleeve at a time, each hedged on its own underlying. The agent used
+    # to buy puts on the largest holding and size them to the whole book, which
+    # treats three indices as one thing falling by one number -- and they are
+    # not. On this project's own bars QQQ carries a beta of 1.17 to SPY and IWM
+    # 1.12, so a notional match left 11,700 of a 100,000 promise uncovered. A
+    # QQQ put pays on QQQ however far QQQ falls; no beta is estimated because
+    # none is needed.
+    for symbol, sleeve, sleeve_budget in sleeves(book.holdings, budget):
+        spot = sleeve[0].price
+        sleeve_legs = [leg for leg in legs if leg.symbol == symbol]
+        try:
+            puts = await load_chain(symbol, "P", min_dte, max_dte)
+            calls = await load_chain(symbol, "C", min_dte, max_dte)
+        except Exception as exc:  # noqa: BLE001 — reported, sleeve stays open
+            writer.write(
+                "protection.chain_unreadable",
+                {"symbol": symbol, "budget": round(sleeve_budget, 2),
+                 "detail": str(exc)},
+                severity="breach",
+            )
+            continue
+
+        # Narrowed to what can be traded before anything is priced. The gate
+        # applies the same two rules, but it applies them last, and a solver
+        # ranging over the whole chain finds the cheapest strike by finding the
+        # one nobody trades -- a real cycle chose a put with an open interest
+        # of 209, was refused, and left the promise broken.
+        offered = (len(puts), len(calls))
+        puts, calls = liquid(puts, gate_limits), liquid(calls, gate_limits)
+        writer.write(
+            "protection.chain_filtered",
+            {
+                "symbol": symbol,
+                "puts": {"offered": offered[0], "tradable": len(puts)},
+                "calls": {"offered": offered[1], "tradable": len(calls)},
+                "min_open_interest": gate_limits.min_open_interest,
+                "max_spread_pct": gate_limits.max_spread_pct,
+            },
+            severity="info",
         )
-        if remedy is not None
-    ]
-    chosen, why = choose(offers)
+
+        offers = [
+            remedy
+            for remedy in (
+                protective_put(
+                    sleeve, sleeve_legs, sleeve_budget, shock, symbol, spot, puts
+                ),
+                collar(
+                    sleeve, sleeve_legs, sleeve_budget, shock, symbol, spot,
+                    puts, calls,
+                ),
+                reduce_exposure(sleeve, sleeve_legs, sleeve_budget, shock, symbol)
+                if mandate.allow_reduce_exposure
+                else None,
+            )
+            if remedy is not None
+        ]
+        picked, why = choose(offers)
+        if picked is not None:
+            chosen_all.append(picked)
+        planned.append(
+            {
+                "symbol": symbol,
+                "spot": spot,
+                "exposure": round(sum(h.value for h in sleeve), 2),
+                # Its share of the promise, in proportion to what it can lose.
+                # A symbol holding half the book may lose half the money, so it
+                # is allowed half the budget, and the shares sum to the whole.
+                "budget": round(sleeve_budget, 2),
+                "offers": [
+                    {
+                        "kind": remedy.kind,
+                        "detail": remedy.describe,
+                        "premium_cost": round(remedy.premium_cost, 2),
+                        "forgone_upside": round(remedy.forgone_upside, 2),
+                        "upside_measured_at": remedy.upside_measured_at,
+                        # `upside_price` is the number that moves day to day --
+                        # dollars collected per 1% of ceiling surrendered.
+                        "upside_price": (
+                            round(remedy.upside_price, 2)
+                            if remedy.upside_price is not None
+                            else None
+                        ),
+                        "cash_per_1k": (
+                            round(remedy.cash_per_1k, 2)
+                            if remedy.cash_per_1k is not None
+                            else None
+                        ),
+                        "permanent": remedy.permanent,
+                        "protection_iv": remedy.protection_iv,
+                        "financing_iv": remedy.financing_iv,
+                        "financed_fairly": remedy.financed_fairly,
+                        "gap_after": round(remedy.gap_after, 2),
+                        "closes_the_gap": remedy.closes_the_gap,
+                    }
+                    for remedy in offers
+                ],
+                "chosen": picked.kind if picked else None,
+                "because": why,
+            }
+        )
 
     writer.write(
         "protection.plan",
         {
             "mandate": mandate.name,
-            "symbol": holding.symbol,
-            "spot": holding.price,
             "gap": round(gap, 2),
             "book_complete": book.complete,
-            # Stated, not implied: the ladder moves every equity holding by the
-            # same percentage, so one symbol can carry the whole hedge.
-            "assumes": "a uniform shock across every exposed holding",
-            # Stated even when nothing was excluded. An option missing from the
-            # journal is indistinguishable from an option that was never
-            # available, and the difference is the whole point of the field.
             "excluded": [] if mandate.allow_reduce_exposure else ["reduce_exposure"],
-            "offers": [
-                {
-                    "kind": remedy.kind,
-                    "detail": remedy.describe,
-                    "premium_cost": round(remedy.premium_cost, 2),
-                    "forgone_upside": round(remedy.forgone_upside, 2),
-                    "upside_measured_at": remedy.upside_measured_at,
-                    # The comparable number and the reason it is not the whole
-                    # comparison. `cash_per_1k` is None for anything not priced
-                    # in cash; `permanent` marks the remedies that cannot expire.
-                    "cash_per_1k": (
-                        round(remedy.cash_per_1k, 2)
-                        if remedy.cash_per_1k is not None
-                        else None
-                    ),
-                    "permanent": remedy.permanent,
-                    # The terms of the financing, on the remedy that has any.
-                    # `upside_price` is the number that moves day to day;
-                    # `financed_fairly` is the one the decision turns on.
-                    "protection_iv": remedy.protection_iv,
-                    "financing_iv": remedy.financing_iv,
-                    "upside_price": (
-                        round(remedy.upside_price, 2)
-                        if remedy.upside_price is not None
-                        else None
-                    ),
-                    "financed_fairly": remedy.financed_fairly,
-                    "gap_after": round(remedy.gap_after, 2),
-                    "closes_the_gap": remedy.closes_the_gap,
-                }
-                for remedy in offers
-            ],
-            "chosen": chosen.kind if chosen else None,
-            # The justification travels with the answer rather than being
-            # reconstructed from the numbers later. A decision whose reason is
-            # rebuilt after the fact is a decision nobody can audit.
-            "because": why,
+            "sleeves": planned,
+            "total_premium": round(sum(r.premium_cost for r in chosen_all), 2),
         },
         # Still a breach until something is actually placed. A plan is not a
         # position, and the journal should not read as though it were.
@@ -412,50 +417,39 @@ async def protect_node(state: GuardState) -> GuardState:
 
     # The decision is finished. Everything above was arithmetic and everything
     # below is prose, which is why a language model is allowed here and was not
-    # allowed anywhere else: it cannot change the strike, the size, or whether
-    # the order goes. It can only be unclear, and it says so in the journal next
-    # to the numbers it describes, where a reader can catch it.
-    #
-    # A note nobody could read is what the journal was missing. Eight columns of
-    # dollars are a record; they are not an answer to "why did you buy this."
-    if chosen is not None:
+    # allowed anywhere else: it cannot change a strike, a size, or whether an
+    # order goes. It can only be unclear, and it says so in the journal next to
+    # the numbers it describes, where a reader can catch it.
+    if chosen_all:
         note = await explain(
             {
                 "mandate": mandate.name,
                 "budget": budget,
                 "exposure": book.equity_exposure,
                 "gap": gap,
-                "describe": chosen.describe,
-                "premium_cost": chosen.premium_cost,
-                "forgone_upside": chosen.forgone_upside,
-                "gap_after": chosen.gap_after,
-                "rejected": [
-                    {
-                        "kind": other.kind,
-                        "describe": other.describe,
-                        "premium_cost": other.premium_cost,
-                        "forgone_upside": other.forgone_upside,
-                    }
-                    for other in offers
-                    if other is not chosen
-                ],
-                "because": why,
+                "describe": "; ".join(r.describe for r in chosen_all),
+                "premium_cost": sum(r.premium_cost for r in chosen_all),
+                "forgone_upside": sum(r.forgone_upside for r in chosen_all),
+                "gap_after": sum(r.gap_after for r in chosen_all),
+                "rejected": [],
+                "because": "; ".join(
+                    p["because"] for p in planned if p.get("because")
+                ),
             }
         )
-        # Written only when there is something to write. No placeholder, no
+        # Written only when there is something to write. No placeholder and no
         # apology: a reader cannot tell generated filler from an explanation,
         # and an empty field is honest about what happened.
         if note:
             writer.write(
                 "protection.explained",
-                {"chosen": chosen.kind, "note": note},
+                {"chosen": [r.kind for r in chosen_all], "note": note},
                 severity="info",
             )
 
     return GuardState(
         released=given,
-        protection=chosen,
-        protection_options=offers,
+        protection=chosen_all,
         protection_gap=gap,
     )
 
@@ -534,17 +528,20 @@ async def execute_node(state: GuardState) -> GuardState:
     if portfolio is None:
         return GuardState(results=[])
 
-    chosen = state.get("protection")
-    orders = list(chosen.orders) if chosen else []
+    # One remedy per sleeve, since each symbol is hedged on its own underlying.
+    chosen = state.get("protection") or []
+    orders = [order for remedy in chosen for order in remedy.orders]
 
-    if chosen is not None and not orders:
-        # A remedy was chosen and it cannot be placed. Loud, because the gap is
-        # open and the agent has nothing on the way to close it.
+    for remedy in chosen:
+        if remedy.orders:
+            continue
+        # A remedy was chosen for this sleeve and cannot be placed. Loud,
+        # because that part of the promise is open with nothing on the way.
         writer.write(
             "protection.unplaceable",
             {
-                "kind": chosen.kind,
-                "detail": chosen.describe,
+                "kind": remedy.kind,
+                "detail": remedy.describe,
                 "gap": round(state.get("protection_gap") or 0.0, 2),
                 "reason": "the remedy carries no order; the chain row was thin",
             },
@@ -602,13 +599,11 @@ async def journal_node(state: GuardState) -> GuardState:
             "protection_gap": state.get("protection_gap", 0.0),
             "book_complete": state.get("book_complete", True),
             # What the agent would do about the gap, and what it gave back.
-            # `protection` being None with a non-zero gap is the case worth
-            # spotting in a week of logs: the promise is broken and nothing on
-            # offer closes it.
-            "protection": (
-                state["protection"].kind if state.get("protection") else None
-            ),
-            "protection_offers": len(state.get("protection_options") or []),
+            # An empty list against a non-zero gap is the case worth spotting
+            # in a week of logs: the promise is broken and nothing on offer
+            # closes it. One entry per sleeve, since each symbol is hedged on
+            # its own underlying.
+            "protection": [r.kind for r in state.get("protection") or []],
             "released": (
                 state["released"].contracts if state.get("released") else 0
             ),

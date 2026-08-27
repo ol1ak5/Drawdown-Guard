@@ -1,13 +1,12 @@
-# 🛡️ Drawdown-Guard
+# 🛡️ Drawdown Guard
 
-**Investors can say how much they are afford to lose. A portfolio cannot
-keep that promise on its own.**
+**Investors can say how much they can afford to lose in the worst case scenario. But portfolios can't keep that promise on its own.**
 
 So we built an agent that does.
 
-Drawdown Guard is an autonomous agent that checks checks every weekday whether a portfolio still respects its client's downside limit and uses the options overlay when it doesn't.
+Drawdown Guard is an autonomous AI trading agent that checks a portfolio every weekday against its client's downside limit, and steps in with an options overlay the moment it doesn't.
 
-**The portfolio can change. The loss mandate doesn't. Drawdown Guard keeps them aligned.**
+**The market moves. The loss mandate doesn't. Drawdown Guard keeps the two in line.**
 
 🔴 Live decisions → **[status page](https://ol1ak5.github.io/Drawdown-Guard/)** ·
 📊 Backtest → **[report](docs/backtest-report.md)** ·
@@ -17,56 +16,93 @@ Drawdown Guard is an autonomous agent that checks checks every weekday whether a
 
 ## 🎯 The problem
 
-**Just knowing a loss tolerance number is not a loss control.**
+**Just knowing a loss tolerance limit is not a loss control.**
 
 An investor may have a clear idea of how much loss they can realistically tolerate. But the portfolio can't enforce that limit on its own. It holds what it holds and it falls when the market falls. 
 
-Over time, the portfolio can quietly drift away from the client's risk mandate. The problem is not predicting the next crash. The problem is knowing whether the portfolio still respects the limit it was supposed to maintain.
+The hard part is predicting the next crash. But a hardest one is to know, in real time, whether the portfolio still respects the limit it was supposed to maintain.
 
-There are trillions of dollars of software for *predicting* the market. There
-is almost nothing for *keeping a promise* about it.
+There are trillions of dollars of software for *predicting* the market. There is almost nothing for *keeping a promise* about it.
 
 ## 💡 The solution
 
-Drawdown Guard stands between the promise and the portfolio. It turns a client's downside limit into a continuously monitored portfolio constraint.
+Drawdown Guard stands between the promise and the portfolio, turning a client's downside limit into a continuously monitored portfolio constraint the portfolio answers to every day.
 
-Every weekday, it wakes up and asks one question: **if the market fell right now, would this client still be inside the number they were given?** If yes, it says so and does nothing — loudly, in writing (write about the journal). If no, it measures exactly how far outside, prices the ways of getting back in, and buys protection on today's actual option chain.
+Every weekday, it wakes up and asks one question: **if the market fell right now, would this client still be inside the number they were given?** If yes, it says so, in writing, and keep on the guard. If no, it measures exactly how far outside, prices the ways of getting back in, and buys protection on today's actual option chain.
 
 
 ## 👤 One client, one promise, two numbers
 
-For this hackathon, we turn this problem into a concrete situation.
+For this hackathon, we turn the problem into a concrete situation.
+
+### Initial settings
+
+Our simulated client has a c. $1,000,000 portfolio that includes: 
+- 80% equity: SPY, QQQ, IWM
+- 15% T-bills (BIL)
+- 5% cash
+
+| Amount | Instrument | Type |
+|---|---|---|
+| **$400,000** | SPY | Equity portfolio |
+| **$200,000** | QQQ | Equity portfolio |
+| **$200,000** | IWM | Equity portfolio |
+| **$150,000** | BIL | Protection reserve |
+| **$50,000** | Cash | Liquidity/Protection reserve - the money the agent is allowed to spend on hedges |
 
 ### The promise
 
-Our simulated client starts with a clear downside mandate:
+The client's mandate is simple:
 
-> *“In the worst case, I can tolerate a 10% loss per year.”*
+> *“In the worst case scenario, I can tolerate a 10% loss per year.”*
 
-**Two numbers, and both of them are the client's:**
+**Just two numbers:**
 
 - 🔟 **10%** — the most the client can lose. $100,000 of a $1,000,000 account.
-- 📆 **12 months** — the window that promise has to survive.
+- 📆 **12 months** — the window that promise has to hold.
 
-### The client's portfolio — $1,000,000 💰
+### Activity during Hackathon
 
-Our client has a $1,000,000 portfolio distirbuted across:
-- 60% equity: SPY, QQQ, IWM
-- 25% T-bills
-- 15% cash (liquidity) 
+The client changes the portfolio mid-flight:
+- Sell 250 shares of IWM on September 1st
+- Buy 130 shares of AAPL on September 3rd
 
-| | Amount | What it is for |
-|---|---:|---|
-| 📊 **Equity portfolio** | **$800,000** | 🟦 SPY $400,000 · 🟪 QQQ $200,000 · 🟧 IWM $200,000 |
-| 🛡️ **Protection reserve** | **$200,000** | Cash and T-bills — the money the agent is allowed to spend on hedges |
-
-**$800,000 of equity exposure.** The client wants to stay in the market, so the
-portfolio itself is never for sale. The reserve is what the agent works with.
-
-Ten percent of the account is the client's entire downside budget:
-**$100,000**. 
+| Day | Date | Client does | Agent steps |
+|---|---|---|---|
+| Day 1 | 28 Aug | - | Checks the portfolio. Buys protection - steps in |
+| Day 2 | 31 Aug | - | Checks the portfolio. Adjusts the protection if necessary |
+| Day 3 | 1 Sep | Sells 250 IWM | Buys the unecessary protection - release |
+| Day 4 | 2 Sep | - | Checks the portfolio. Adjusts the protection if necessary |
+| Day 5 | 3 Sep | Buys 130 AAPL | Buys protection - rebalance |
+| Day 5 | 4 Sep | - | Result |
 
 The portfolio is intentionally not static. That gives Drawdown Guard a real job: keep the changing portfolio aligned with a fixed risk mandate.
+
+## ⚙️ How the agent actually works
+
+Ten steps, once a day, fully autonomous.
+
+| | | |
+|---|---|---|
+| 1️⃣ | **Reconcile** | Ask the broker what is held. |
+| 2️⃣ | **Mandate** | Load the client's promise and turn the budget into dollars. |
+| 3️⃣ | **Protect** | Stress the book, find the gap, price the remedies. |
+| 4️⃣ | **Look** | Spot, realised volatility, implied volatility, IV rank. |
+| 5️⃣ | **Judge** | The LLM names the regime. This is its only job. |
+| 6️⃣ | **Route** | Which instrument — decided by the gap, not by the model. |
+| 7️⃣ | **Filter** | From ~2,000 contracts down to the handful that are choices at all. |
+| 8️⃣ | **Optimise** | Convex program, subject to tail risk and exposure. |
+| 9️⃣ | **Gate** | Every order faces the risk gate. No bypass, no flag, no override. |
+| 🔟 | **Write it down** | Including, especially, the decision to do nothing. |
+
+
+
+
+
+
+
+
+
 
 ### The morning check ⚠️
 
@@ -93,9 +129,6 @@ This is simply what a sensible portfolio looks like the first time anyone holds
 it up against the sentence the client actually said. 🤷
 
 ### The chain of decision 🔗
-
-No dashboard does this part. The agent does not merely *report* the $60,000 —
-it closes it, and it shows its work at every link.
 
 **1️⃣ How much protection?** Enough that the client's worst case *at any depth*
 is the promised 10% — no more, and pointedly no less.
@@ -247,36 +280,6 @@ it is; hedges already bought keep working. A stop button that liquidated the
 client's protection would disarm the portfolio at the precise moment somebody
 was worried enough to press it. 🛡️
 
-## ⚙️ How it works
-
-Ten steps, once a day, fully autonomous.
-
-| | | |
-|---|---|---|
-| 1️⃣ | **Reconcile** | Ask the broker what is held. |
-| 2️⃣ | **Mandate** | Load the client's promise and turn the budget into dollars. |
-| 3️⃣ | **Protect** | Stress the book, find the gap, price the remedies. |
-| 4️⃣ | **Look** | Spot, realised volatility, implied volatility, IV rank. |
-| 5️⃣ | **Judge** | The LLM names the regime. This is its only job. |
-| 6️⃣ | **Route** | Which instrument — decided by the gap, not by the model. |
-| 7️⃣ | **Filter** | From ~2,000 contracts down to the handful that are choices at all. |
-| 8️⃣ | **Optimise** | Convex program, subject to tail risk and exposure. |
-| 9️⃣ | **Gate** | Every order faces the risk gate. No bypass, no flag, no override. |
-| 🔟 | **Write it down** | Including, especially, the decision to do nothing. |
-
-👉 **`mandate` and `protect` sit second and third, before any market data is
-fetched.** That ordering *is* the claim. An agent that picked its trades and
-then measured the risk would be checking its own homework, and every number it
-published would be a justification rather than a constraint.
-
-The LLM's job is narrow on purpose. It names the market regime and nothing
-else — it reaches the broker through a read-only toolset, there is no order
-tool within its reach, and every regime it can name only makes the agent *more*
-careful. If it returns nonsense or never answers at all, the agent proceeds as
-though the market were stressed. 🧠
-
----
-
 ## 🏁 Main Tracks
 
 **Track 03 — Hedging & Risk Protection Agents** 🛡️
@@ -294,9 +297,9 @@ Built directly against the four agent types this track names:
 
 | | |
 |---|---|
-| 🦙 **Alpaca Trading API** | Live paper account — equities and options, level 3 |
-| 🔌 **Alpaca MCP Server** | Every broker call goes through MCP. Read-only toolsets for the AI; order tools reachable only on the deterministic path |
-| 🧠 **Google Gemini** | The market-regime analyst. One job, no hands |
+| 🦙 **Alpaca Trading API** | Live paper account - equities and options, level 3 |
+| 🔌 **Alpaca MCP Server** | Every broker call goes through MCP. Read-only toolsets for the AI. Order tools reachable only on the deterministic path |
+| 🧠 **Google Gemini** | LLM explains the protection strategy the agent chooses |
 | 🕸️ **LangGraph** | The ten-node cycle, including the conditional halt edge |
 | 🔗 **LangChain** | Model plumbing and structured output for the analyst |
 | 📐 **CVXPY + HiGHS** | Convex program sizing positions under tail-risk and exposure constraints |
