@@ -39,6 +39,7 @@ from drawdownguard.agent.state import GuardState
 from drawdownguard.execution.orders import submit_order
 from drawdownguard.journal import writer
 from drawdownguard.market.client import get_account, get_positions
+from drawdownguard.risk import period
 from drawdownguard.risk.book import to_book
 from drawdownguard.risk.limits import load_limits
 from drawdownguard.risk.mandate import load_mandate
@@ -51,7 +52,13 @@ from drawdownguard.risk.remedy import (
     release,
     sleeves,
 )
-from drawdownguard.risk.stress import gap_at, ladder, unhedged_limit, worst_gap
+from drawdownguard.risk.stress import (
+    gap_at,
+    ladder,
+    unhedged_limit,
+    worst_gap,
+    worst_loss,
+)
 
 STRATEGY_PATH = Path("config/strategy.yaml")
 
@@ -148,12 +155,47 @@ async def mandate_node(state: GuardState) -> GuardState:
         return GuardState()
 
     book = to_book(positions, portfolio.cash)
-    budget = mandate.budget(portfolio.equity)
+
+    # The promise is measured against what the account was worth when it was
+    # made, not against what it is worth this morning. Ten percent of today
+    # re-bases every cycle: lose ten percent and the agent starts defending ten
+    # percent of the smaller number, which permits a 47% loss in five steps and
+    # calls every one of them kept. See `risk/period.py`.
+    promise, renewed = period.current(
+        float(portfolio.equity), mandate.horizon_months
+    )
+    budget = mandate.budget(promise.reference)
+    if renewed:
+        writer.write(
+            "mandate.period_opened",
+            {
+                "started": promise.started.isoformat(),
+                "ends": promise.ends().isoformat(),
+                "reference": round(promise.reference, 2),
+                "budget": round(budget, 2),
+                # Renewal is the only thing that moves the reference, and it
+                # happens on a date rather than on a price. A client who made
+                # money spends the next year protecting the larger number.
+                "reason": "no promise was in force, or the previous one ran out",
+            },
+            severity="info",
+        )
     rungs = ladder(book.holdings, book.legs, budget)
     # What the agent is obliged to close, and what it merely has to disclose.
     binding = gap_at(rungs, mandate.binding_shock)
     worst = worst_gap(rungs)
-    gap = binding.gap if binding else 0.0
+
+    # What the agent acts on is the worst outcome anywhere on the way down,
+    # not the outcome at a depth somebody chose. The two differ by more than
+    # they sound: 500,000 of shares against a 100,000 budget loses exactly
+    # 100,000 at -20% -- gap zero, promise apparently intact -- while the same
+    # book can lose the whole 500,000. Checking one point found the single
+    # place where it happened to hold.
+    #
+    # Shares have no floor, so an unhedged equity book always breaches. That
+    # is not the check being too strict; it is the fact the ladder was hiding.
+    exposure = worst_loss(book.holdings, book.legs)
+    gap = max(exposure - budget, 0.0)
 
     writer.write(
         "mandate.stress",
@@ -164,6 +206,14 @@ async def mandate_node(state: GuardState) -> GuardState:
             "equity_exposure": round(book.equity_exposure, 2),
             "binding_shock": mandate.binding_shock,
             "gap": round(gap, 2),
+            # The worst the book can do anywhere, and the gap is what of
+            # that the budget does not cover. `gap_at_binding_shock` is
+            # kept beside it because the ladder is what a person reads.
+            "worst_case": round(exposure, 2),
+            "gap_at_binding_shock": round(binding.gap if binding else 0.0, 2),
+            "period_started": promise.started.isoformat(),
+            "period_ends": promise.ends().isoformat(),
+            "reference": round(promise.reference, 2),
             "unprotected_limit": round(
                 unhedged_limit(budget, mandate.binding_shock), 2
             ),
@@ -214,14 +264,14 @@ async def protect_node(state: GuardState) -> GuardState:
     it cannot widen the gap, because a leg worth nothing at that rung was not
     holding the promise up.
 
-    ONE SYMBOL, AND THE ASSUMPTION THAT MAKES IT HONEST
-    -----------------------------------------------------
-    The hedge is placed on the largest exposed holding rather than spread across
-    every one. That works because the ladder shocks every equity holding by the
-    same percentage, so protection sized on the total gap does close the gap the
-    ladder measures. The assumption is uniform, the book is not — QQQ and IWM
-    move more than SPY in a real decline — so the assumption is written into the
-    journal beside the number rather than left for a reader to discover.
+    ONE HEDGE PER HOLDING, AND NO CORRELATION ASSUMED
+    ---------------------------------------------------
+    Each symbol is hedged on its own underlying, with its own share of the
+    budget. The hedge used to sit on the largest holding and be sized to the
+    whole book, which treats three indices as one thing falling by one number:
+    measured on this project's own bars, QQQ carries a beta of 1.17 to SPY and
+    IWM 1.12, so a notional match left 11,700 of a 100,000 promise uncovered.
+    A QQQ put pays on QQQ however far QQQ falls, and nothing has to be assumed.
 
     AN INCOMPLETE BOOK STILL GETS PROTECTED
     ----------------------------------------
@@ -246,7 +296,10 @@ async def protect_node(state: GuardState) -> GuardState:
         return GuardState()
 
     mandate = load_mandate(strategy().get("mandate", "balanced"))
-    budget = mandate.budget(portfolio.equity)
+    # The same reference `mandate` measured against. Reading the account again
+    # here would give a budget that drifts between two nodes of one cycle.
+    promise, _ = period.current(float(portfolio.equity), mandate.horizon_months)
+    budget = mandate.budget(promise.reference)
     shock = mandate.binding_shock
 
     given = release(
@@ -270,8 +323,10 @@ async def protect_node(state: GuardState) -> GuardState:
             severity="info",
         )
 
-    rung = gap_at(ladder(book.holdings, legs, budget), shock)
-    gap = rung.gap if rung else 0.0
+    # The worst outcome anywhere, not the outcome at a chosen depth -- the
+    # same question `mandate` asked, so the two nodes cannot disagree about
+    # whether the promise is broken.
+    gap = max(worst_loss(book.holdings, legs) - budget, 0.0)
     if gap <= 0:
         return GuardState(released=given, protection_gap=gap)
 

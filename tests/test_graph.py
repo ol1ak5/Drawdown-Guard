@@ -224,8 +224,10 @@ async def test_the_gap_is_measured_before_the_market_is_looked_at(journal_dir):
         healthy_portfolio(), journal_dir=journal_dir, positions=exposed
     )
 
-    # 600,000 of exposure against a 100,000 budget: 120,000 lost at -20%.
-    assert final["protection_gap"] == pytest.approx(20_000, abs=1)
+    # 600,000 of exposure against a 100,000 budget. Shares have no floor, so
+    # the worst is losing all 600,000 and the gap is the 500,000 the budget
+    # does not cover -- not the 20,000 that a -20% probe used to report.
+    assert final["protection_gap"] == pytest.approx(500_000, abs=1)
     assert final["book_complete"] is True
 
     stress = [e for e in entries(journal_dir) if e["event"] == "mandate.stress"]
@@ -238,26 +240,33 @@ async def test_the_gap_is_measured_before_the_market_is_looked_at(journal_dir):
     # The 35% rung is deeper and worse, and it is disclosed rather than acted
     # on. The agent closes what it promised, and tells the client the rest.
     assert payload["worst_shock"] == -0.35
-    assert payload["worst_gap"] > payload["gap"]
+    # The ladder is disclosure now, not the trigger. Its deepest rung is
+    # milder than the number the agent acts on -- 110,000 at -35% against a
+    # worst case of 600,000 -- because a rung is one price and the gap is
+    # every price. Both are published; only one decides.
+    assert payload["worst_gap"] < payload["gap"]
+    assert payload["gap_at_binding_shock"] == pytest.approx(20_000, abs=1)
 
 
 async def test_a_book_inside_its_budget_reports_no_gap(journal_dir):
     """The mandate sizing rule, from the other side.
 
-    500,000 of exposure loses exactly the 100,000 budget at the 20% shock the
-    mandate promises against. Nothing to close, and the journal says so at info
-    rather than breach — an agent that raised a breach on every healthy cycle
-    would train its reader to ignore it.
+    80,000 of exposure against a 100,000 budget. Shares have no floor, so the
+    worst this book can do is lose all 80,000 of it -- which is inside what the
+    client agreed to, and there is nothing to close. The journal says so at
+    info rather than breach: an agent that raised a breach on every healthy
+    cycle would train its reader to ignore it.
 
-    The 35% rung still breaches here, by 75,000, and that is the reason the
-    agent measures the promised shock rather than the worst one. Acting on the
-    deepest row would make this perfectly compliant portfolio report a deficit
-    it could only close by holding a quarter of its capital in equities.
+    This used to hold 500,000, on the reasoning that 500,000 loses exactly the
+    budget at the 20% shock the mandate names. That reasoning was the defect.
+    A book is not safe because it survives the one depth somebody chose -- the
+    same 500,000 can lose all of itself, five times the promise, and checking
+    -20% found the single point where it happened to hold.
     """
     inside = [
         {
             "symbol": "SPY",
-            "qty": "1000",
+            "qty": "160",
             "current_price": "500",
             "avg_entry_price": "500",
         }
@@ -267,7 +276,8 @@ async def test_a_book_inside_its_budget_reports_no_gap(journal_dir):
     stress = [e for e in entries(journal_dir) if e["event"] == "mandate.stress"][-1]
     assert stress["severity"] == "info"
     assert stress["payload"]["gap"] == 0.0
-    assert stress["payload"]["worst_gap"] == pytest.approx(75_000, abs=1)
+    assert stress["payload"]["worst_gap"] == 0.0
+    assert stress["payload"]["worst_case"] == pytest.approx(80_000, abs=1)
 
 
 async def test_a_broker_that_cannot_list_positions_does_not_kill_the_cycle(journal_dir):
@@ -514,7 +524,7 @@ async def test_a_chain_that_cannot_be_read_leaves_the_gap_open_and_says_so(journ
     failed = [e for e in written if e["event"] == "protection.chain_unreadable"]
     assert failed and failed[-1]["severity"] == "breach"
     assert final["protection"] == []
-    assert final["protection_gap"] == pytest.approx(20_000, abs=1)
+    assert final["protection_gap"] == pytest.approx(500_000, abs=1)
     assert final["halted"] is False, "one bad chain is not a reason to stop"
 
 
@@ -524,7 +534,7 @@ async def test_a_book_inside_its_budget_is_offered_no_protection(journal_dir):
     inside = [
         {
             "symbol": "SPY",
-            "qty": "1000",
+            "qty": "160",
             "current_price": "500",
             "avg_entry_price": "500",
         }

@@ -77,55 +77,63 @@ The portfolio is intentionally not static. A client who never touches their allo
 
 ## ⚙️ How the agent actually works
 
-Ten steps, once a day, fully autonomous.
+Seven steps, once every weekday, fully autonomous.
 
-| | | |
+| # | Step | The agent does|
 |---|---|---|
-| 1️⃣ | **Reconcile** | Ask the broker what is held. |
-| 2️⃣ | **Mandate** | Load the client's promise and turn the budget into dollars. |
-| 3️⃣ | **Protect** | Stress the book, find the gap, price the remedies. |
-| 4️⃣ | **Look** | Spot, realised volatility, implied volatility, IV rank. |
-| 5️⃣ | **Judge** | The LLM names the regime. This is its only job. |
-| 6️⃣ | **Route** | Which instrument — decided by the gap, not by the model. |
-| 7️⃣ | **Filter** | From ~2,000 contracts down to the handful that are choices at all. |
-| 8️⃣ | **Optimise** | Convex program, subject to tail risk and exposure. |
-| 9️⃣ | **Gate** | Every order faces the risk gate. No bypass, no flag, no override. |
-| 🔟 | **Write it down** | Including, especially, the decision to do nothing. |
+| 1️⃣ | **Reconcile** | Asks the broker what is actually held - never assumes |
+| 2️⃣ | **Mandate** | Turns the client's tolerance into a live dollar budget |
+| 3️⃣ | **Stresso** | Runs the book through a range of market drops, finds the gap |
+| 4️⃣ | **Protects** | Solves for the cheapest hedge that closes the gap, sleeve by sleeve |
+| 5️⃣ | **Gates** | Checks every order against hard limits before it can reach the broker |
+|  | **Executes** | Sends the approved orders and confirms the fills |
+|  | **Journal** | Writes down what happened and why, in plain language, with LLM |
+
+### 1. Reconcile
+The cycle starts by reading the client's account, not by trusting what the agent thought it owned yesterday. Every number is computed from what's actually there this morning.
+
+### 2. Mandate
+The client's sentence becomes a dollar figure: **10% of $1,006,000 = $100,589**. That is the whole downside budget, and nothing the agent does may spend more of it than the client agreed to.
+
+### 3. Stress-scenario
+
+The agent stresses the book across a range of hypothetical drops:
+
+| If the market falls | The portfolio loses | Budget | Verdict |
+|---|---|---|---|
+| −5% | $30,208 | $100,589 | ✅ inside the promise |
+| −10% | $60,415 | $100,589 | ✅ inside the promise |
+| −20% | $120,831 | $100,589 | 🚨 **$20,287 past it** |
+| −35% | $211,454 | $100,589 | 🚨 **$110,865 past it** |
+| −50% | $302,077 | $100,589 | 🚨 **$201,488 past it** |
+
+**This is not a forecast.** The agent doesn't say the market will fall 20%. It says: *if it did, this book would break a promise that was already made.*
+
+### 4. Protects
+
+The agent splits the book and the hedge budget by ticker. For each sleeve, it solves one equation against the live option chain:
+
+```
+        fall down to the strike   +   premium paid   =   that sleeve's budget
+        └── unprotected drop ──┘      └── certain ──┘
+```
+
+It takes the **lowest strike that still fits**. Go lower and the market has too far to fall before the put engages. Go higher and the client will pay for protection he never asked for.
+
+### 4. Gate
+
+Every order faces a deterministic risk gate before it ever reaches the broker. It refuses naked shorts, illiquid strikes, and anything past the configured limits - no exceptions, no overrides.
+
+### 4. Execute
+
+Approved orders go out, fills get confirmed, and the portfolio's actual position is updated to match what was really bought.
+
+### 5. Journal
+
+Every number, every refusal, and every quiet morning goes into an append-only record. An LLM then writes one paragraph explaining the decision, in plain language.
 
 
-
-
-
-
-
-
-
-
-### The morning check ⚠️
-
-The agent stresses the book down the whole range and reports what the client
-would actually be holding — not to predict any one of these, but because a
-promise that only survives some of them is not a promise:
-
-| If the market falls | Portfolio loses | Budget | Verdict |
-|---|---:|---:|---|
-| −5% | $40,000 | $100,000 | ✅ inside the promise |
-| −10% | $80,000 | $100,000 | ✅ inside the promise |
-| −20% | $160,000 | $100,000 | 🚨 **$60,000 past it** |
-| −35% | $280,000 | $100,000 | 🚨 **$180,000 past it** |
-
-**The promise is broken, and here is exactly why:**
-
-📈 $800,000 of equity has to fall only 12.5% to burn a $100,000 budget, and
-markets do that roughly once every few years. The promise and the portfolio
-were built by different people who never spoke.
-
-Nobody did anything wrong to get here. Eighty percent in equities and twenty in
-reserve is a textbook allocation, and any adviser in the world would sign it.
-This is simply what a sensible portfolio looks like the first time anyone holds
-it up against the sentence the client actually said. 🤷
-
-### The chain of decision 🔗
+## 🔗 The chain of decision 
 
 **1️⃣ How much protection?** Enough that the client's worst case *at any depth*
 is the promised 10% — no more, and pointedly no less.
