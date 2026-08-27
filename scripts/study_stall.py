@@ -33,9 +33,9 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from flywheel.backtest.engine import BarPricer, implied_vol, run_backtest
-from flywheel.backtest.options_history import monthly_expiries
-from flywheel.risk.limits import load_limits
+from drawdownguard.backtest.engine import BarPricer, implied_vol, run_backtest
+from drawdownguard.backtest.options_history import monthly_expiries
+from drawdownguard.risk.limits import load_limits
 
 CACHE = Path("data")
 

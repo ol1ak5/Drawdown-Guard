@@ -10,7 +10,7 @@ from decimal import Decimal
 import numpy as np
 import pytest
 
-from flywheel.optimizer.payoff_shape import (
+from drawdownguard.optimizer.payoff_shape import (
     MAX_PROTECTION_COST_PCT,
     ProtectedPut,
     choose_floor,

@@ -1,8 +1,8 @@
 import json
 from datetime import datetime
 
-from flywheel.journal import writer
-from flywheel.journal.site import build_site, entry_from_journal, render_site
+from drawdownguard.journal import writer
+from drawdownguard.journal.site import build_site, entry_from_journal, render_site
 
 
 def _entry(**overrides):
@@ -122,7 +122,7 @@ def test_a_journal_line_becomes_a_row():
     """The journal's own shape is not the page's shape; this is the seam."""
     line = {
         "timestamp": "2026-08-25T14:02:11+00:00",
-        "flywheel_env": "dev",
+        "drawdownguard_env": "dev",
         "event": "order_rejected",
         "severity": "veto",
         "payload": {
@@ -142,7 +142,7 @@ def test_a_journal_line_becomes_a_row():
 def test_an_info_line_reads_as_approved():
     line = {
         "timestamp": "2026-08-25T14:02:11+00:00",
-        "flywheel_env": "dev",
+        "drawdownguard_env": "dev",
         "event": "order_placed",
         "severity": "info",
         "payload": {"symbol": "SPY", "detail": "SPY260918P00620000 x1 @ 4.20"},
@@ -154,7 +154,7 @@ def test_a_defect_line_is_not_flattened_into_a_rejection():
     """`defect` means the middleware fired: a leak, not the gate working."""
     line = {
         "timestamp": "2026-08-25T14:02:11+00:00",
-        "flywheel_env": "dev",
+        "drawdownguard_env": "dev",
         "event": "middleware_blocked",
         "severity": "defect",
         "payload": {"symbol": "SPY"},
@@ -209,15 +209,15 @@ def test_a_supplied_repository_link_is_rendered():
         [_entry()],
         [],
         datetime(2026, 8, 25, 14, 5),
-        repository_url="https://github.com/example/flywheel-agent",
+        repository_url="https://github.com/example/drawdown-guard-agent",
     )
-    assert 'href="https://github.com/example/flywheel-agent"' in html
+    assert 'href="https://github.com/example/drawdown-guard-agent"' in html
 
 
 def test_the_journal_payload_becomes_the_expandable_record():
     line = {
         "timestamp": "2026-08-25T14:02:11+00:00",
-        "flywheel_env": "dev",
+        "drawdownguard_env": "dev",
         "event": "order_rejected",
         "severity": "veto",
         "payload": {"symbol": "SPY", "reason": "net delta band", "net_delta": 168},
@@ -236,7 +236,7 @@ def test_every_element_the_script_looks_up_exists_in_the_page():
     """
     import re
 
-    from flywheel.journal.site import _SCRIPT
+    from drawdownguard.journal.site import _SCRIPT
 
     wanted = set(re.findall(r"getElementById\('([^']+)'\)", _SCRIPT))
     assert wanted, "the script looks nothing up; this test has gone stale"
@@ -250,7 +250,7 @@ def test_the_script_selector_matches_the_rendered_rows():
     """The filter selects on data-symbol; the rows must actually carry it."""
     import re
 
-    from flywheel.journal.site import _SCRIPT
+    from drawdownguard.journal.site import _SCRIPT
 
     assert "tr[data-symbol]" in _SCRIPT
     html = render_site([_entry()], [], datetime(2026, 8, 25, 14, 5))

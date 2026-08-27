@@ -26,9 +26,9 @@ no point doing anything at all if the paper-trading interlock is off.
 import asyncio
 from datetime import date, datetime
 
-from flywheel.mcp.alpaca_client import FULL_TOOLSETS, alpaca_session
-from flywheel.settings import get_settings
-from flywheel.store import load_all
+from drawdownguard.mcp.alpaca_client import FULL_TOOLSETS, alpaca_session
+from drawdownguard.settings import get_settings
+from drawdownguard.store import load_all
 
 # A normal US equity session closes at 16:00 ET. A half day closes at 13:00,
 # and the option chains thin out badly into an early close.
@@ -59,14 +59,14 @@ def _root_cause(exc: BaseException) -> str:
 
 
 async def _read(session, tool: str, args: dict | None = None):
-    from flywheel.mcp.alpaca_client import _unwrap
+    from drawdownguard.mcp.alpaca_client import _unwrap
 
     return _unwrap(await session.call_tool(tool, args or {}), tool)["data"]
 
 
 def check_halt_file() -> str:
     """The manual override, checked before anything costs a network call."""
-    from flywheel.agent.middleware.guards import HALT_FILE, halt_file_present
+    from drawdownguard.agent.middleware.guards import HALT_FILE, halt_file_present
 
     if halt_file_present():
         raise Declined(f"{HALT_FILE} file present — halted by hand")
@@ -85,7 +85,7 @@ def check_paper_interlock() -> str:
         raise Failure("ALPACA_PAPER_TRADE is not true — refusing to trade")
     if not settings.alpaca_api_key or not settings.alpaca_secret_key:
         raise Failure("Alpaca credentials are missing")
-    return f"paper trading interlock on, env={settings.flywheel_env}"
+    return f"paper trading interlock on, env={settings.drawdownguard_env}"
 
 
 async def check_account(session) -> str:
@@ -143,7 +143,7 @@ async def check_state_reconciles(session) -> str:
     to absorb assignments and expiries the agent did not initiate — but it must
     be *seen* before a cycle runs on top of it.
     """
-    from flywheel.execution.reconcile import reconcile
+    from drawdownguard.execution.reconcile import reconcile
 
     try:
         positions = (await _read(session, "get_all_positions")).get("result") or []
@@ -162,7 +162,7 @@ async def check_state_reconciles(session) -> str:
 
 
 async def run() -> int:
-    print(f"flywheel healthcheck {datetime.now().isoformat(timespec='seconds')}")
+    print(f"drawdownguard healthcheck {datetime.now().isoformat(timespec='seconds')}")
     for check in (check_halt_file, check_paper_interlock):
         try:
             print(f"  ok   {check()}")

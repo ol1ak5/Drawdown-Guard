@@ -13,13 +13,13 @@ from unittest.mock import AsyncMock, patch
 import numpy as np
 import pytest
 
-from flywheel.agent.graph import build_graph
-from flywheel.agent.nodes import strategy
-from flywheel.agent.state import initial_state
-from flywheel.domain import Portfolio, WheelState
-from flywheel.journal import writer
-from flywheel.market.features import MarketSnapshot
-from flywheel.risk.mandate import load_mandate
+from drawdownguard.agent.graph import build_graph
+from drawdownguard.agent.nodes import strategy
+from drawdownguard.agent.state import initial_state
+from drawdownguard.domain import Portfolio, WheelState
+from drawdownguard.journal import writer
+from drawdownguard.market.features import MarketSnapshot
+from drawdownguard.risk.mandate import load_mandate
 
 SYMBOLS = ["SPY", "QQQ", "IWM"]
 
@@ -102,18 +102,18 @@ async def run(
     )
     with (
         patch(
-            "flywheel.agent.nodes.get_account",
+            "drawdownguard.agent.nodes.get_account",
             new=AsyncMock(return_value=(portfolio, [])),
         ),
-        patch("flywheel.agent.nodes.get_positions", new=reader),
+        patch("drawdownguard.agent.nodes.get_positions", new=reader),
         patch(
-            "flywheel.agent.nodes.build_snapshot",
+            "drawdownguard.agent.nodes.build_snapshot",
             new=AsyncMock(side_effect=lambda s, *a, **k: snapshot(s)),
         ),
-        patch("flywheel.market.chain.load_chain", new=chain),
-        patch("flywheel.journal.writer.JOURNAL_DIR", journal_dir),
+        patch("drawdownguard.market.chain.load_chain", new=chain),
+        patch("drawdownguard.journal.writer.JOURNAL_DIR", journal_dir),
         patch(
-            "flywheel.execution.orders.call_tool",
+            "drawdownguard.execution.orders.call_tool",
             new=AsyncMock(return_value={"data": {"id": "abc-123"}}),
         ) as broker,
     ):
@@ -173,11 +173,11 @@ async def test_a_broker_that_cannot_be_read_halts_rather_than_guesses(journal_di
     conservative option; refusing is."""
     with (
         patch(
-            "flywheel.agent.nodes.get_account",
+            "drawdownguard.agent.nodes.get_account",
             new=AsyncMock(side_effect=RuntimeError("connection reset")),
         ),
-        patch("flywheel.journal.writer.JOURNAL_DIR", journal_dir),
-        patch("flywheel.execution.orders.call_tool", new=AsyncMock()) as broker,
+        patch("drawdownguard.journal.writer.JOURNAL_DIR", journal_dir),
+        patch("drawdownguard.execution.orders.call_tool", new=AsyncMock()) as broker,
     ):
         final = await build_graph().ainvoke(initial_state())
 
@@ -405,8 +405,8 @@ async def test_the_sale_appears_only_for_a_client_who_granted_it(journal_dir):
         update={"allow_reduce_exposure": True}
     )
     with (
-        patch("flywheel.agent.nodes.strategy", return_value=plain),
-        patch("flywheel.agent.nodes.load_mandate", return_value=permitted),
+        patch("drawdownguard.agent.nodes.strategy", return_value=plain),
+        patch("drawdownguard.agent.nodes.load_mandate", return_value=permitted),
     ):
         final, _ = await run(
             healthy_portfolio(),

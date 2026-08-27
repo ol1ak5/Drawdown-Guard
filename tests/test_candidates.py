@@ -3,8 +3,8 @@ from decimal import Decimal
 
 import numpy as np
 
-from flywheel.optimizer.candidates import build_candidates
-from flywheel.risk.limits import Limits
+from drawdownguard.optimizer.candidates import build_candidates
+from drawdownguard.risk.limits import Limits
 
 LIMITS = Limits(
     max_position_pct=25.0,

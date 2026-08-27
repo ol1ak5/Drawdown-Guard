@@ -1,6 +1,6 @@
 from datetime import UTC, date, datetime
 
-from flywheel.journal import writer
+from drawdownguard.journal import writer
 
 
 def _utc_today():
@@ -32,7 +32,13 @@ def test_write_appends_rather_than_overwrites(tmp_path):
 def test_every_line_carries_the_required_fields(tmp_path):
     writer.write("snapshot", {"equity": "1000000"}, directory=tmp_path)
     entry = writer.read_day(_utc_today(), tmp_path)[0]
-    assert set(entry) == {"timestamp", "flywheel_env", "event", "severity", "payload"}
+    assert set(entry) == {
+        "timestamp",
+        "drawdownguard_env",
+        "event",
+        "severity",
+        "payload",
+    }
 
 
 def test_severity_defaults_to_info(tmp_path):
@@ -80,11 +86,11 @@ def test_reading_a_day_with_no_journal_is_empty_not_an_error(tmp_path):
 def test_read_entries_returns_newest_first_across_days(tmp_path):
     """The status page shows recent activity, so ordering is its contract."""
     (tmp_path / "2026-08-24.jsonl").write_text(
-        '{"timestamp": "2026-08-24T14:00:00+00:00", "flywheel_env": "dev", '
+        '{"timestamp": "2026-08-24T14:00:00+00:00", "drawdownguard_env": "dev", '
         '"event": "older", "severity": "info", "payload": {}}\n'
     )
     (tmp_path / "2026-08-25.jsonl").write_text(
-        '{"timestamp": "2026-08-25T14:00:00+00:00", "flywheel_env": "dev", '
+        '{"timestamp": "2026-08-25T14:00:00+00:00", "drawdownguard_env": "dev", '
         '"event": "newer", "severity": "info", "payload": {}}\n'
     )
     events = [entry["event"] for entry in writer.read_entries(directory=tmp_path)]

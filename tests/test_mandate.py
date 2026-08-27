@@ -7,8 +7,8 @@ the same event as breaching a promise.
 
 import pytest
 
-from flywheel.risk.limits import load_limits
-from flywheel.risk.mandate import (
+from drawdownguard.risk.limits import load_limits
+from drawdownguard.risk.mandate import (
     Counterfactual,
     Mandate,
     audit,

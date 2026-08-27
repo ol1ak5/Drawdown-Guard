@@ -12,10 +12,10 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from flywheel.backtest.engine import BarPricer, run_backtest
-from flywheel.backtest.options_history import monthly_expiries
-from flywheel.backtest.report import build_report
-from flywheel.risk.limits import load_limits
+from drawdownguard.backtest.engine import BarPricer, run_backtest
+from drawdownguard.backtest.options_history import monthly_expiries
+from drawdownguard.backtest.report import build_report
+from drawdownguard.risk.limits import load_limits
 
 CACHE = Path("data")
 SYMBOLS = ("SPY", "QQQ", "IWM")

@@ -8,7 +8,7 @@ it were the model's answer.
 
 import pytest
 
-from flywheel.analyst.llm import response_text
+from drawdownguard.analyst.llm import response_text
 
 
 class _Message:
@@ -66,8 +66,8 @@ def test_an_empty_response_is_empty_not_a_literal_empty_list():
 
 def test_the_llm_refuses_to_build_without_a_key(monkeypatch):
     """A missing key must fail here, by name, not inside a vendor library."""
-    from flywheel.analyst import llm
-    from flywheel.settings import Settings
+    from drawdownguard.analyst import llm
+    from drawdownguard.settings import Settings
 
     monkeypatch.setattr(
         llm,

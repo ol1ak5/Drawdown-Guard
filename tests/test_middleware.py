@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, "scripts")
 
-from flywheel.agent.middleware.guards import (
+from drawdownguard.agent.middleware.guards import (
     HALT_FILE,
     ORDER_TOOLS,
     JournalMiddleware,
@@ -24,8 +24,8 @@ from flywheel.agent.middleware.guards import (
     RiskGateMiddleware,
     default_stack,
 )
-from flywheel.domain import Portfolio
-from flywheel.journal import writer
+from drawdownguard.domain import Portfolio
+from drawdownguard.journal import writer
 
 
 @pytest.fixture(autouse=True)

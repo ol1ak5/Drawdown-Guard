@@ -100,7 +100,7 @@ nothing; the equity curve begins at the first trade, not at the opening date.
 Creating both today means any surprise — wrong options level, account limit
 already reached, dashboard trouble — surfaces on a quiet Saturday instead of
 during kick-off. The keys are not placed in GitHub Secrets until 27 August, and
-`FLYWHEEL_ENV=dev` reads `.env`, so the judging account is never touched by a
+`DRAWDOWNGUARD_ENV=dev` reads `.env`, so the judging account is never touched by a
 development run. If it is contaminated anyway, delete and recreate takes two
 minutes.
 
@@ -164,7 +164,7 @@ Answers for the two form fields:
 | Field | Answer |
 |---|---|
 | Demo Application Platform | GitHub Pages |
-| Application URL | `https://<username>.github.io/flywheel-agent/` |
+| Application URL | `https://<username>.github.io/drawdown-guard-agent/` |
 
 Built at Task 12b, alongside the journal it reads.
 
@@ -209,7 +209,7 @@ themselves rather than reading a claim that it happened.
       parameters, never loosen them, so a weaker or differently-behaved model
       cannot talk the agent into a bad trade. Model: `gemini-3.7-flash`.
 - [x] Create the public repository. Done 2026-08-24:
-      `github.com/ol1ak5/Flywheel-Agent`. `FLYWHEEL_REPO_URL` still needs
+      `github.com/ol1ak5/Drawdown-Guard`. `DRAWDOWNGUARD_REPO_URL` still needs
       setting so the status page footer carries a real source link.
 - [x] Connect Discord and create the team.
 - [x] Confirm whether a demo URL is required — it is, and the answer is a

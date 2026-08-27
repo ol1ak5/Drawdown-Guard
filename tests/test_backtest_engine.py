@@ -12,7 +12,7 @@ from functools import lru_cache
 import pandas as pd
 import pytest
 
-from flywheel.backtest.engine import (
+from drawdownguard.backtest.engine import (
     DISABLED_CHECKS,
     BarPricer,
     Cursor,
@@ -21,12 +21,12 @@ from flywheel.backtest.engine import (
     implied_vol,
     run_backtest,
 )
-from flywheel.backtest.options_history import occ_symbol
-from flywheel.domain import SHARES_PER_CONTRACT, Portfolio, ProposedOrder
-from flywheel.optimizer.candidates import build_candidates
-from flywheel.optimizer.payoff import bs_price
-from flywheel.risk.gate import veto
-from flywheel.risk.limits import Limits
+from drawdownguard.backtest.options_history import occ_symbol
+from drawdownguard.domain import SHARES_PER_CONTRACT, Portfolio, ProposedOrder
+from drawdownguard.optimizer.candidates import build_candidates
+from drawdownguard.optimizer.payoff import bs_price
+from drawdownguard.risk.gate import veto
+from drawdownguard.risk.limits import Limits
 
 EXPIRY = date(2024, 6, 21)
 VOL = 0.18

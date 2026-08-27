@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pytest
 
-from flywheel.risk.remedy import (
+from drawdownguard.risk.remedy import (
     _gap,
     choose,
     collar,
@@ -19,7 +19,7 @@ from flywheel.risk.remedy import (
     reduce_exposure,
     release,
 )
-from flywheel.risk.stress import Holding, OptionLeg, gap_at, ladder
+from drawdownguard.risk.stress import Holding, OptionLeg, gap_at, ladder
 
 SPOT = 500.0
 SHOCK = -0.20

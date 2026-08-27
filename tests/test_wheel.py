@@ -3,8 +3,8 @@ from decimal import Decimal
 
 import pytest
 
-from flywheel.domain import OpenContract, WheelState
-from flywheel.wheel import (
+from drawdownguard.domain import OpenContract, WheelState
+from drawdownguard.wheel import (
     IllegalTransition,
     next_action,
     on_call_assigned,

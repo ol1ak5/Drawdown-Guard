@@ -8,7 +8,7 @@ real orders to prove it does not place real orders is not a test.
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
-from flywheel.execution.orders import _order_arguments, submit_order
+from drawdownguard.execution.orders import _order_arguments, submit_order
 from tests.test_risk_gate import LIMITS, portfolio
 from tests.test_risk_gate import order as make_order
 
@@ -21,7 +21,7 @@ WRAPPED = {
 async def test_a_rejected_order_never_reaches_the_broker():
     """The whole point. A naked call is refused before the network is touched."""
     naked = make_order(right="C")  # no shares held
-    with patch("flywheel.execution.orders.call_tool", new=AsyncMock()) as broker:
+    with patch("drawdownguard.execution.orders.call_tool", new=AsyncMock()) as broker:
         result = await submit_order(naked, portfolio(), LIMITS)
     broker.assert_not_awaited()
     assert result.submitted is False
@@ -30,7 +30,7 @@ async def test_a_rejected_order_never_reaches_the_broker():
 
 async def test_an_approved_order_reaches_the_broker_once():
     with patch(
-        "flywheel.execution.orders.call_tool", new=AsyncMock(return_value=WRAPPED)
+        "drawdownguard.execution.orders.call_tool", new=AsyncMock(return_value=WRAPPED)
     ) as broker:
         result = await submit_order(make_order(), portfolio(), LIMITS)
     assert broker.await_count == 1
@@ -39,7 +39,7 @@ async def test_an_approved_order_reaches_the_broker_once():
 
 
 async def test_dry_run_never_reaches_the_broker():
-    with patch("flywheel.execution.orders.call_tool", new=AsyncMock()) as broker:
+    with patch("drawdownguard.execution.orders.call_tool", new=AsyncMock()) as broker:
         result = await submit_order(make_order(), portfolio(), LIMITS, dry_run=True)
     broker.assert_not_awaited()
     assert result.submitted is False
@@ -53,7 +53,7 @@ async def test_dry_run_still_reports_the_refusal_rather_than_hiding_it():
     would report only that nothing was attempted, and the operator would learn
     nothing about whether the trade was allowed.
     """
-    with patch("flywheel.execution.orders.call_tool", new=AsyncMock()) as broker:
+    with patch("drawdownguard.execution.orders.call_tool", new=AsyncMock()) as broker:
         result = await submit_order(
             make_order(right="C"), portfolio(), LIMITS, dry_run=True
         )
@@ -65,7 +65,7 @@ async def test_dry_run_still_reports_the_refusal_rather_than_hiding_it():
 async def test_a_broker_failure_is_reported_not_raised():
     """Unattended on a schedule, an exception is a silently dead agent."""
     with patch(
-        "flywheel.execution.orders.call_tool",
+        "drawdownguard.execution.orders.call_tool",
         new=AsyncMock(side_effect=RuntimeError("connection reset")),
     ):
         result = await submit_order(make_order(), portfolio(), LIMITS)
@@ -81,17 +81,17 @@ async def test_a_failed_submission_still_reports_its_idempotency_key():
     how a retry becomes a second position.
     """
     with patch(
-        "flywheel.execution.orders.call_tool",
+        "drawdownguard.execution.orders.call_tool",
         new=AsyncMock(side_effect=RuntimeError("timeout")),
     ):
         result = await submit_order(make_order(), portfolio(), LIMITS)
     assert result.client_order_id
-    assert result.client_order_id.startswith("flywheel-")
+    assert result.client_order_id.startswith("drawdownguard-")
 
 
 async def test_every_submission_carries_a_distinct_idempotency_key():
     with patch(
-        "flywheel.execution.orders.call_tool", new=AsyncMock(return_value=WRAPPED)
+        "drawdownguard.execution.orders.call_tool", new=AsyncMock(return_value=WRAPPED)
     ):
         first = await submit_order(make_order(), portfolio(), LIMITS)
         second = await submit_order(make_order(), portfolio(), LIMITS)
@@ -102,7 +102,7 @@ async def test_every_submission_carries_a_distinct_idempotency_key():
 
 
 def arguments(**overrides):
-    return _order_arguments(make_order(**overrides), "flywheel-test")
+    return _order_arguments(make_order(**overrides), "drawdownguard-test")
 
 
 def test_the_order_is_a_limit_never_a_market_order():
@@ -142,7 +142,7 @@ def test_options_are_day_orders_because_nothing_else_is_accepted():
 
 
 def test_the_symbol_is_a_well_formed_occ_symbol():
-    from flywheel.execution.reconcile import parse_occ
+    from drawdownguard.execution.reconcile import parse_occ
 
     decoded = parse_occ(arguments()["symbol"])
     assert decoded is not None

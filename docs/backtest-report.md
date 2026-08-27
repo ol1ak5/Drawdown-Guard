@@ -1,4 +1,4 @@
-# Flywheel: backtest report
+# Drawdown-Guard: backtest report
 
 Window 2024-02-01 to 2026-08-20. Capital 1,000,000. Universe SPY, QQQ, IWM.
 

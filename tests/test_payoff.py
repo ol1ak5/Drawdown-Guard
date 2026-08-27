@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from flywheel.domain import SHARES_PER_CONTRACT
-from flywheel.optimizer.payoff import (
+from drawdownguard.domain import SHARES_PER_CONTRACT
+from drawdownguard.optimizer.payoff import (
     assignment_prob,
     bs_delta,
     bs_price,

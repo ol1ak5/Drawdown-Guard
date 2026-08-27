@@ -19,10 +19,10 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from flywheel.backtest.engine import BarPricer, implied_vol
-from flywheel.backtest.options_history import monthly_expiries
-from flywheel.optimizer.payoff import bs_delta
-from flywheel.optimizer.payoff_shape import (
+from drawdownguard.backtest.engine import BarPricer, implied_vol
+from drawdownguard.backtest.options_history import monthly_expiries
+from drawdownguard.optimizer.payoff import bs_delta
+from drawdownguard.optimizer.payoff_shape import (
     MAX_PROTECTION_COST_PCT,
     choose_floor,
 )

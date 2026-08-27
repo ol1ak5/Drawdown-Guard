@@ -9,7 +9,7 @@ reported as concentrated.
 import numpy as np
 import pytest
 
-from flywheel.risk.concentration import (
+from drawdownguard.risk.concentration import (
     RISK_BUCKETS,
     bucket_of,
     by_bucket,

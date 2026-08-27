@@ -8,11 +8,13 @@ from decimal import Decimal
 
 import pytest
 
-from flywheel.risk.stress import (
+from drawdownguard.risk.stress import (
     DEFAULT_SHOCKS,
     Holding,
     OptionLeg,
+    bends,
     describe,
+    gap_within,
     ladder,
     unhedged_limit,
     worst_gap,
@@ -159,3 +161,85 @@ def test_the_table_names_the_breaches():
     text = describe(ladder(BOOK, [], BUDGET))
     assert "BREACH" in text
     assert "-20%" in text or "-20" in text
+
+
+# --- the promise is an interval ---------------------------------------------
+#
+# BOOK holds 599,700 of equity against a 100,000 budget, so an unprotected 20%
+# shock loses 119,940 and leaves a gap of 19,940. Every number below is that
+# arithmetic and nothing else.
+
+
+def test_only_strikes_bend_the_payoff():
+    """Shares are straight lines; options bend once each, at their strike.
+
+    765 * (1 - 0.20) = 612, so a 612 strike bends exactly at the promise and is
+    excluded as an endpoint rather than an interior point.
+    """
+    assert bends([], -0.20, 0.0) == []
+    assert bends([long_put(688.5, 5.0)], -0.20, 0.0) == pytest.approx([-0.10])
+    # 612 is the endpoint itself, 550 is past it: neither is interior.
+    assert bends([long_put(612.0, 5.0), long_put(550.0, 5.0)], -0.20, 0.0) == []
+
+
+def test_shares_alone_cannot_hide_a_breach_between_the_rungs():
+    """With no options the deepest point is the worst one, so checking the
+    endpoint really was checking everything. This is why the defect below went
+    unnoticed until the agent started buying options."""
+    worst = gap_within(BOOK, [], BUDGET, -0.20)
+    assert worst.shock == pytest.approx(-0.20)
+    assert worst.gap == pytest.approx(19_940)
+
+
+def test_a_hedge_can_pass_at_the_promise_and_break_just_above_it():
+    """The defect this whole section exists for.
+
+    Ten 632 puts pay 20 a share at a 20% shock -- 20,000 against a 19,940 gap,
+    so the mandate holds at exactly the promised price and a point check
+    reports success.
+
+    Two percent higher the same hedge is nearly worthless. At -18% the book has
+    lost 107,946 and the puts return only 4,700, so the client is 3,246 past a
+    budget they were told was intact. Nothing about the hedge is dishonest: it
+    is simply the cheapest structure that passes the test that was being run,
+    which is what sizing against a single point selects for.
+    """
+    hedge = [long_put(632.0, 8.0, contracts=10)]
+
+    at_the_promise = next(r for r in ladder(BOOK, hedge, BUDGET, (-0.20,)))
+    assert at_the_promise.gap == pytest.approx(0.0)
+    assert not at_the_promise.breached
+
+    beside_it = next(r for r in ladder(BOOK, hedge, BUDGET, (-0.18,)))
+    assert beside_it.gap == pytest.approx(3_246)
+    assert beside_it.breached
+
+
+def test_the_interval_check_finds_the_breach_and_lands_on_the_bend():
+    """Same book, same hedge, the question asked properly.
+
+    The worst point is the strike itself: below it the puts start paying, above
+    it there is less to lose. 632/765 - 1 = -17.386%, where the book is down
+    104,261.57 with no protection yet, for a gap of 4,261.57 -- larger than the
+    3,246 that a -18% probe happened to catch, because the true worst point
+    does not fall on any round number a grid would have chosen.
+    """
+    hedge = [long_put(632.0, 8.0, contracts=10)]
+    worst = gap_within(BOOK, hedge, BUDGET, -0.20)
+
+    assert worst.shock == pytest.approx(632.0 / 765.0 - 1.0)
+    assert worst.gap == pytest.approx(4_261.57, abs=0.01)
+    assert worst.breached
+
+
+def test_a_book_that_holds_still_reports_where_it_is_tightest():
+    """Returned as a rung rather than None, unlike `worst_gap`.
+
+    'The promise holds, and here is the least room it has' is what tells the
+    agent a hedge can be released without the gap reopening the moment it goes.
+    """
+    small = [Holding("SPY", 100, 765.0)]
+    worst = gap_within(small, [], BUDGET, -0.20)
+    assert not worst.breached
+    assert worst.gap == 0.0
+    assert worst.shock == pytest.approx(-0.20)

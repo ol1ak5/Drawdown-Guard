@@ -9,8 +9,8 @@ from decimal import Decimal
 
 import pytest
 
-from flywheel.risk.book import CASH_LIKE, to_book
-from flywheel.risk.stress import ladder, worst_gap
+from drawdownguard.risk.book import CASH_LIKE, to_book
+from drawdownguard.risk.stress import ladder, worst_gap
 
 
 def share(symbol: str, qty: int, price: str) -> dict:

@@ -3,14 +3,14 @@ from decimal import Decimal
 
 import pytest
 
-from flywheel import store
-from flywheel.domain import OpenContract, WheelState
+from drawdownguard import store
+from drawdownguard.domain import OpenContract, WheelState
 
 
 @pytest.fixture
 def db(tmp_path):
     """A fresh database per test, so nothing leaks between them."""
-    store.init_db(tmp_path / "flywheel.db")
+    store.init_db(tmp_path / "drawdownguard.db")
     return tmp_path
 
 
@@ -136,7 +136,7 @@ def test_init_db_does_not_overwrite_a_populated_database(db, tmp_path):
     store.export_snapshot(snapshot)
     store.save_wheel(WheelState(symbol="SPY", cycle_count=9))
 
-    store.init_db(tmp_path / "flywheel.db", snapshot=snapshot)
+    store.init_db(tmp_path / "drawdownguard.db", snapshot=snapshot)
     assert store.load_wheel("SPY").cycle_count == 9
 
 

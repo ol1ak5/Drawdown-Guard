@@ -7,7 +7,7 @@ help. Read this once, then work from the plan.
 
 ```
 alpaca-hackathon/
-├── src/flywheel/          <- all package code
+├── src/drawdownguard/          <- all package code
 ├── tests/                 <- all tests
 ├── config/                <- risk.yaml, strategy.yaml
 ├── docs/
@@ -18,19 +18,19 @@ alpaca-hackathon/
 ```
 
 `src` is a directory, not a file, and the name is a Python convention called
-the **src layout**. The package is `flywheel`; it lives one level down at
-`src/flywheel/`.
+the **src layout**. The package is `drawdownguard`; it lives one level down at
+`src/drawdownguard/`.
 
 The reason for the extra level: without it, running `pytest` from the project
-root puts the project root on the import path, so `import flywheel` picks up the
+root puts the project root on the import path, so `import drawdownguard` picks up the
 local folder whether or not the package is correctly installed. Broken packaging
 then passes every test and fails only for whoever installs it. With the src
 layout, the local folder is not importable, so the tests import the *installed*
 package — you test what actually ships. `uv` installs the project in editable
 mode automatically, so edits still take effect immediately.
 
-You will never type `src` in Python. Imports are `from flywheel.domain import
-...`, never `from src.flywheel...`.
+You will never type `src` in Python. Imports are `from drawdownguard.domain import
+...`, never `from src.drawdownguard...`.
 
 ## Daily commands
 
@@ -47,7 +47,7 @@ If `uv run` complains about a missing package, run `uv sync`.
 
 ## The loop for each task
 
-The plan at `docs/superpowers/plans/2026-08-22-flywheel-implementation.md` is
+The plan at `docs/superpowers/plans/2026-08-22-drawdownguard-implementation.md` is
 written as numbered tasks, each already containing the test code and the
 implementation code. The order matters — later tasks import from earlier ones.
 
@@ -227,7 +227,7 @@ layer is cached, so a second run only fetches what is missing.
   number into `logistics.md`.
 - Create the public GitHub repository:
   ```bash
-  gh repo create flywheel-agent --public --source=. --remote=origin --push
+  gh repo create drawdown-guard-agent --public --source=. --remote=origin --push
   ```
 
 ## Secrets
@@ -248,10 +248,10 @@ the same default — paper unless you explicitly opt into live.
 
 ## If something breaks
 
-- `ModuleNotFoundError: No module named 'flywheel.x'` right after writing a
+- `ModuleNotFoundError: No module named 'drawdownguard.x'` right after writing a
   test — expected, that is step 3.
 - The same error *after* writing the implementation — check the file is under
-  `src/flywheel/`, and that any new sub-package has an `__init__.py`.
+  `src/drawdownguard/`, and that any new sub-package has an `__init__.py`.
 - `uv run` cannot find a dependency — `uv sync`.
 - `RuntimeWarning: invalid value encountered in reduce` during the optimizer
   tests — comes from inside cvxpy, which sums an uninitialised array purely to

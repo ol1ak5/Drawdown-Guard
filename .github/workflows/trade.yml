@@ -43,7 +43,11 @@ jobs:
           ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           ALPACA_PAPER_TRADE: "true"
-          FLYWHEEL_ENV: ${{ vars.FLYWHEEL_ENV }}
+          # Falls back rather than passing an empty string: the variable was
+          # renamed with the project on 2026-08-27, and a repository variable
+          # that does not exist yet would otherwise fail settings validation
+          # and halt a cycle for a reason that has nothing to do with risk.
+          DRAWDOWNGUARD_ENV: ${{ vars.DRAWDOWNGUARD_ENV || 'dev' }}
         run: |
           set +e
           uv run python3 scripts/healthcheck.py
@@ -64,7 +68,7 @@ jobs:
           ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           ALPACA_PAPER_TRADE: "true"
-          FLYWHEEL_ENV: ${{ vars.FLYWHEEL_ENV }}
+          DRAWDOWNGUARD_ENV: ${{ vars.DRAWDOWNGUARD_ENV || 'dev' }}
         # Scheduled runs always trade. Only a hand-triggered run can ask for
         # a dry run, and it has to ask explicitly -- a default that silently
         # stopped submitting would be an agent that looks alive and does
@@ -82,7 +86,7 @@ jobs:
       - name: Commit the journal
         if: always()
         run: |
-          git config user.name "flywheel-agent"
+          git config user.name "drawdown-guard-agent"
           git config user.email "agent@users.noreply.github.com"
           # The directories may not exist on a first run, and `bash -e`
           # turns a git pathspec error into a failed job. Create them

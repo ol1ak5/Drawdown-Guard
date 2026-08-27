@@ -63,10 +63,10 @@ import argparse
 import asyncio
 from decimal import Decimal
 
-from flywheel.domain import SHARES_PER_CONTRACT
-from flywheel.execution.reconcile import parse_occ
-from flywheel.journal import writer
-from flywheel.mcp.alpaca_client import FULL_TOOLSETS, _unwrap, alpaca_session
+from drawdownguard.domain import SHARES_PER_CONTRACT
+from drawdownguard.execution.reconcile import parse_occ
+from drawdownguard.journal import writer
+from drawdownguard.mcp.alpaca_client import FULL_TOOLSETS, _unwrap, alpaca_session
 
 # Target dollars per instrument. Equity totals 600,000 — see the docstring.
 TARGET = {
