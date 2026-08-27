@@ -1,20 +1,32 @@
-"""The seven nodes of one trading cycle.
+"""The five nodes of one trading cycle.
 
 The plan asked for one file per node. They are together here because they are
-one sequence over one state type, each is a dozen lines, and ten files whose
-contents only make sense read in order is not better separation — it is the
+one sequence over one state type, each is a dozen lines, and separate files
+whose contents only make sense read in order is not better separation — it is the
 same function with import statements between the paragraphs. The boundaries
 that matter are enforced by the state, not by the filesystem: a node returns a
 partial update and can touch nothing else.
 
-Order: reconcile, mandate, protect, snapshot, regime, execute, journal. A
-halt after reconcile jumps straight to the journal, because a cycle that
-stopped and said nothing is indistinguishable from one that crashed.
+Order: reconcile, mandate, protect, execute, journal. A halt after reconcile
+jumps straight to the journal, because a cycle that stopped and said nothing is
+indistinguishable from one that crashed.
 
-The first three run before any market data is fetched, and that is the argument
-of the whole project rather than an accident of wiring. The agent finds out what
-it already owes the client, and what it would take to make good on it, before it
-is allowed to look at what it might like to buy.
+`mandate` runs before any option chain is fetched, and that is the argument of
+the whole project rather than an accident of wiring. The agent finds out what it
+already owes the client before it is allowed to look at what it might buy.
+
+WHERE THE LANGUAGE MODEL IS, AND WHY IT IS ONLY THERE
+------------------------------------------------------
+At the end of `protect`, after the decision is finished. The budget came from
+the client, the strike from arithmetic over the live chain, and the order faces
+a deterministic gate; the model is handed all of it as settled fact and writes
+the note a client reads. It cannot change a strike, a size, or whether an order
+goes. It can only be unclear, and it is unclear in the journal beside the
+numbers it describes.
+
+There used to be a model earlier in the cycle, classifying the market regime.
+Nothing read its answer, so it was a billed call that could not reach a
+decision. Explaining is the opposite arrangement and the safe one.
 """
 
 from pathlib import Path
@@ -22,6 +34,7 @@ from typing import Any
 
 import yaml
 
+from drawdownguard.agent.roles.explainer import explain
 from drawdownguard.agent.state import GuardState
 from drawdownguard.execution.orders import submit_order
 from drawdownguard.journal import writer
@@ -396,6 +409,49 @@ async def protect_node(state: GuardState) -> GuardState:
         # position, and the journal should not read as though it were.
         severity="breach",
     )
+
+    # The decision is finished. Everything above was arithmetic and everything
+    # below is prose, which is why a language model is allowed here and was not
+    # allowed anywhere else: it cannot change the strike, the size, or whether
+    # the order goes. It can only be unclear, and it says so in the journal next
+    # to the numbers it describes, where a reader can catch it.
+    #
+    # A note nobody could read is what the journal was missing. Eight columns of
+    # dollars are a record; they are not an answer to "why did you buy this."
+    if chosen is not None:
+        note = await explain(
+            {
+                "mandate": mandate.name,
+                "budget": budget,
+                "exposure": book.equity_exposure,
+                "gap": gap,
+                "describe": chosen.describe,
+                "premium_cost": chosen.premium_cost,
+                "forgone_upside": chosen.forgone_upside,
+                "gap_after": chosen.gap_after,
+                "rejected": [
+                    {
+                        "kind": other.kind,
+                        "describe": other.describe,
+                        "premium_cost": other.premium_cost,
+                        "forgone_upside": other.forgone_upside,
+                    }
+                    for other in offers
+                    if other is not chosen
+                ],
+                "because": why,
+            }
+        )
+        # Written only when there is something to write. No placeholder, no
+        # apology: a reader cannot tell generated filler from an explanation,
+        # and an empty field is honest about what happened.
+        if note:
+            writer.write(
+                "protection.explained",
+                {"chosen": chosen.kind, "note": note},
+                severity="info",
+            )
+
     return GuardState(
         released=given,
         protection=chosen,
