@@ -327,6 +327,36 @@ def _contracts_needed(strike: Decimal, spot: float, shock: float, gap: float) ->
     return math.ceil(gap / (intrinsic * SHARES_PER_CONTRACT))
 
 
+def liquid(rows: list[dict], limits) -> list[dict]:
+    """The rows that are choices at all, by the gate's own two liquidity rules.
+
+    Filtered here rather than left for the gate, because the gate is the last
+    word and by then it is too late to pick differently. A solver that reaches
+    for the cheapest strike on the whole chain will find the one nobody trades:
+    an illiquid contract is cheap in the way an unrepeatable price is cheap.
+
+    Found by running a live cycle. The agent measured the promise, found the
+    gap, solved for a SPY 644 put, sent it, and was refused for an open interest
+    of 209 against a floor of 500 -- leaving the gap open and nothing on the way
+    to close it. Every step was individually right and the cycle still did
+    nothing, which is the failure mode worth designing against.
+
+    A row missing either field is dropped. Absent liquidity is not liquidity.
+    """
+    out = []
+    for row in rows:
+        bid, ask = float(row.get("bid") or 0), float(row.get("ask") or 0)
+        if bid <= 0 or ask <= 0:
+            continue
+        if int(row.get("open_interest") or 0) < limits.min_open_interest:
+            continue
+        mid = (bid + ask) / 2
+        if mid <= 0 or (ask - bid) / mid * 100 > limits.max_spread_pct:
+            continue
+        out.append(row)
+    return out
+
+
 def _tradable(row: dict) -> bool:
     """Whether a chain row carries what an order needs.
 

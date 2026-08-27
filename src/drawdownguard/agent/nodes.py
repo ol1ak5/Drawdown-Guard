@@ -38,6 +38,7 @@ from drawdownguard.risk.mandate import load_mandate
 from drawdownguard.risk.remedy import (
     choose,
     collar,
+    liquid,
     protective_put,
     reduce_exposure,
     release,
@@ -286,14 +287,10 @@ async def protect_node(state: GuardState) -> GuardState:
     from drawdownguard.market.chain import load_chain
 
     holding = max(exposed, key=lambda h: h.value)
-    config = strategy()
+    min_dte, max_dte = mandate.protection_dte
     try:
-        puts = await load_chain(
-            holding.symbol, "P", config["dte"]["min"], config["dte"]["max"]
-        )
-        calls = await load_chain(
-            holding.symbol, "C", config["dte"]["min"], config["dte"]["max"]
-        )
+        puts = await load_chain(holding.symbol, "P", min_dte, max_dte)
+        calls = await load_chain(holding.symbol, "C", min_dte, max_dte)
     except Exception as exc:  # noqa: BLE001 — reported, and the gap stays open
         writer.write(
             "protection.chain_unreadable",
@@ -301,6 +298,28 @@ async def protect_node(state: GuardState) -> GuardState:
             severity="breach",
         )
         return GuardState(released=given, protection_gap=gap)
+
+    # Narrowed to what can actually be traded before anything is priced. The
+    # gate applies the same two rules, but it applies them last, and a remedy
+    # solved over the whole chain finds the cheapest strike by finding the one
+    # nobody trades. That order of events produced a real cycle that measured
+    # the gap correctly, chose a put with an open interest of 209, was refused,
+    # and left the promise broken with nothing on the way to fix it.
+    gate_limits = load_limits()
+    offered, offered_calls = len(puts), len(calls)
+    puts = liquid(puts, gate_limits)
+    calls = liquid(calls, gate_limits)
+    writer.write(
+        "protection.chain_filtered",
+        {
+            "symbol": holding.symbol,
+            "puts": {"offered": offered, "tradable": len(puts)},
+            "calls": {"offered": offered_calls, "tradable": len(calls)},
+            "min_open_interest": gate_limits.min_open_interest,
+            "max_spread_pct": gate_limits.max_spread_pct,
+        },
+        severity="info",
+    )
 
     offers = [
         remedy

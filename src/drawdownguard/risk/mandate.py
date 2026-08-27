@@ -82,6 +82,27 @@ class Mandate(BaseModel):
     # spread each way. Stated by the client in advance, like everything else
     # here -- a hysteresis band invented by the agent would be a tuning
     # parameter, and tuning parameters are where forecasts hide.
+    # How long the promise has to hold, in months, and so how long the
+    # protection bought to hold it up must live.
+    #
+    # This is the number everybody forgets, and it decides more than any other
+    # field here. "I can lose 10%" is not a promise until somebody says over
+    # what: 10% by Friday and 10% over a year are different guarantees with
+    # different price tags. Until the window is named there is nothing to buy.
+    #
+    # It exists because short-dated protection is cheap in exactly the way that
+    # should make a buyer suspicious. Measured on real SPY history with this
+    # project's own pricing: through the 2022 decline -- 25.4% over 279 days --
+    # rolling 30-day puts 10% out of the money paid **nothing at all**. Nine
+    # contracts in a row expired worthless while the market destroyed a quarter
+    # of its value, because no single month fell far enough to put any of them
+    # in the money. One put held across the whole period paid 65.
+    #
+    # Short protection covers fast crashes and nothing else, and a slow grind
+    # walks straight past it. The client did not ask to be protected from one
+    # terrible day; they asked not to lose 10% of their money, however slowly
+    # it happens.
+    horizon_months: int = 12
     release_margin_pct: float = 15.0
     # Whether the agent may sell the client's shares to close a gap at all.
     #
@@ -114,6 +135,27 @@ class Mandate(BaseModel):
     def binding_shock(self) -> float:
         """The promised shock as a negative fraction, the way the ladder uses it."""
         return -self.stress_shock_pct / 100
+
+    @property
+    def protection_dte(self) -> tuple[int, int]:
+        """The days-to-expiry window protection must be bought inside.
+
+        Floored at the horizon, because anything expiring sooner leaves the
+        client uncovered for the rest of a promise that is still running. The
+        ceiling is a year past it: further out costs more and buys nothing the
+        promise asked for, and liquidity thins to the point where the quote is
+        a suggestion.
+
+        This deliberately ignores `config/strategy.yaml`'s `dte`, which is 20
+        to 33 days. That window was calibrated against the option *history* on
+        disk for a backtest of the options wheel, and it has nothing to say
+        about how long a client's protection should last. Left in charge it
+        bought 22-day puts against a twelve-month promise -- for 0.25 a share,
+        which is what three weeks of coverage 16% out of the money is worth,
+        and it is worth that because it is worth nothing.
+        """
+        floor = round(self.horizon_months * 30.44)
+        return floor, floor + 365
 
     @property
     def delta_band(self) -> tuple[float, float]:

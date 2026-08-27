@@ -296,3 +296,30 @@ def test_the_mandate_no_longer_ranks_the_option_remedies():
     # Pydantic ignores unknown keys by default, so this asserts the field is
     # gone rather than merely unset.
     assert "protection_order" not in m.model_dump()
+
+
+def test_the_promise_names_how_long_it_runs():
+    """Twelve months, and the window protection is bought in follows from it.
+
+    365 days of floor, a year of ceiling: anything expiring sooner leaves the
+    client bare for the rest of a promise still running, and anything further
+    out costs more while buying nothing that was asked for.
+    """
+    mandate = load_mandate("balanced")
+    assert mandate.horizon_months == 12
+    low, high = mandate.protection_dte
+    assert low == 365
+    assert high == 730
+
+
+def test_the_wheel_window_has_no_say_over_how_long_protection_lasts():
+    """`config/strategy.yaml` says 20 to 33 days. That was calibrated against
+    the option history on disk for a backtest of the options wheel, and it has
+    nothing to say about a client's protection horizon.
+
+    Left in charge it bought 22-day puts against a twelve-month promise, at
+    0.25 a share -- which is what three weeks of coverage 16% out of the money
+    is worth, and it is worth that because it is worth nothing.
+    """
+    low, _ = load_mandate("balanced").protection_dte
+    assert low > 33
