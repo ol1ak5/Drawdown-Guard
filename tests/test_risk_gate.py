@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from drawdownguard.domain import Portfolio, ProposedOrder, WheelState
+from drawdownguard.domain import OpenContract, Portfolio, ProposedOrder, WheelState
 from drawdownguard.risk.gate import veto
 from drawdownguard.risk.limits import Limits
 
@@ -176,10 +176,130 @@ def test_spread_ceiling():
     assert "spread" in verdict.reason.lower()
 
 
-def test_buying_to_open_is_rejected_outright():
-    verdict = veto(order(contracts=1), portfolio(), LIMITS)
+# --- buying protection ------------------------------------------------------
+#
+# The gate was written for a strategy that only ever sold options, so it
+# rejected every purchase. An agent whose job is to buy protection could not
+# place a single one of its own orders. What follows is the boundary that
+# replaced that rule: a purchase is admitted when it demonstrably reduces
+# risk, and refused when it is a directional bet wearing a hedge's clothes.
+
+
+def holding(shares: int = 1000, contracts=None, **overrides) -> Portfolio:
+    """A client who owns shares, which is what makes a put protective.
+
+    Coherent on purpose: 1,000 shares at 600 is 600,000 of exposure, so
+    `net_delta_value` says 600,000 and the equity is large enough to hold it
+    without leverage. Left at the default zero, the fixture would describe a
+    portfolio whose shares have no delta, and every test below would be
+    measuring a book that cannot exist.
+    """
+    state = WheelState(
+        symbol="SPY", leg="SHARES", shares=shares, contracts=contracts or []
+    )
+    values = {
+        "equity": Decimal("1000000"),
+        "cash": Decimal("400000"),
+        "peak_equity": Decimal("1000000"),
+        "net_delta_value": float(shares) * 600.0,
+        "wheels": {"SPY": state},
+    }
+    values.update(overrides)
+    return portfolio(**values)
+
+
+def test_a_put_against_shares_the_client_holds_is_approved():
+    """The agent's entire purpose, and the old gate refused it."""
+    assert veto(order(contracts=10), holding(), LIMITS).approved is True
+
+
+def test_a_put_on_something_the_client_does_not_own_is_refused():
+    """Bought against nothing, a put is not insurance -- it is a short position
+    on the market with extra steps. The one trade this agent must never place,
+    because its whole claim is that it never takes a view."""
+    verdict = veto(order(contracts=10), portfolio(), LIMITS)
     assert verdict.approved is False
-    assert "short" in verdict.reason.lower()
+    assert "does not hold" in verdict.reason.lower()
+
+
+def test_buying_a_call_to_open_is_refused():
+    """Upside bought with cash is leverage. Nothing about the mandate asks for
+    it, and no shortfall in the downside budget can be closed with one."""
+    verdict = veto(order(right="C", contracts=10, delta=0.30), holding(), LIMITS)
+    assert verdict.approved is False
+    assert verdict.reason.strip() != ""
+
+
+def test_buying_back_a_short_is_always_approved():
+    """Closing a short is the least risky act available, and the account may
+    hold one on a symbol whose shares have since been sold."""
+    short = OpenContract(
+        occ_symbol="SPY260828P00560000",
+        right="P",
+        strike=Decimal("560"),
+        expiry=date(2026, 8, 28),
+        contracts=-4,
+        premium=Decimal("2.35"),
+    )
+    book = holding(shares=0, contracts=[short])
+    assert veto(order(contracts=4), book, LIMITS).approved is True
+
+
+def test_a_purchase_risks_its_premium_and_not_the_strike():
+    """Ten 560 puts tie up 560,000 of collateral when sold and cost 2,350 when
+    bought. Reading the sold number on a bought order would report a position
+    at 187% of a 300,000 account and refuse every hedge the agent proposes."""
+    bought = order(contracts=10)
+    assert bought.capital_at_risk == Decimal("2350")
+    assert veto(bought, holding(), LIMITS).approved is True
+
+
+def test_a_drawdown_halts_new_risk_but_never_the_defence():
+    """The old rule read 'past the limit, no new positions'. Applied to a
+    hedge that is exactly backwards: the drawdown is the reason to buy it.
+
+    Selling stays blocked, which is the half that was actually meant.
+    """
+    # 1,000,000 of equity against a 1,340,000 peak is a 25% drawdown.
+    deep = holding(peak_equity=Decimal("1340000"))
+
+    assert veto(order(contracts=10), deep, LIMITS).approved is True
+
+    selling = veto(order(contracts=-1), deep, LIMITS)
+    assert selling.approved is False
+    assert "drawdown" in selling.reason.lower()
+
+
+def test_protection_may_reach_flat_but_not_pass_through_it():
+    """Hedging to neutral is defence. Hedging past neutral is a short position,
+    and it pays only if the market falls -- the bet this agent does not make.
+
+    600,000 of shares against puts carrying -0.90 a share: twenty contracts
+    take exposure to -480,000, which is the far side of flat.
+    """
+    overshoot = veto(order(contracts=20, delta=-0.90), holding(), LIMITS)
+    assert overshoot.approved is False
+    assert "exposure" in overshoot.reason.lower()
+
+    # Ten of the same contracts land at +60,000, short of flat, and are fine.
+    assert veto(order(contracts=10, delta=-0.90), holding(), LIMITS).approved is True
+
+
+def test_assignment_probability_is_not_asked_of_a_long():
+    """Nobody is assigned on an option they own. Carrying the seller's check
+    over to the buyer would reject the deepest protection precisely because it
+    is the most likely to pay."""
+    assert veto(order(contracts=10, assignment_prob=0.95), holding(), LIMITS).approved
+
+
+def test_bought_vega_pays_down_the_budget_rather_than_adding_to_it():
+    """We are short volatility from writing, so owning some is the cure, not
+    more of the disease. Summing magnitudes would have the agent refuse a
+    hedge for making its vega worse when the hedge is what fixes it."""
+    loaded = holding()
+    loaded.vega = 480.0  # LIMITS caps vega at 500
+    assert veto(order(contracts=1, vega=40.0), loaded, LIMITS).approved is True
+    assert veto(order(contracts=-1, vega=40.0), loaded, LIMITS).approved is False
 
 
 @pytest.mark.parametrize(

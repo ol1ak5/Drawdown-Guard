@@ -41,7 +41,7 @@ class WheelState(BaseModel):
 
 
 class ProposedOrder(BaseModel):
-    """A single short option the optimizer wants to open."""
+    """One option order: sold to earn, or bought to defend."""
 
     symbol: str
     right: Right
@@ -73,6 +73,31 @@ class ProposedOrder(BaseModel):
     def collateral(self) -> Decimal:
         """Cash a short put ties up. Calls are collateralised by shares."""
         return self.strike * abs(self.contracts) * SHARES_PER_CONTRACT
+
+    @property
+    def is_purchase(self) -> bool:
+        """Positive contracts: the account pays out rather than takes in."""
+        return self.contracts > 0
+
+    @property
+    def debit(self) -> Decimal:
+        """Cash paid for a long option, which is also its whole maximum loss."""
+        return self.limit_price * abs(self.contracts) * SHARES_PER_CONTRACT
+
+    @property
+    def capital_at_risk(self) -> Decimal:
+        """What this position can cost the account -- and the two sides of the
+        same contract are nothing alike.
+
+        A short put must be able to buy the shares if it is assigned, so the
+        entire strike is committed. A long option can only ever lose what it
+        cost. Ten 560 puts tie up 560,000 when sold and 2,350 when bought, and
+        reading the first number on a purchase makes every hedge look like a
+        position two hundred times its real size. The limits are stated as a
+        share of equity, so getting this wrong does not merely mis-report --
+        it refuses the trade.
+        """
+        return self.debit if self.is_purchase else self.collateral
 
 
 class Portfolio(BaseModel):
