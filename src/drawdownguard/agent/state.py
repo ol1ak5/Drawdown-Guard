@@ -12,9 +12,8 @@ is the only account anyone will have.
 
 from typing import TypedDict
 
-from drawdownguard.domain import Portfolio, Position, Regime
+from drawdownguard.domain import Portfolio, Position
 from drawdownguard.execution.orders import OrderResult
-from drawdownguard.market.features import MarketSnapshot
 from drawdownguard.risk.book import Book
 from drawdownguard.risk.remedy import Release, Remedy
 from drawdownguard.risk.stress import Rung
@@ -29,7 +28,6 @@ class GuardState(TypedDict, total=False):
     resetting something it never meant to touch.
     """
 
-    snapshots: dict[str, MarketSnapshot]
     positions: dict[str, Position]
     portfolio: Portfolio | None
     # What today's book loses at each published shock, and by how much the
@@ -55,8 +53,6 @@ class GuardState(TypedDict, total=False):
     # higher-beta ones -- 11,700 of a 100,000 promise on the demonstration
     # book. See `remedy.sleeves`.
     protection: list[Remedy]
-    regime: Regime
-    regime_rationale: str
     results: list[OrderResult]
     discrepancies: list[str]
     halted: bool
@@ -72,7 +68,6 @@ def initial_state(dry_run: bool = False) -> GuardState:
     several risk checks trivially; absence cannot.
     """
     return GuardState(
-        snapshots={},
         positions={},
         portfolio=None,
         ladder=[],
@@ -81,8 +76,6 @@ def initial_state(dry_run: bool = False) -> GuardState:
         book=None,
         released=None,
         protection=[],
-        regime="calm",
-        regime_rationale="",
         results=[],
         discrepancies=[],
         halted=False,

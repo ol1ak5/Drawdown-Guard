@@ -30,7 +30,6 @@ from pydantic import BaseModel
 
 from drawdownguard.domain import Portfolio, ProposedOrder
 from drawdownguard.mcp.alpaca_client import call_tool
-from drawdownguard.optimizer.model import Allocation
 from drawdownguard.risk.gate import closes_a_short, veto
 from drawdownguard.risk.limits import Limits
 
@@ -48,34 +47,9 @@ class OrderResult(BaseModel):
     client_order_id: str | None = None
 
 
-def to_proposed_order(allocation: Allocation) -> ProposedOrder:
-    """An optimizer allocation as an order the gate can rule on.
-
-    `contracts` goes negative here: the optimizer counts contracts *sold* as a
-    positive quantity, while a position is signed, and short is negative. The
-    conversion happens once, at this boundary, rather than being remembered at
-    every call site.
-    """
-    candidate = allocation.candidate
-    return ProposedOrder(
-        symbol=candidate.symbol,
-        right=candidate.right,
-        strike=candidate.strike,
-        expiry=candidate.expiry,
-        contracts=-abs(allocation.contracts),
-        limit_price=candidate.mid,
-        delta=candidate.delta,
-        vega=candidate.vega,
-        assignment_prob=candidate.assignment_prob,
-        open_interest=candidate.open_interest,
-        spread_pct=candidate.spread_pct,
-        spot=candidate.spot,
-    )
-
-
 def _occ_symbol(order: ProposedOrder) -> str:
     """Rebuild the OCC symbol the broker expects."""
-    from drawdownguard.backtest.options_history import occ_symbol
+    from drawdownguard.execution.reconcile import occ_symbol
 
     return occ_symbol(order.symbol, order.expiry, order.right, order.strike)
 

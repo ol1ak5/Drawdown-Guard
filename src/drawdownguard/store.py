@@ -64,7 +64,7 @@ def init_db(
         import_snapshot(snapshot)
 
 
-def save_wheel(state: Position) -> None:
+def save_position(state: Position) -> None:
     """Persist one position, replacing any earlier version of it.
 
     The whole model goes into a single TEXT column as JSON. A column per field
@@ -79,7 +79,7 @@ def save_wheel(state: Position) -> None:
         )
 
 
-def load_wheel(symbol: str) -> Position:
+def load_position(symbol: str) -> Position:
     """The stored position, or a fresh `CASH` one when the symbol is unknown.
 
     Absence is not an error: every symbol starts here on the first cycle.
@@ -126,4 +126,4 @@ def import_snapshot(path: str | Path = DEFAULT_SNAPSHOT) -> None:
     if not source.exists():
         return
     for state in json.loads(source.read_text()).values():
-        save_wheel(Position.model_validate(state))
+        save_position(Position.model_validate(state))

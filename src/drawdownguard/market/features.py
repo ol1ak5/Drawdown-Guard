@@ -27,9 +27,9 @@ import numpy as np
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-from drawdownguard.backtest.data import load_bars, realized_vol, return_scenarios
 from drawdownguard.market.chain import load_chain
 from drawdownguard.market.client import get_spot
+from drawdownguard.market.history import load_bars, realized_vol, return_scenarios
 
 # A year of trading days. Below this the rank is reported as unknown rather
 # than computed from a window too short to have seen a regime change.

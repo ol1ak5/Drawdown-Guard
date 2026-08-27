@@ -36,7 +36,7 @@ from typing import Any
 from drawdownguard.domain import SHARES_PER_CONTRACT, Portfolio, Position
 from drawdownguard.execution.reconcile import reconcile
 from drawdownguard.mcp.alpaca_client import FULL_TOOLSETS, alpaca_session
-from drawdownguard.optimizer.payoff import bs_delta, contract_vega
+from drawdownguard.options.payoff import bs_delta, contract_vega
 
 
 def _money(value: Any) -> Decimal:
@@ -110,12 +110,12 @@ async def get_spot(symbol: str) -> float:
 
 
 async def get_account(
-    local_wheels: dict[str, Position] | None = None,
+    local_positions: dict[str, Position] | None = None,
     peak_equity: Decimal | None = None,
 ) -> tuple[Portfolio, list[str]]:
     """The broker's account folded into a `Portfolio`, plus any corrections.
 
-    `local_wheels` is what this agent believed before asking. The broker is
+    `local_positions` is what this agent believed before asking. The broker is
     authoritative, so the two are run through `reconcile`, and every correction
     comes back as a sentence meant to be journalled — a position that appeared
     without the agent opening it is exactly the event nobody should be able to
@@ -130,7 +130,7 @@ async def get_account(
         account = await _read(session, "get_account_info")
         positions = (await _read(session, "get_all_positions")).get("result") or []
 
-        positions, discrepancies = reconcile(local_wheels or {}, positions)
+        positions, discrepancies = reconcile(local_positions or {}, positions)
 
         # Greeks need a spot per underlying and an implied volatility per held
         # contract. Fetched only when something is actually held.

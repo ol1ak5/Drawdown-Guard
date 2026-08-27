@@ -21,6 +21,23 @@ from drawdownguard.position import (
     on_put_assigned,
 )
 
+
+def occ_symbol(
+    underlying: str, expiry: date, right: str, strike: Decimal | float
+) -> str:
+    """Build an OCC option symbol, e.g. SPY240419P00480000.
+
+    Strike is encoded in thousandths of a dollar, zero-padded to eight digits.
+    The inverse of `parse_occ`, and it lives beside it so the two cannot drift.
+    """
+    return (
+        underlying.upper()
+        + expiry.strftime("%y%m%d")
+        + right.upper()
+        + f"{round(float(strike) * 1000):08d}"
+    )
+
+
 # OCC: up to six letters of underlying, YYMMDD, P or C, then the strike in
 # thousandths of a dollar. Anchored, because `SPY` on its own must not match.
 _OCC = re.compile(

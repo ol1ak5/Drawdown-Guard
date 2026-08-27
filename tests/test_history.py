@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from drawdownguard.backtest.data import realized_vol, return_scenarios
+from drawdownguard.market.history import realized_vol, return_scenarios
 
 
 def closes(values):

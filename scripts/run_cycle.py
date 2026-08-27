@@ -29,7 +29,9 @@ def main() -> int:
 
     submitted = sum(1 for r in state.get("results", []) if r.submitted)
     refused = sum(1 for r in state.get("results", []) if not r.submitted)
-    print(f"regime      : {state.get('regime')}")
+    print(f"gap         : {state.get('protection_gap') or 0:,.0f}")
+    kinds = [r.kind for r in state.get("protection") or []]
+    print(f"protection  : {', '.join(kinds) or 'none'}")
     print(f"halted      : {state.get('halted')} {state.get('halt_reason', '')}".strip())
     print(f"submitted   : {submitted}")
     print(f"refused     : {refused}")

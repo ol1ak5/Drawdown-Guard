@@ -122,10 +122,6 @@ async def run(
             new=AsyncMock(return_value=(portfolio, [])),
         ),
         patch("drawdownguard.agent.nodes.get_positions", new=reader),
-        patch(
-            "drawdownguard.agent.nodes.build_snapshot",
-            new=AsyncMock(side_effect=lambda s, *a, **k: snapshot(s)),
-        ),
         patch("drawdownguard.market.chain.load_chain", new=chain),
         patch("drawdownguard.journal.writer.JOURNAL_DIR", journal_dir),
         patch(

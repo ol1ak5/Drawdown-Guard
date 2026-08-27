@@ -36,10 +36,10 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from drawdownguard.backtest.engine import implied_vol
 from drawdownguard.domain import Right
 from drawdownguard.execution.reconcile import parse_occ
 from drawdownguard.mcp.alpaca_client import FULL_TOOLSETS, alpaca_session, call_tool
+from drawdownguard.options.payoff import implied_vol
 
 # The chain endpoint's page size. Named so the pagination loop reads as
 # deliberate rather than as a magic number someone might tidy away.

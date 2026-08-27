@@ -105,7 +105,7 @@ from datetime import date
 from decimal import Decimal
 
 from drawdownguard.domain import SHARES_PER_CONTRACT, ProposedOrder
-from drawdownguard.optimizer.payoff import assignment_prob, bs_delta, contract_vega
+from drawdownguard.options.payoff import assignment_prob, bs_delta, contract_vega
 from drawdownguard.risk.stress import (
     DEFAULT_SHOCKS,
     Holding,
@@ -892,7 +892,7 @@ def release(
     If every long put on a symbol is released while a short call on it remains,
     the client keeps the ceiling and loses the floor. That is the worst half of
     a collar, and it would be right to refuse -- except that a short call may
-    equally be the wheel's own covered call, which is a legitimate position that
+    equally be a covered call the client already had on, a legitimate position that
     stands on its own. The broker reports positions, not intentions, and the
     difference is not recoverable from a list of holdings. So it is reported in
     `leaves_ceiling` and left to the caller, rather than guessed at here.

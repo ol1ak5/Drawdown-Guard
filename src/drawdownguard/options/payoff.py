@@ -6,11 +6,17 @@ the same code.
 """
 
 import numpy as np
+from scipy.optimize import brentq
 from scipy.stats import norm
 
 from drawdownguard.domain import SHARES_PER_CONTRACT
 
 DEFAULT_RATE = 0.04
+
+# The range `implied_vol` searches. Wide enough for a crash and narrow
+# enough that a price no volatility can reproduce is reported as such
+# rather than solved to an absurd number.
+VOL_BOUNDS = (0.01, 3.0)
 
 
 def _d1_d2(
@@ -138,3 +144,32 @@ def loss_scenarios(
     else:
         intrinsic = np.maximum(terminal - strike, 0.0)
     return (intrinsic - premium) * SHARES_PER_CONTRACT
+
+
+def implied_vol(
+    price: float, spot: float, strike: float, tau: float, right: str
+) -> float | None:
+    """Back out the volatility that reproduces an observed option price.
+
+    Returns None when no volatility in `VOL_BOUNDS` can produce the price --
+    typically a stale quote printed below intrinsic value, which is not a
+    contract anyone could have traded at that number.
+
+    Lives here rather than in `backtest/` because the live chain adapter needs
+    it: Alpaca does not always publish an implied volatility, and solving it
+    from the mid answers the question that was asked, where reaching for
+    realised volatility would answer a different one.
+    """
+    if tau <= 0 or price <= 0:
+        return None
+
+    def difference(vol: float) -> float:
+        return bs_price(spot, strike, tau, vol, right) - price
+
+    low, high = VOL_BOUNDS
+    if difference(low) > 0 or difference(high) < 0:
+        return None
+    try:
+        return float(brentq(difference, low, high, xtol=1e-6))
+    except (ValueError, RuntimeError):
+        return None

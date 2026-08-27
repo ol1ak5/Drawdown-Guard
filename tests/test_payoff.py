@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from drawdownguard.domain import SHARES_PER_CONTRACT
-from drawdownguard.optimizer.payoff import (
+from drawdownguard.options.payoff import (
     assignment_prob,
     bs_delta,
     bs_price,

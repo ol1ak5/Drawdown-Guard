@@ -39,7 +39,6 @@ from drawdownguard.agent.state import GuardState
 from drawdownguard.execution.orders import submit_order
 from drawdownguard.journal import writer
 from drawdownguard.market.client import get_account, get_positions
-from drawdownguard.market.features import build_snapshot
 from drawdownguard.risk.book import to_book
 from drawdownguard.risk.limits import load_limits
 from drawdownguard.risk.mandate import load_mandate
@@ -454,60 +453,7 @@ async def protect_node(state: GuardState) -> GuardState:
     )
 
 
-# --- 4. snapshot ------------------------------------------------------------
-
-
-async def snapshot_node(state: GuardState) -> GuardState:
-    """One market snapshot per symbol in the universe.
-
-    A symbol whose snapshot fails is dropped rather than defaulted. A snapshot
-    invented from nothing would produce candidates priced against a volatility
-    nobody observed.
-    """
-    snapshots = {}
-    for symbol in strategy()["universe"]:
-        try:
-            snapshots[symbol] = await build_snapshot(symbol)
-        except Exception as exc:  # noqa: BLE001
-            writer.write(
-                "snapshot.failed",
-                {"symbol": symbol, "detail": str(exc)},
-                severity="info",
-            )
-    return GuardState(snapshots=snapshots)
-
-
-# --- 5. regime --------------------------------------------------------------
-
-
-async def regime_node(state: GuardState) -> GuardState:
-    """Ask the analyst which volatility regime this is.
-
-    The analyst proposes; it does not decide. Its answer can only move the
-    agent along `calm -> elevated -> stress -> crash`, and every step narrows
-    the delta band and shrinks the size multiplier. There is no value it can
-    return that loosens a limit or approves a trade the gate would refuse, so
-    the worst a wrong or compromised answer costs is a skipped cycle.
-
-    A failure lands on `stress`, never on `calm`. An analyst that could not
-    answer is not evidence of a calm market.
-
-    The rendered prompt is journalled verbatim. A decision that cannot be
-    reproduced line by line is not auditable, and the prompt is half of what
-    produced this one.
-    """
-    from drawdownguard.agent.roles.analyst import classify_regime
-
-    regime, rationale, prompt = await classify_regime(state.get("snapshots") or {})
-    writer.write(
-        "regime.classified",
-        {"regime": regime, "rationale": rationale, "prompt": prompt},
-        severity="info",
-    )
-    return GuardState(regime=regime, regime_rationale=rationale)
-
-
-# --- 6. execute -------------------------------------------------------------
+# --- 4. execute -------------------------------------------------------------
 
 
 async def execute_node(state: GuardState) -> GuardState:
@@ -572,7 +518,7 @@ async def execute_node(state: GuardState) -> GuardState:
     return GuardState(results=results)
 
 
-# --- 7. journal -------------------------------------------------------------
+# --- 5. journal -------------------------------------------------------------
 
 
 async def journal_node(state: GuardState) -> GuardState:

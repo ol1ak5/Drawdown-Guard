@@ -1,6 +1,6 @@
 # 🛡️ Drawdown Guard
 
-**Investors can say how much they can afford to lose in the worst case scenario. But portfolios can't keep that promise on its own.**
+**Investors can say how much they can afford to lose in the worst case. But portfolios can't keep that promise on their own.**
 
 So we built an agent that does.
 
@@ -18,18 +18,15 @@ Drawdown Guard is an autonomous AI trading agent that checks a portfolio every w
 
 **Just knowing a loss tolerance limit is not a loss control.**
 
-An investor may have a clear idea of how much loss they can realistically tolerate. But the portfolio can't enforce that limit on its own. It holds what it holds and it falls when the market falls. 
+An investor may have a clear idea of how much loss they can realistically tolerate. But the portfolio can't enforce that limit on its own. It holds what it holds and it falls when the market falls, quietly drifting away from the initial number.
 
-The hard part is predicting the next crash. But a hardest one is to know, in real time, whether the portfolio still respects the limit it was supposed to maintain.
-
-There are trillions of dollars of software for *predicting* the market. There is almost nothing for *keeping a promise* about it.
+Predicting the next crash is hard. Knowing whether today's portfolio still respects yesterday's promise is a different problem. Trillions of dollars of software do the first. Almost nothing does the second the second - that's what we're solving.
 
 ## 💡 The solution
 
 Drawdown Guard stands between the promise and the portfolio, turning a client's downside limit into a continuously monitored portfolio constraint the portfolio answers to every day.
 
-Every weekday, it wakes up and asks one question: **if the market fell right now, would this client still be inside the number they were given?** If yes, it says so, in writing, and keep on the guard. If no, it measures exactly how far outside, prices the ways of getting back in, and buys protection on today's actual option chain.
-
+Every weekday, it wakes up and asks one question: **if the market fell right now, would the portfolio still be inside the number it was given?** If yes, it says so, in writing, and continues to be on guard. If no, it measures the existing gap, and buys protection on today's actual option chain.
 
 ## 👤 One client, one promise, two numbers
 
@@ -39,44 +36,44 @@ For this hackathon, we turn the problem into a concrete situation.
 
 Our simulated client has a c. $1,000,000 portfolio that includes: 
 - 80% equity: SPY, QQQ, IWM
-- 15% T-bills (BIL)
+- 15% T-bills: BIL
 - 5% cash
 
-| Amount | Instrument | Type |
+| Ticker | Shares | Entrance price | Total Amount | Exposure | 
 |---|---|---|
-| **$400,000** | SPY | Equity portfolio |
-| **$200,000** | QQQ | Equity portfolio |
-| **$200,000** | IWM | Equity portfolio |
-| **$150,000** | BIL | Protection reserve |
-| **$50,000** | Cash | Liquidity/Protection reserve - the money the agent is allowed to spend on hedges |
+| **SPY** | XXX | Aug 28 | XXX | **$400,000** | Equity exposure |
+| **QQQ** | XXX | Aug 28 | XXX | **$200,000** | Equity exposure |
+| **IWM** | XXX | Aug 28 | XXX | **$200,000** | Equity exposure |
+| **BIL** | XXX | Aug 28 | XXX | **$150,000** | Protection reserve |
+| **Cash** | n.a. | n.a. | n.a. | **$50,000** | liquidity for hedge |
 
 ### The promise
 
 The client's mandate is simple:
 
-> *“In the worst case scenario, I can tolerate a 10% loss per year.”*
+> *“In the worst case, I can tolerate a 10% loss per year.”*
 
-**Just two numbers:**
+### Just two numbers:**
 
 - 🔟 **10%** — the most the client can lose. $100,000 of a $1,000,000 account.
 - 📆 **12 months** — the window that promise has to hold.
 
-### Activity during Hackathon
+### Activity during the hackathon
 
 The client changes the portfolio mid-flight:
-- Sell 250 shares of IWM on September 1st
-- Buy 130 shares of AAPL on September 3rd
+- Sells 250 shares of IWM on September 1st
+- Buys 130 shares of AAPL on September 3rd
 
-| Day | Date | Client does | Agent steps |
+| Day | Date | Client does | Agent does |
 |---|---|---|---|
-| Day 1 | 28 Aug | - | Checks the portfolio. Buys protection - steps in |
-| Day 2 | 31 Aug | - | Checks the portfolio. Adjusts the protection if necessary |
-| Day 3 | 1 Sep | Sells 250 IWM | Buys the unecessary protection - release |
-| Day 4 | 2 Sep | - | Checks the portfolio. Adjusts the protection if necessary |
-| Day 5 | 3 Sep | Buys 130 AAPL | Buys protection - rebalance |
-| Day 5 | 4 Sep | - | Result |
+| Day 1 | Aug 28 | - | Buys the protection - steps in |
+| Day 2 | Aug 31 | - | Checks the portfolio. Still within limit - holds |
+| Day 3 | Sep 1 | Sells 250 IWM | Risk drops - release the now-unnecessary protection |
+| Day 4 | Sep 2 | - | Checks the portfolio. Still within limit - holds |
+| Day 5 | Sep 3 | Buys 130 AAPL | Risk rises again — rebalances protection to match |
+| Day 5 | Sep 4 | - | Checks the portfolio. Confirms the mandate still holds |
 
-The portfolio is intentionally not static. That gives Drawdown Guard a real job: keep the changing portfolio aligned with a fixed risk mandate.
+The portfolio is intentionally not static. A client who never touches their allocation isn't the point. That gives Drawdown Guard a real job: it keep the changing portfolio aligned with a fixed risk mandate.
 
 ## ⚙️ How the agent actually works
 
