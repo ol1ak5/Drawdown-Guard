@@ -282,6 +282,46 @@ def gap_within(
     return max(ladder(holdings, options, budget, shocks), key=lambda r: r.gap)
 
 
+def worst_loss(
+    holdings: list[Holding],
+    options: list[OptionLeg],
+    cost_of_new: float = 0.0,
+) -> float:
+    """The most the client can lose, anywhere on the way down. No shock chosen.
+
+    `ladder` and `gap_within` answer "how bad is it at this depth", which needs
+    somebody to have named a depth. That number was the weakest thing in this
+    system: nobody -- not the client, not the agent -- can say whether the next
+    fall is 20% or 35%, and a promise that only holds down to a line somebody
+    guessed is not much of a promise.
+
+    This asks the question that needs no guess. Shares alone have no answer:
+    the loss grows without limit as the price approaches zero. Match puts to
+    the shares and the answer becomes finite, because below the strike every
+    dollar the shares lose is a dollar the puts gain and the line stops
+    falling. The worst case is then the drop down to the strike plus what the
+    protection cost, and that is a number the client's budget can be compared
+    against directly.
+
+    WHY `cost_of_new` IS A SEPARATE ARGUMENT
+    -----------------------------------------
+    `ladder` measures the change a shock *causes*, treating premium already
+    paid as sunk. That is right for a position the account is carrying -- the
+    money left weeks ago and today's equity already reflects it, so charging it
+    again would count it twice.
+
+    It is wrong for a position being considered. That premium has not left yet,
+    and it will come out of the same account the promise is written against. A
+    hedge sized as though its own cost were free comes up short by exactly the
+    premium: 100,000 of budget buys protection that lets the client lose
+    115,000, and every check reports success. So the cost of anything not yet
+    bought is passed in and added on top.
+    """
+    shocks = tuple(sorted({-1.0, 0.0, *bends(options, -1.0, 0.0)}))
+    rungs = ladder(holdings, options, 0.0, shocks)
+    return max(-rung.portfolio_loss for rung in rungs) + cost_of_new
+
+
 def unhedged_limit(budget: float, shock: float) -> float:
     """The largest equity exposure that honours the budget with no protection.
 

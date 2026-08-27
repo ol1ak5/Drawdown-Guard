@@ -18,6 +18,7 @@ from drawdownguard.risk.stress import (
     ladder,
     unhedged_limit,
     worst_gap,
+    worst_loss,
 )
 
 # 600,000 of equity: 392 SPY at 765, 211 QQQ at 711, 501 IWM at 299.
@@ -230,6 +231,77 @@ def test_the_interval_check_finds_the_breach_and_lands_on_the_bend():
     assert worst.shock == pytest.approx(632.0 / 765.0 - 1.0)
     assert worst.gap == pytest.approx(4_261.57, abs=0.01)
     assert worst.breached
+
+
+# --- the worst case, with nobody naming a depth -----------------------------
+#
+# A round book so the arithmetic is checkable in the head: 8,000 shares at 100
+# is 800,000 of equity, held inside a 1,000,000 account whose budget is
+# 100,000. Puts struck at 90.04 cost 2.54 and there are 80 of them, one per
+# hundred shares.
+
+ROUND = [
+    Holding("EQ", 8000, 100.0),
+    Holding("RESERVE", 200_000, 1.0, shocked=False),
+]
+
+
+def matched_put(strike=90.04, premium=2.54, contracts=80) -> OptionLeg:
+    return OptionLeg(
+        "EQ", "P", Decimal(str(strike)), contracts, Decimal(str(premium)), 100.0
+    )
+
+
+def test_shares_alone_have_no_worst_case_short_of_everything():
+    """Nothing bounds a share but zero, which is why the promise needs help."""
+    assert worst_loss(ROUND, []) == pytest.approx(800_000)
+
+
+def test_matched_puts_stop_the_loss_at_the_strike():
+    """Below 90.04 each dollar the shares lose is a dollar the puts gain, so
+    the answer is the fall down to the strike and nothing beyond it."""
+    assert worst_loss(ROUND, [matched_put()]) == pytest.approx(79_680)
+
+
+def test_a_hedge_being_bought_is_charged_for_itself():
+    """The defect this argument exists for.
+
+    79,680 of fall plus 20,320 of premium is exactly the 100,000 budget. Size
+    the same hedge without charging its own cost and it reports 79,680 -- room
+    to spare -- while the client is in fact spending the whole budget. The gap
+    between the two numbers is the premium, every time.
+    """
+    cost = 2.54 * 8000
+    assert worst_loss(ROUND, [matched_put()], cost) == pytest.approx(100_000)
+
+
+def test_too_few_puts_leave_the_loss_unbounded():
+    """Half the shares covered is not half the promise kept. Below the strike
+    the uncovered shares keep falling, and the worst case runs away again."""
+    half = worst_loss(ROUND, [matched_put(contracts=40)])
+    assert half > 400_000
+
+
+def test_a_hedge_can_pass_the_chosen_depth_and_still_be_the_wrong_hedge():
+    """Why naming a depth was the weak point.
+
+    An unprotected 20% shock costs 160,000 against a 100,000 budget, so 60,000
+    has to come from somewhere. Sixty puts struck 90 are 10 in the money at
+    that price and return exactly 60,000: the mandate holds at -20%, and any
+    check that asks only about -20% reports success.
+
+    They cover 6,000 of the client's 8,000 shares. Below the strike the other
+    2,000 keep falling with nothing behind them, and the worst case is 275,000
+    -- nearly three times the budget the client was promised. The hedge is not
+    too small for the shock that was tested; it is too small for the client.
+    """
+    thin = OptionLeg("EQ", "P", Decimal("90"), 60, Decimal("2.5"), 100.0)
+
+    at_twenty = next(r for r in ladder(ROUND, [thin], 100_000.0, (-0.20,)))
+    assert not at_twenty.breached
+    assert at_twenty.gap == pytest.approx(0.0)
+
+    assert worst_loss(ROUND, [thin], 2.5 * 6000) == pytest.approx(275_000)
 
 
 def test_a_book_that_holds_still_reports_where_it_is_tightest():
