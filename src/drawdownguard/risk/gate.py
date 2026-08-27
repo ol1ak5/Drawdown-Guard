@@ -27,7 +27,7 @@ def veto(order: ProposedOrder, portfolio: Portfolio, limits: Limits) -> Verdict:
     return Verdict.approve()
 
 
-def _closes_a_short(order: ProposedOrder, portfolio: Portfolio) -> bool:
+def closes_a_short(order: ProposedOrder, portfolio: Portfolio) -> bool:
     """Whether this purchase buys back a short the account already carries."""
     wheel = portfolio.wheels.get(order.symbol)
     if wheel is None:
@@ -64,7 +64,7 @@ def _permitted_purpose(
     if not order.is_purchase:
         return Verdict.approve()
 
-    if _closes_a_short(order, portfolio):
+    if closes_a_short(order, portfolio):
         return Verdict.approve()
 
     if order.right == "C":

@@ -131,10 +131,34 @@ def test_selling_to_open_is_stated_not_left_to_be_inferred():
     assert args["qty"] == "2"
 
 
-def test_buying_to_close_is_recognised_as_the_other_direction():
-    args = arguments(contracts=2)
-    assert args["side"] == "buy"
-    assert args["position_intent"] == "buy_to_close"
+def test_a_buy_is_not_one_action_and_the_book_decides_which():
+    """`position_intent` used to read `buy_to_close` for every purchase, which
+    held while the only thing the agent ever bought was its own short. A
+    protective put sent that way asks the broker to close a position that does
+    not exist, so the book is consulted -- exactly as the risk gate consults it.
+    """
+    from datetime import date
+
+    from drawdownguard.domain import OpenContract, WheelState
+
+    short = OpenContract(
+        occ_symbol="SPY260828P00560000",
+        right="P",
+        strike=Decimal("560"),
+        expiry=date(2026, 8, 28),
+        contracts=-2,
+        premium=Decimal("2.35"),
+    )
+    owns_the_short = portfolio(
+        wheels={"SPY": WheelState(symbol="SPY", contracts=[short])}
+    )
+    closing = _order_arguments(make_order(contracts=2), "id", owns_the_short)
+    assert closing["side"] == "buy"
+    assert closing["position_intent"] == "buy_to_close"
+
+    opening = _order_arguments(make_order(contracts=2), "id", portfolio())
+    assert opening["side"] == "buy"
+    assert opening["position_intent"] == "buy_to_open"
 
 
 def test_options_are_day_orders_because_nothing_else_is_accepted():

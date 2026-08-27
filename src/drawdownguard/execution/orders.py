@@ -31,7 +31,7 @@ from pydantic import BaseModel
 from drawdownguard.domain import Portfolio, ProposedOrder
 from drawdownguard.mcp.alpaca_client import call_tool
 from drawdownguard.optimizer.model import Allocation
-from drawdownguard.risk.gate import veto
+from drawdownguard.risk.gate import closes_a_short, veto
 from drawdownguard.risk.limits import Limits
 
 # From docs/notes/mcp-tools.md, read off the running server. Options accept no
@@ -80,7 +80,30 @@ def _occ_symbol(order: ProposedOrder) -> str:
     return occ_symbol(order.symbol, order.expiry, order.right, order.strike)
 
 
-def _order_arguments(order: ProposedOrder, client_order_id: str) -> dict:
+def _position_intent(order: ProposedOrder, portfolio: Portfolio | None) -> str:
+    """Which of the four things this order is, in the broker's vocabulary.
+
+    A buy is not one action. Buying back a short the account already carries
+    closes a position; buying a protective put opens one. The two are the same
+    symbol and the same side, and only the book can tell them apart -- so the
+    book is asked, exactly as the risk gate asks it.
+
+    This used to read `buy_to_close` for every purchase, which was true while
+    the only thing the agent ever bought was its own short. A protective put
+    sent that way asks the broker to close a position that does not exist.
+    """
+    if order.contracts < 0:
+        return "sell_to_open"
+    if portfolio is not None and closes_a_short(order, portfolio):
+        return "buy_to_close"
+    return "buy_to_open"
+
+
+def _order_arguments(
+    order: ProposedOrder,
+    client_order_id: str,
+    portfolio: Portfolio | None = None,
+) -> dict:
     """The broker payload, in the exact shapes the server documented.
 
     `qty` and `limit_price` are strings because that is what the tool schema
@@ -89,15 +112,15 @@ def _order_arguments(order: ProposedOrder, client_order_id: str) -> dict:
     contract.
 
     `position_intent` is always sent. The schema calls it optional, but without
-    it the broker has to infer whether this opens or closes a position, and the
-    wheel does both — writing a new put and buying one back are the same symbol
-    and the same side of nothing.
+    it the broker has to infer whether this opens or closes a position, and
+    this agent does both — writing a put, buying one back, and buying one to
+    hold are three different orders wearing the same symbol.
     """
     return {
         "symbol": _occ_symbol(order),
         "qty": str(abs(order.contracts)),
         "side": "sell" if order.contracts < 0 else "buy",
-        "position_intent": "sell_to_open" if order.contracts < 0 else "buy_to_close",
+        "position_intent": _position_intent(order, portfolio),
         "type": "limit",
         "limit_price": f"{order.limit_price:.2f}",
         "time_in_force": TIME_IN_FORCE,
@@ -150,7 +173,9 @@ async def submit_order(
     client_order_id = f"drawdownguard-{uuid.uuid4()}"
 
     try:
-        payload = await call_tool(ORDER_TOOL, _order_arguments(order, client_order_id))
+        payload = await call_tool(
+            ORDER_TOOL, _order_arguments(order, client_order_id, portfolio)
+        )
     except Exception as exc:  # noqa: BLE001 — a dead agent is worse than a logged one
         return OrderResult(
             submitted=False,
