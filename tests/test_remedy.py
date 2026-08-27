@@ -73,27 +73,56 @@ def test_a_protective_put_closes_the_gap_and_says_what_it_cost():
     assert remedy.forgone_upside == 0.0
 
 
-def test_the_cheapest_total_wins_and_it_is_neither_end_of_the_chain():
-    """The optimum is in the middle, and both intuitions about it are wrong.
+def test_the_lowest_strike_that_still_keeps_the_promise_wins():
+    """One contract per hundred shares, and then the only question is how far
+    down the strike can go.
 
-    At a 20% shock the stock lands at 400, and 20,000 of gap has to be covered:
+    Twelve contracts stand behind 1,200 shares, so below the strike the loss
+    stops falling and the client's worst case is the drop to the strike plus
+    the premium. Against a 100,000 budget:
 
-        460 pays 60 a share -> 4 contracts at 6.00 = 2,400
-        440 pays 40 a share -> 5 contracts at 4.00 = 2,000
-        420 pays 20 a share -> 10 contracts at 2.50 = 2,500
+        460 -> 48,000 of fall + 7,200 of premium =  55,200
+        440 -> 72,000 of fall + 4,800 of premium =  76,800
+        420 -> 96,000 of fall + 3,000 of premium =  99,000   <- chosen
 
-    A rule reaching for the cheapest sticker price picks 420 and overpays by a
-    quarter. A rule reaching for the strongest protection picks 460 and
-    overpays by a fifth. Only working out the total finds 440 — which is why
-    this searches rather than applies a heuristic about where good strikes sit.
+    All three keep the promise. 420 keeps it for 3,000 while 460 keeps it for
+    7,200, and the extra 4,200 buys the client nothing they were promised --
+    it buys a floor at 6.4% when they asked to be protected at 10%. Protection
+    is a cost, so the cheapest one that holds is the right one.
 
-    The first version of this test asserted 460 and 2,400, in a comment written
-    with confidence. The code disagreed and the code was right.
+    Note what is *not* here: no shock decides this. The old rule sized on
+    intrinsic value at exactly -20% and picked 440, which was the cheapest
+    thing that passed that particular test and covered only 500 of the client's
+    1,200 shares.
     """
     remedy = protective_put(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS)
-    assert remedy.legs[0].strike == Decimal("440")
-    assert remedy.legs[0].contracts == 5
-    assert remedy.premium_cost == pytest.approx(2_000)
+    assert remedy.legs[0].strike == Decimal("420")
+    assert remedy.legs[0].contracts == 12
+    assert remedy.premium_cost == pytest.approx(3_000)
+
+
+def test_a_hedge_stands_behind_every_share_or_it_is_not_a_floor():
+    """Fewer contracts than shares is not a smaller promise, it is no promise.
+
+    Below the strike the covered shares stop losing and the uncovered ones
+    carry on, so the worst case runs away again -- the client pays for a floor
+    and does not get one.
+    """
+    from drawdownguard.risk.remedy import contracts_to_match
+
+    assert contracts_to_match(BOOK, SPOT) == 12  # 1,200 shares, 100 to a contract
+    remedy = protective_put(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS)
+    assert remedy.legs[0].contracts == 12
+
+
+def test_no_strike_on_the_chain_can_close_it_and_that_is_said_with_none():
+    """A budget too small for anything on offer is answered honestly.
+
+    2,000 against 1,200 shares needs a strike inside 1.7% of the money, and
+    nothing that near exists here. Returning the best available would report a
+    promise as kept when it is not.
+    """
+    assert protective_put(BOOK, [], 2_000.0, SHOCK, "SPY", SPOT, PUTS) is None
 
 
 def test_the_gap_after_is_the_real_ladder_not_an_estimate():
@@ -165,11 +194,11 @@ def test_the_highest_funding_call_is_chosen_so_less_upside_is_given_up():
     """
     ringed = collar(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS, CALLS)
     call_leg = next(leg for leg in ringed.legs if leg.right == "C")
-    # The put leg is 5 contracts at 4.00, so 2,000, which is 4.00 a share to
-    # fund. The 520 call bids 9.00 and the 540 bids 5.00: both cover it, and
-    # 540 leaves the client 20 more points of ceiling for no worse funding.
+    # The put leg is 12 contracts at 2.50, so 2.50 a share to fund. The 520
+    # call bids 9.00 and the 540 bids 5.00: both cover it, and 540 leaves the
+    # client 20 more points of ceiling for no worse funding.
     assert call_leg.strike == Decimal("540")
-    assert abs(call_leg.contracts) == 5
+    assert abs(call_leg.contracts) == 12
 
 
 def test_an_in_the_money_call_is_never_sold_to_fund_protection():
@@ -232,7 +261,7 @@ def test_the_three_are_priced_in_three_currencies_and_never_summed():
     ringed = collar(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS, CALLS)
     sold = reduce_exposure(BOOK, [], BUDGET, SHOCK, "SPY")
 
-    assert (put_only.premium_cost, put_only.forgone_upside) == (2_000.0, 0.0)
+    assert (put_only.premium_cost, put_only.forgone_upside) == (3_000.0, 0.0)
     assert ringed.premium_cost < put_only.premium_cost
     assert ringed.forgone_upside > 0
     assert sold.premium_cost == 0.0
@@ -282,16 +311,17 @@ def test_the_one_comparison_that_is_arithmetic_is_made():
 
     Both option remedies are priced in dollars leaving the account today, and
     dollars per thousand of gap closed ranks them without any view on the
-    market. The put here buys 20,000 of gap closed for 2,000 of premium: 100
+    market. The put here buys 20,000 of gap closed for 3,000 of premium: 150
     per thousand. The collar is part-funded by the call it sells, so it closes
-    the same gap for less cash and reports a smaller number.
+    the same gap for less cash and reports a smaller number: the 560 call
+    brings in 2,400 of the 3,000, leaving 600, which is 30 per thousand.
     """
     put_only = protective_put(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS)
     ringed = collar(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS, THIN_CALLS)
 
     assert put_only.gap_closed == pytest.approx(20_000)
-    assert put_only.cash_per_1k == pytest.approx(100.0)
-    assert ringed.cash_per_1k == pytest.approx(50.0)
+    assert put_only.cash_per_1k == pytest.approx(150.0)
+    assert ringed.cash_per_1k == pytest.approx(30.0)
 
 
 def test_a_remedy_that_costs_no_cash_does_not_score_zero_on_the_cash_axis():
@@ -432,14 +462,14 @@ def test_upside_that_cannot_be_priced_is_not_sold():
 def test_the_terms_of_the_financing_are_reported_whichever_way_it_goes():
     """`upside_price` is the number that actually moves day to day.
 
-    Dollars collected per 1% of upside surrendered: 2,500 for a ceiling 8%
-    above spot is 312.50 per point. It is reported rather than thresholded,
+    Dollars collected per 1% of upside surrendered: 6,000 for a ceiling 8%
+    above spot is 750 per point. It is reported rather than thresholded,
     because a cutoff would be a constant somebody picked.
     """
     ring = next(r for r in offers_on([call_row(540, 5.00)]) if r.kind == "collar")
-    assert ring.financing_credit == pytest.approx(2_500)
+    assert ring.financing_credit == pytest.approx(6_000)
     assert ring.ceiling_pct == pytest.approx(8.0)
-    assert ring.upside_price == pytest.approx(312.5)
+    assert ring.upside_price == pytest.approx(750.0)
 
     # A nearer ceiling collects more cash but sells more of the range, and the
     # per-point price is what makes the two comparable.

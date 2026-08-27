@@ -4,11 +4,10 @@ Linear from reconcile to journal, with exactly one conditional edge: a halt
 after reconcile jumps straight to the journal.
 
 `mandate` sits second and `protect` third, both before any market data is
-fetched for the wheel. The stress ladder is built from the positions already
-held, so it needs nothing from the market, and running it first means the
-protection gap is an input to the cycle's decisions rather than a report written
-after them. `protect` then decides what closing that gap would take — while the
-agent still has no idea what it might prefer to sell.
+fetched. The stress ladder is built from the positions already held, so it
+needs nothing from the market, and running it first means the protection gap is
+an input to the cycle's decisions rather than a report written after them.
+`protect` then decides what closing that gap would take.
 
 The order is the claim. An agent that picked its trades and then measured the
 risk would be checking its own homework, and every number it published would be
@@ -24,28 +23,38 @@ nothing, here is why" a recorded outcome rather than an absence.
 from langgraph.graph import END, START, StateGraph
 
 from drawdownguard.agent.nodes import (
-    candidates_node,
     execute_node,
     journal_node,
     mandate_node,
-    optimize_node,
     protect_node,
     reconcile_node,
     regime_node,
-    route_node,
     snapshot_node,
 )
 from drawdownguard.agent.state import GuardState, initial_state
 
+# `route`, `candidates` and `optimize` used to sit between `regime` and
+# `execute`. They were the options wheel: `route` asked a state machine what to
+# do next, and on a book holding shares that machine answers SELL_CALL --
+# unconditionally, on every symbol, for income.
+#
+# Removed on 2026-08-27 rather than left disabled. On the client book this
+# project now describes, those three nodes would have sold calls against all of
+# the client's equity and capped the upside of a mandate that never asked for
+# it, and they would have done it on the first morning of an eight-day
+# unattended run. A path that dangerous is not made safe by a flag somebody has
+# to remember to set.
+#
+# Selling a call is not forbidden -- a collar sells one. The difference is that
+# a collar sells it to finance a put, sized against the promise, and only when
+# the chain makes it the better of the two. That decision belongs to `protect`,
+# which is where it now lives.
 NODES = (
     ("reconcile", reconcile_node),
     ("mandate", mandate_node),
     ("protect", protect_node),
     ("snapshot", snapshot_node),
     ("regime", regime_node),
-    ("route", route_node),
-    ("candidates", candidates_node),
-    ("optimize", optimize_node),
     ("execute", execute_node),
     ("journal", journal_node),
 )

@@ -522,3 +522,34 @@ async def test_symbols_already_holding_a_position_are_not_traded_again(journal_d
     final, broker = await run(busy, journal_dir=journal_dir)
     assert final["actionable"] == []
     broker.assert_not_awaited()
+
+
+def test_the_wheel_cannot_come_back_into_the_cycle():
+    """A guard, not a description.
+
+    `route`, `candidates` and `optimize` were the options wheel. `route` asked
+    a state machine what to do next, and on a book holding shares that machine
+    answers SELL_CALL -- unconditionally, on every symbol, for income.
+
+    On the client book this project now describes that path would have sold
+    calls against all of the client's equity and capped the upside of a mandate
+    that never asked for it, on the first morning of an eight-day unattended
+    run. Re-adding any of them to `NODES` should fail here rather than in the
+    journal a week later.
+
+    Selling a call is still allowed: a collar sells one. The difference is that
+    a collar sells it to finance a put, sized against the promise, and only
+    when the chain favours it -- a decision that belongs to `protect`.
+    """
+    from drawdownguard.agent.graph import NODES
+
+    names = [name for name, _ in NODES]
+    assert names == [
+        "reconcile",
+        "mandate",
+        "protect",
+        "snapshot",
+        "regime",
+        "execute",
+        "journal",
+    ]

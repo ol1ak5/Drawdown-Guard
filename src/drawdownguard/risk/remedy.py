@@ -104,7 +104,14 @@ from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from drawdownguard.domain import SHARES_PER_CONTRACT
-from drawdownguard.risk.stress import DEFAULT_SHOCKS, Holding, OptionLeg, gap_at, ladder
+from drawdownguard.risk.stress import (
+    DEFAULT_SHOCKS,
+    Holding,
+    OptionLeg,
+    gap_at,
+    ladder,
+    worst_loss,
+)
 
 # A remedy that leaves less than this much of the gap open is treated as having
 # closed it. Contracts are lumpy — a hundred shares at a time — so demanding an
@@ -289,12 +296,92 @@ def _contracts_needed(strike: Decimal, spot: float, shock: float, gap: float) ->
     premium reduces the payout at every price equally and is reported
     separately as the cost. Rounded up: a remedy that closes most of a gap has
     not closed it.
+
+    Superseded by `contracts_to_match`, and kept only for the collar path until
+    that is converted too. Two things are wrong with sizing this way, and both
+    are load-bearing:
+
+    - it answers about one price. A hedge adequate at exactly the shock being
+      tested can be worthless a few percent above it, and this picks the
+      cheapest structure that passes whichever test is being run.
+    - it excludes the premium it is about to spend. That money comes out of the
+      same account the promise is written against, so the hedge comes up short
+      by exactly what it cost.
     """
     terminal = spot * (1 + shock)
     intrinsic = max(float(strike) - terminal, 0.0)
     if intrinsic <= 0:
         return 0
     return math.ceil(gap / (intrinsic * SHARES_PER_CONTRACT))
+
+
+def contracts_to_match(holdings: list[Holding], spot: float) -> int:
+    """Enough puts to stand behind every share the client owns.
+
+    Any fewer and there is no floor at all. Below the strike the covered shares
+    stop losing, but the uncovered ones carry on down, so the worst case runs
+    away again -- a hedge over half the book is not half a promise kept, it is
+    no promise kept with half the bill.
+
+    The whole shocked book is counted, not just the hedge instrument's own
+    shares. A diversified equity portfolio is hedged with index puts because
+    that is what a liquid chain exists for, and `risk/concentration.py` measured
+    these ETFs correlating 0.78 to 0.95 with one another. That is the assumption
+    being made and it is worth naming: in a shock where the client's holdings
+    part company with the index, the floor is approximate rather than exact.
+
+    Rounded up. The leftover fraction of a contract protects slightly more than
+    the client owns, which errs toward the promise rather than away from it.
+    """
+    exposure = sum(h.value for h in holdings if h.shocked)
+    if exposure <= 0 or spot <= 0:
+        return 0
+    return math.ceil(exposure / (spot * SHARES_PER_CONTRACT))
+
+
+def solve_for_strike(
+    holdings: list[Holding],
+    legs: list[OptionLeg],
+    budget: float,
+    symbol: str,
+    spot: float,
+    puts: list[dict],
+) -> tuple[Decimal, int, float] | None:
+    """The cheapest put that keeps the promise at every depth, or None.
+
+    Returns `(strike, contracts, ask)`.
+
+    Nobody names a shock here. Matched puts turn the worst case into "the fall
+    down to the strike, plus what the protection cost", and the answer is the
+    lowest strike where those two still fit inside the budget:
+
+    - lower, and the market has too far to travel before the put engages. The
+      unprotected drop alone spends the budget.
+    - higher, and the promise holds with room to spare -- room the client paid
+      for and never asked for. Protection is a cost, and a dollar past the
+      promise is a dollar taken for nothing.
+
+    The two terms move against each other, so the total is monotonic in the
+    strike and the answer is unique. There is no ranking, no tie-break and no
+    preference: the chain decides, and it decides the same way for anyone who
+    checks.
+    """
+    contracts = contracts_to_match(holdings, spot)
+    if contracts <= 0:
+        return None
+
+    best: tuple[Decimal, int, float] | None = None
+    for row in sorted(puts, key=lambda r: float(r["strike"])):
+        ask = float(row.get("ask") or 0)
+        if ask <= 0:
+            continue
+        strike = Decimal(str(row["strike"]))
+        candidate = OptionLeg(symbol, "P", strike, contracts, Decimal(str(ask)), spot)
+        cost = ask * contracts * SHARES_PER_CONTRACT
+        if worst_loss(holdings, [*legs, candidate], cost) <= budget:
+            best = (strike, contracts, ask)
+            break  # sorted ascending, so the first that fits is the cheapest
+    return best
 
 
 def protective_put(
@@ -308,44 +395,40 @@ def protective_put(
 ) -> Remedy | None:
     """Buy protection outright. Costs money, gives up nothing else.
 
-    The strike chosen is the cheapest one that closes the gap, not the highest
-    or the furthest out. A nearer strike protects more per contract and costs
-    more per contract; which combination is cheapest in total is an arithmetic
-    question with an answer today, and it is answered rather than guessed.
+    The strike comes from `solve_for_strike`, which asks the whole descent
+    rather than one price on it. Contracts match the shares, so below the
+    strike the loss stops falling and the client's worst case is the drop down
+    to the strike plus the premium -- the lowest strike where those two still
+    fit the budget is the answer, and it is unique.
+
+    `gap_before` and `gap_after` still quote the mandate's own shock, because
+    that is the number the journal and the status page report and a reader can
+    check by hand. They describe the outcome; they no longer choose it.
     """
     gap = _gap(holdings, legs, budget, shock)
     if gap <= 0:
         return None
 
-    best: Remedy | None = None
-    for row in puts:
-        ask = float(row.get("ask") or 0)
-        if ask <= 0:
-            continue
-        strike = Decimal(str(row["strike"]))
-        count = _contracts_needed(strike, spot, shock, gap)
-        if count <= 0:
-            continue
-        cost = ask * count * SHARES_PER_CONTRACT
-        leg = OptionLeg(symbol, "P", strike, count, Decimal(str(ask)), spot)
-        after = _gap(holdings, [*legs, leg], budget, shock)
-        if after > CLOSED_ENOUGH:
-            continue
-        candidate = Remedy(
-            kind="protective_put",
-            describe=f"buy {count}x {symbol} {strike} put at {ask:.2f}",
-            legs=[leg],
-            shares_sold={},
-            premium_cost=cost,
-            forgone_upside=0.0,
-            upside_measured_at=0.0,
-            gap_before=gap,
-            gap_after=after,
-            protection_iv=row.get("implied_vol"),
-        )
-        if best is None or candidate.premium_cost < best.premium_cost:
-            best = candidate
-    return best
+    solved = solve_for_strike(holdings, legs, budget, symbol, spot, puts)
+    if solved is None:
+        return None
+    strike, count, ask = solved
+
+    leg = OptionLeg(symbol, "P", strike, count, Decimal(str(ask)), spot)
+    cost = ask * count * SHARES_PER_CONTRACT
+    row = next(r for r in puts if Decimal(str(r["strike"])) == strike)
+    return Remedy(
+        kind="protective_put",
+        describe=f"buy {count}x {symbol} {strike} put at {ask:.2f}",
+        legs=[leg],
+        shares_sold={},
+        premium_cost=cost,
+        forgone_upside=0.0,
+        upside_measured_at=0.0,
+        gap_before=gap,
+        gap_after=_gap(holdings, [*legs, leg], budget, shock),
+        protection_iv=row.get("implied_vol"),
+    )
 
 
 def collar(
