@@ -171,12 +171,80 @@ footer a { color: var(--ink); text-decoration: none;
 @media (prefers-reduced-motion: reduce) {
   .reveal { opacity: 1; transform: none; filter: none; transition: none; }
 }
+
+/* --- the promise, and the floor you can drag --------------------------- */
+.note{margin:1.4rem 0 0;padding:1.1rem 1.3rem;border-left:2px solid var(--ink);
+  background:var(--panel);font-size:.98rem;line-height:1.65;max-width:62ch}
+.note.empty{border-left-color:var(--muted);color:var(--muted);font-style:italic}
+.card .s{display:block;margin-top:.35rem;font-size:.78rem;color:var(--muted);
+  letter-spacing:.02em}
+.good{color:#1c7c4a}
+.bad{color:#b3261e}
+.floor{margin-top:1.2rem}
+.floor label{display:block;font-size:.86rem;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:.5rem}
+.floor output{font-variant-numeric:tabular-nums;color:var(--ink);
+  font-weight:600;font-size:1.05rem;text-transform:none;letter-spacing:0}
+.floor input[type=range]{width:100%;max-width:38rem;accent-color:var(--ink);
+  margin:0 0 1.4rem;cursor:grab}
+.floor input[type=range]:active{cursor:grabbing}
 """
 
 # No request of any kind: it reads attributes the server already rendered and
 # toggles rows. Guarded so a page with an empty journal, which renders no
 # controls, does not throw on load.
 _SCRIPT = """
+/* The floor, interpolated between the rungs the agent measured.
+   Straight lines between measured points, because the payoff bends only at a
+   strike -- so this is the exact answer between them rather than a fit. */
+(function () {
+  var box = document.querySelector('.floor');
+  if (!box) return;
+  var rungs = JSON.parse(box.getAttribute('data-rungs'));
+  var budget = parseFloat(box.getAttribute('data-budget'));
+  var range = document.getElementById('shockrange');
+  var shockOut = document.getElementById('shockout');
+  var lossOut = document.getElementById('lossout');
+  var verdictOut = document.getElementById('verdictout');
+
+  function money(n) {
+    return '$' + Math.round(n).toLocaleString('en-US');
+  }
+
+  function lossAt(shock) {
+    if (!rungs.length) return 0;
+    if (shock >= rungs[0].shock) return rungs[0].loss;
+    for (var i = 0; i < rungs.length - 1; i++) {
+      var a = rungs[i], b = rungs[i + 1];
+      if (shock <= a.shock && shock >= b.shock) {
+        var span = a.shock - b.shock;
+        if (span === 0) return a.loss;
+        var w = (a.shock - shock) / span;
+        return a.loss + w * (b.loss - a.loss);
+      }
+    }
+    return rungs[rungs.length - 1].loss;
+  }
+
+  function draw() {
+    var pct = parseInt(range.value, 10);
+    var loss = lossAt(-pct / 100);
+    shockOut.textContent = pct + '%';
+    lossOut.textContent = money(loss);
+    var over = loss - budget;
+    if (over > 0) {
+      verdictOut.textContent = money(over) + ' past it';
+      verdictOut.className = 'v bad';
+    } else {
+      verdictOut.textContent = 'inside the promise';
+      verdictOut.className = 'v good';
+    }
+  }
+
+  range.addEventListener('input', draw);
+  draw();
+})();
+
 (function () {
   // Entry motion. IntersectionObserver rather than a scroll listener:
   // a scroll handler reflows continuously and wrecks mobile frame rate.
@@ -222,6 +290,100 @@ _SCRIPT = """
 """
 
 
+
+def latest(entries: list[dict], event: str) -> dict:
+    """The most recent payload for one event, or an empty dict.
+
+    Entries arrive newest first. An empty dict rather than None so every caller
+    can use `.get` and a page built from an empty journal renders the same
+    shape as one built from a busy day.
+    """
+    for entry in entries:
+        if entry.get("event") == event:
+            return entry.get("payload") or {}
+    return {}
+
+
+def _promise(stress: dict, note: str) -> str:
+    """What the client was promised, where the book stands, and why.
+
+    Everything here is read off the journal rather than recomputed. The page is
+    a window onto what the agent already decided; a page that did its own
+    arithmetic could disagree with the record, and then neither would be
+    evidence of anything.
+    """
+    if not stress:
+        return (
+            '<p class="empty">No cycle has measured the promise yet.</p>'
+        )
+
+    budget = float(stress.get("budget") or 0)
+    exposure = float(stress.get("equity_exposure") or 0)
+    gap = float(stress.get("gap") or 0)
+    pct = stress.get("downside_budget_pct")
+    verdict = (
+        f'<span class="bad">short by ${gap:,.0f}</span>'
+        if gap > 0
+        else '<span class="good">the promise holds</span>'
+    )
+    prose = (
+        f'<p class="note">{_cell(note)}</p>'
+        if note
+        else '<p class="note empty">No note was written for the last decision.</p>'
+    )
+    return f"""<div class="bento">
+<div class="card"><span class="k">The promise</span>
+<span class="v">{_cell(pct)}%</span>
+<span class="s">of the account, at most, over 12 months</span></div>
+<div class="card"><span class="k">In dollars</span>
+<span class="v">${budget:,.0f}</span>
+<span class="s">the whole downside budget</span></div>
+<div class="card"><span class="k">Equity at risk</span>
+<span class="v">${exposure:,.0f}</span>
+<span class="s">what a fall would move</span></div>
+<div class="card"><span class="k">Against the promise</span>
+<span class="v">{verdict}</span>
+<span class="s">mandate: {_cell(stress.get("mandate"))}</span></div>
+</div>
+{prose}"""
+
+
+def _floor(stress: dict) -> str:
+    """The ladder as something you can drag.
+
+    A table of four shocks says the promise holds at four prices. The point of
+    the design is that it holds at *every* price, and a reader has to be able
+    to check that rather than take it. So the rungs the agent actually measured
+    are handed to the browser and the rest is interpolated between them --
+    interpolated, not modelled, because the payoff is piecewise linear in the
+    shock and a straight line between two measured rungs is the exact answer,
+    not an approximation of one.
+    """
+    rungs = stress.get("ladder") or []
+    if not rungs:
+        return '<p class="empty">No ladder has been measured yet.</p>'
+    budget = float(stress.get("budget") or 0)
+    data = json.dumps(
+        [
+            {"shock": float(r["shock"]), "loss": abs(float(r["loss"]))}
+            for r in sorted(rungs, key=lambda r: -float(r["shock"]))
+        ]
+    )
+    return f"""<div class="floor" data-rungs='{data}' data-budget="{budget:.2f}">
+<label for="shockrange">If the market falls
+<output id="shockout">10%</output></label>
+<input id="shockrange" type="range" min="0" max="35" value="10" step="1">
+<div class="bento">
+<div class="card"><span class="k">The portfolio loses</span>
+<span class="v" id="lossout">&mdash;</span></div>
+<div class="card"><span class="k">The client agreed to</span>
+<span class="v">${budget:,.0f}</span></div>
+<div class="card"><span class="k">Verdict</span>
+<span class="v" id="verdictout">&mdash;</span></div>
+</div>
+</div>"""
+
+
 def entry_from_journal(line: dict) -> dict:
     """Turn one journal line into one page row.
 
@@ -250,6 +412,12 @@ def entry_from_journal(line: dict) -> dict:
         "verdict": _VERDICT_BY_SEVERITY.get(line.get("severity", "info"), "approved"),
         "detail": detail,
         "full": json.dumps(payload, indent=2, sort_keys=True, default=str),
+        # Kept alongside the display fields so the sections above the log can
+        # read the record rather than the row. `action` is already flattened
+        # for the table and would not distinguish `mandate.stress` from any
+        # other line whose payload happened to carry an `action`.
+        "event": line.get("event", ""),
+        "payload": payload,
     }
 
 
@@ -398,6 +566,11 @@ def render_site(
     repository_url: str = "",
 ) -> str:
     """The whole page, as a string. Pure: no files, no clock, no network."""
+    stress = latest(entries, "mandate.stress")
+    promise_block = _promise(
+        stress, latest(entries, "protection.explained").get("note", "")
+    )
+    floor_block = _floor(stress)
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -419,6 +592,20 @@ promise stops holding it buys back the difference &mdash; the cheapest
 structure that floors the loss at every depth, never a view on where the market
 is going.</p>
 </header>
+
+<section class="reveal">
+<h2>The promise, and where the book stands</h2>
+{promise_block}
+</section>
+
+<section class="reveal">
+<h2>The floor holds at every depth</h2>
+<p class="lede">Four rungs are measured every cycle and the line between them is
+straight &mdash; the payoff bends only at a strike, so this is the exact answer
+between the points, not a curve fitted to them. Drag it. Nothing here predicts
+a fall; it answers what this book would be worth if one happened.</p>
+{floor_block}
+</section>
 
 <section class="reveal">
 <h2>Position</h2>

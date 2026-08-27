@@ -18,6 +18,39 @@ def _entry(**overrides):
     return values
 
 
+def _stress(**overrides):
+    """A `mandate.stress` line, which is what the promise and floor read.
+
+    The page renders those two sections only when a cycle has measured the
+    book, so a test about the controls has to hand it one -- otherwise it is
+    asserting about a page that legitimately has no controls on it.
+    """
+    payload = {
+        "mandate": "balanced",
+        "downside_budget_pct": 10.0,
+        "budget": 100000.0,
+        "equity_exposure": 600000.0,
+        "gap": 20000.0,
+        "ladder": [
+            {"shock": -0.05, "loss": -30000.0, "from_options": 0, "gap": 0.0},
+            {"shock": -0.10, "loss": -60000.0, "from_options": 0, "gap": 0.0},
+            {"shock": -0.20, "loss": -120000.0, "from_options": 0, "gap": 20000.0},
+            {"shock": -0.35, "loss": -210000.0, "from_options": 0, "gap": 110000.0},
+        ],
+    }
+    payload.update(overrides)
+    return {
+        "ts": "2026-08-25T14:01:00Z",
+        "symbol": "",
+        "action": "mandate.stress",
+        "regime": "",
+        "verdict": "rejected",
+        "detail": "",
+        "event": "mandate.stress",
+        "payload": payload,
+    }
+
+
 def test_the_page_is_a_complete_html_document():
     html = render_site([_entry()], [], datetime(2026, 8, 25, 14, 5))
     assert html.startswith("<!doctype html>")
@@ -241,7 +274,7 @@ def test_every_element_the_script_looks_up_exists_in_the_page():
     wanted = set(re.findall(r"getElementById\('([^']+)'\)", _SCRIPT))
     assert wanted, "the script looks nothing up; this test has gone stale"
 
-    html = render_site([_entry()], [], datetime(2026, 8, 25, 14, 5))
+    html = render_site([_entry(), _stress()], [], datetime(2026, 8, 25, 14, 5))
     for element_id in wanted:
         assert f'id="{element_id}"' in html, element_id
 
@@ -255,3 +288,74 @@ def test_the_script_selector_matches_the_rendered_rows():
     assert "tr[data-symbol]" in _SCRIPT
     html = render_site([_entry()], [], datetime(2026, 8, 25, 14, 5))
     assert re.search(r"<tr[^>]*data-symbol=", html)
+
+
+# --- the promise and the floor ----------------------------------------------
+
+
+def test_the_promise_is_stated_in_the_client_s_own_terms():
+    """Percent and dollars both. "10%" is what the client said; "$100,000" is
+    what it costs them, and only the second is a number they can weigh."""
+    html = render_site([_stress()], [], datetime(2026, 8, 25, 14, 5))
+    assert "10.0%" in html
+    assert "$100,000" in html
+    assert "$600,000" in html
+
+
+def test_a_broken_promise_is_labelled_as_broken():
+    html = render_site([_stress()], [], datetime(2026, 8, 25, 14, 5))
+    assert "short by $20,000" in html
+
+
+def test_a_promise_that_holds_says_so_rather_than_showing_a_zero():
+    """Zero dollars of shortfall is a number. "The promise holds" is the
+    sentence a client is owed, and a page that only prints figures makes them
+    do the interpreting."""
+    intact = _stress(gap=0.0)
+    html = render_site([intact], [], datetime(2026, 8, 25, 14, 5))
+    assert "the promise holds" in html
+
+
+def test_the_measured_rungs_are_handed_to_the_browser_not_a_model_of_them():
+    """The slider interpolates between the rungs the agent actually recorded.
+
+    Straight lines between measured points are exact here, not a fit: the
+    payoff bends only at a strike. A page that recomputed the ladder in
+    JavaScript could disagree with the journal, and then neither would be
+    evidence.
+    """
+    html = render_site([_stress()], [], datetime(2026, 8, 25, 14, 5))
+    assert 'data-rungs=' in html
+    assert '"shock": -0.2' in html
+    assert '"loss": 120000.0' in html  # positive, the way a reader says it
+
+
+def test_an_explanation_is_shown_when_the_model_wrote_one():
+    note = {
+        "ts": "2026-08-25T14:03:00Z",
+        "symbol": "",
+        "action": "protection.explained",
+        "regime": "",
+        "verdict": "approved",
+        "detail": "",
+        "event": "protection.explained",
+        "payload": {"chosen": "protective_put", "note": "We bought eight puts."},
+    }
+    html = render_site([note, _stress()], [], datetime(2026, 8, 25, 14, 5))
+    assert "We bought eight puts." in html
+
+
+def test_a_missing_explanation_is_an_empty_field_not_an_invented_one():
+    """There is no fallback sentence anywhere, and the page must not add one.
+
+    A reader cannot tell generated filler from an explanation, so the honest
+    thing is to say none was written.
+    """
+    html = render_site([_stress()], [], datetime(2026, 8, 25, 14, 5))
+    assert "No note was written" in html
+
+
+def test_a_page_built_before_any_cycle_has_run_says_so():
+    html = render_site([], [], datetime(2026, 8, 25, 14, 5))
+    assert "No cycle has measured the promise yet." in html
+    assert "No ladder has been measured yet." in html
