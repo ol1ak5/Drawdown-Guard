@@ -543,9 +543,25 @@ def test_the_wheel_cannot_come_back_into_the_cycle():
     assert names == [
         "reconcile",
         "mandate",
-        "protect",
         "snapshot",
         "regime",
+        "protect",
         "execute",
         "journal",
     ]
+
+
+def test_the_market_is_read_before_the_protection_is_chosen():
+    """`regime` used to run after `protect`, so the analyst's reading of the
+    market arrived once the decision was already made -- a model consulted and
+    unable to reach anything, which is the most expensive way to have no
+    opinion.
+
+    `mandate` stays ahead of both. What the client is owed is not a market
+    observation and must not wait on one.
+    """
+    from drawdownguard.agent.graph import NODES
+
+    order = [name for name, _ in NODES]
+    assert order.index("mandate") < order.index("snapshot")
+    assert order.index("regime") < order.index("protect")

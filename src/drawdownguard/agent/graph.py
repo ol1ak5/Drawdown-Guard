@@ -49,12 +49,22 @@ from drawdownguard.agent.state import GuardState, initial_state
 # a collar sells it to finance a put, sized against the promise, and only when
 # the chain makes it the better of the two. That decision belongs to `protect`,
 # which is where it now lives.
+#
+# `snapshot` and `regime` moved ahead of `protect` on 2026-08-27. They used to
+# run after it, which meant the analyst's reading of the market arrived once
+# the protection had already been chosen -- the model was consulted and its
+# answer could not reach any decision, which is the most expensive way to have
+# no opinion. Nothing downstream reads it yet; the ordering is the prerequisite
+# for anything that will.
+#
+# `mandate` still comes first. What the client is owed is not a market
+# observation and must not wait on one.
 NODES = (
     ("reconcile", reconcile_node),
     ("mandate", mandate_node),
-    ("protect", protect_node),
     ("snapshot", snapshot_node),
     ("regime", regime_node),
+    ("protect", protect_node),
     ("execute", execute_node),
     ("journal", journal_node),
 )
