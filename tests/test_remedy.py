@@ -634,7 +634,7 @@ def test_dropping_the_floor_under_a_short_call_is_reported():
 
     A short call with no put behind it is either half a collar — the client
     keeping the ceiling and losing the floor, which is the worst of both — or an
-    ordinary covered call the wheel sold on purpose. Nothing in a list of broker
+    ordinary covered call the position sold on purpose. Nothing in a list of broker
     positions distinguishes them, so the caller is told instead of guessed at.
     """
     held = [
@@ -735,7 +735,7 @@ def test_the_order_a_remedy_carries_is_one_the_gate_approves():
     """The end of the chain that matters. A remedy the gate would refuse is a
     plan, not a hedge, and the agent would report a closed gap it never closed.
     """
-    from drawdownguard.domain import Portfolio, WheelState
+    from drawdownguard.domain import Portfolio, Position
     from drawdownguard.risk.gate import veto
     from drawdownguard.risk.limits import Limits
 
@@ -746,7 +746,7 @@ def test_the_order_a_remedy_carries_is_one_the_gate_approves():
         cash=Decimal("400000"),
         peak_equity=Decimal("1000000"),
         net_delta_value=600_000.0,
-        wheels={"SPY": WheelState(symbol="SPY", leg="SHARES", shares=1200)},
+        positions={"SPY": Position(symbol="SPY", leg="SHARES", shares=1200)},
     )
     limits = Limits(
         max_position_pct=25.0,

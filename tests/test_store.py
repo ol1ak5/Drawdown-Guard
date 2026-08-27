@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 
 from drawdownguard import store
-from drawdownguard.domain import OpenContract, WheelState
+from drawdownguard.domain import OpenContract, Position
 
 
 @pytest.fixture
@@ -14,13 +14,13 @@ def db(tmp_path):
     return tmp_path
 
 
-def wheel_holding_shares() -> WheelState:
-    """A wheel mid-cycle: assigned shares, a covered call open against them.
+def wheel_holding_shares() -> Position:
+    """A position mid-cycle: assigned shares, a covered call open against them.
 
     Deliberately the most awkward state to serialise — it carries a Decimal
     basis with a trailing zero, a nested model, and a date.
     """
-    return WheelState(
+    return Position(
         symbol="SPY",
         leg="CALL_OPEN",
         shares=100,
@@ -54,15 +54,15 @@ def test_an_unknown_symbol_starts_in_cash(db):
 
 
 def test_saving_the_same_symbol_twice_updates_rather_than_duplicates(db):
-    store.save_wheel(WheelState(symbol="SPY", leg="CASH"))
-    store.save_wheel(WheelState(symbol="SPY", leg="PUT_OPEN"))
+    store.save_wheel(Position(symbol="SPY", leg="CASH"))
+    store.save_wheel(Position(symbol="SPY", leg="PUT_OPEN"))
     assert store.load_wheel("SPY").leg == "PUT_OPEN"
     assert list(store.load_all()) == ["SPY"]
 
 
 def test_load_all_returns_every_saved_wheel(db):
-    store.save_wheel(WheelState(symbol="SPY", leg="PUT_OPEN"))
-    store.save_wheel(WheelState(symbol="IWM", leg="SHARES", shares=100))
+    store.save_wheel(Position(symbol="SPY", leg="PUT_OPEN"))
+    store.save_wheel(Position(symbol="IWM", leg="SHARES", shares=100))
     assert set(store.load_all()) == {"SPY", "IWM"}
 
 
@@ -76,7 +76,7 @@ def test_a_snapshot_restores_state_into_a_fresh_database(db, tmp_path):
     """
     original = wheel_holding_shares()
     store.save_wheel(original)
-    snapshot = tmp_path / "state" / "wheels.json"
+    snapshot = tmp_path / "state" / "positions.json"
     store.export_snapshot(snapshot)
 
     store.init_db(tmp_path / "second.db")
@@ -92,8 +92,8 @@ def test_the_snapshot_preserves_decimal_precision(db, tmp_path):
     Money is Decimal everywhere in this project. A JSON round trip through
     float would be invisible for one cycle and wrong by cents after twenty.
     """
-    store.save_wheel(WheelState(symbol="SPY", basis=Decimal("472.70")))
-    snapshot = tmp_path / "state" / "wheels.json"
+    store.save_wheel(Position(symbol="SPY", basis=Decimal("472.70")))
+    snapshot = tmp_path / "state" / "positions.json"
     store.export_snapshot(snapshot)
     store.init_db(tmp_path / "second.db")
     store.import_snapshot(snapshot)
@@ -109,10 +109,10 @@ def test_the_snapshot_is_written_in_a_stable_order(db, tmp_path):
     Dictionary iteration order would reshuffle untouched symbols and bury the
     one line that actually changed.
     """
-    store.save_wheel(WheelState(symbol="SPY"))
-    store.save_wheel(WheelState(symbol="IWM"))
-    store.save_wheel(WheelState(symbol="QQQ"))
-    snapshot = tmp_path / "state" / "wheels.json"
+    store.save_wheel(Position(symbol="SPY"))
+    store.save_wheel(Position(symbol="IWM"))
+    store.save_wheel(Position(symbol="QQQ"))
+    snapshot = tmp_path / "state" / "positions.json"
     store.export_snapshot(snapshot)
 
     text = snapshot.read_text()
@@ -122,7 +122,7 @@ def test_the_snapshot_is_written_in_a_stable_order(db, tmp_path):
 def test_init_db_seeds_itself_from_a_snapshot_when_empty(db, tmp_path):
     """What actually happens at the top of a cycle on a fresh runner."""
     store.save_wheel(wheel_holding_shares())
-    snapshot = tmp_path / "state" / "wheels.json"
+    snapshot = tmp_path / "state" / "positions.json"
     store.export_snapshot(snapshot)
 
     store.init_db(tmp_path / "third.db", snapshot=snapshot)
@@ -131,17 +131,17 @@ def test_init_db_seeds_itself_from_a_snapshot_when_empty(db, tmp_path):
 
 def test_init_db_does_not_overwrite_a_populated_database(db, tmp_path):
     """A stale snapshot must never clobber fresher local state mid-run."""
-    snapshot = tmp_path / "state" / "wheels.json"
-    store.save_wheel(WheelState(symbol="SPY", cycle_count=1))
+    snapshot = tmp_path / "state" / "positions.json"
+    store.save_wheel(Position(symbol="SPY", cycle_count=1))
     store.export_snapshot(snapshot)
-    store.save_wheel(WheelState(symbol="SPY", cycle_count=9))
+    store.save_wheel(Position(symbol="SPY", cycle_count=9))
 
     store.init_db(tmp_path / "drawdownguard.db", snapshot=snapshot)
     assert store.load_wheel("SPY").cycle_count == 9
 
 
 def test_exporting_an_empty_store_writes_an_empty_snapshot(db, tmp_path):
-    snapshot = tmp_path / "state" / "wheels.json"
+    snapshot = tmp_path / "state" / "positions.json"
     store.export_snapshot(snapshot)
     assert snapshot.exists()
     assert store.load_all() == {}

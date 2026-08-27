@@ -123,7 +123,7 @@ def test_selling_to_open_is_stated_not_left_to_be_inferred():
     """Writing a put and buying one back are the same symbol.
 
     Without position_intent the broker has to guess which one this is, and the
-    wheel does both.
+    position does both.
     """
     args = arguments(contracts=-2)
     assert args["side"] == "sell"
@@ -139,7 +139,7 @@ def test_a_buy_is_not_one_action_and_the_book_decides_which():
     """
     from datetime import date
 
-    from drawdownguard.domain import OpenContract, WheelState
+    from drawdownguard.domain import OpenContract, Position
 
     short = OpenContract(
         occ_symbol="SPY260828P00560000",
@@ -150,7 +150,7 @@ def test_a_buy_is_not_one_action_and_the_book_decides_which():
         premium=Decimal("2.35"),
     )
     owns_the_short = portfolio(
-        wheels={"SPY": WheelState(symbol="SPY", contracts=[short])}
+        positions={"SPY": Position(symbol="SPY", contracts=[short])}
     )
     closing = _order_arguments(make_order(contracts=2), "id", owns_the_short)
     assert closing["side"] == "buy"

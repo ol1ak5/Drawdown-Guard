@@ -12,7 +12,7 @@ is the only account anyone will have.
 
 from typing import TypedDict
 
-from drawdownguard.domain import Portfolio, Regime, WheelState
+from drawdownguard.domain import Portfolio, Position, Regime
 from drawdownguard.execution.orders import OrderResult
 from drawdownguard.market.features import MarketSnapshot
 from drawdownguard.risk.book import Book
@@ -30,7 +30,7 @@ class GuardState(TypedDict, total=False):
     """
 
     snapshots: dict[str, MarketSnapshot]
-    wheels: dict[str, WheelState]
+    positions: dict[str, Position]
     portfolio: Portfolio | None
     # What today's book loses at each published shock, and by how much the
     # worst of them breaks the client's promise. `protection_gap` is dollars,
@@ -70,7 +70,7 @@ def initial_state(dry_run: bool = False) -> GuardState:
     """
     return GuardState(
         snapshots={},
-        wheels={},
+        positions={},
         portfolio=None,
         ladder=[],
         protection_gap=0.0,

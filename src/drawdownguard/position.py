@@ -1,4 +1,6 @@
-"""The wheel state machine. Pure functions; every transition returns a new state.
+"""How a symbol's position moves between states, as pure functions.
+
+Every transition returns a new state.
 
 CASH --sell put--> PUT_OPEN --expired--> CASH
                             \\--assigned--> SHARES
@@ -9,7 +11,7 @@ SHARES --sell call--> CALL_OPEN --expired--> SHARES
 from decimal import Decimal
 from typing import Literal
 
-from drawdownguard.domain import SHARES_PER_CONTRACT, Leg, OpenContract, WheelState
+from drawdownguard.domain import SHARES_PER_CONTRACT, Leg, OpenContract, Position
 
 Action = Literal["SELL_PUT", "SELL_CALL", "HOLD"]
 
@@ -18,7 +20,7 @@ class IllegalTransition(Exception):
     """Raised when a transition would produce an unrepresentable position."""
 
 
-def next_action(state: WheelState) -> Action:
+def next_action(state: Position) -> Action:
     if state.leg == "CASH":
         return "SELL_PUT"
     if state.leg == "SHARES":
@@ -30,7 +32,7 @@ def _premium_cash(contract: OpenContract) -> Decimal:
     return contract.premium * abs(contract.contracts) * SHARES_PER_CONTRACT
 
 
-def on_sold_put(state: WheelState, contract: OpenContract) -> WheelState:
+def on_sold_put(state: Position, contract: OpenContract) -> Position:
     if state.leg != "CASH":
         raise IllegalTransition(f"cannot sell a put from leg {state.leg}")
     if contract.right != "P" or contract.contracts >= 0:
@@ -44,7 +46,7 @@ def on_sold_put(state: WheelState, contract: OpenContract) -> WheelState:
     )
 
 
-def on_sold_call(state: WheelState, contract: OpenContract) -> WheelState:
+def on_sold_call(state: Position, contract: OpenContract) -> Position:
     if state.leg != "SHARES":
         raise IllegalTransition(
             f"cannot sell a call from leg {state.leg}: that would be naked"
@@ -69,7 +71,7 @@ def on_sold_call(state: WheelState, contract: OpenContract) -> WheelState:
     )
 
 
-def on_expired_worthless(state: WheelState) -> WheelState:
+def on_expired_worthless(state: Position) -> Position:
     resting_leg: Leg
     if state.leg == "PUT_OPEN":
         resting_leg = "CASH"
@@ -86,7 +88,7 @@ def on_expired_worthless(state: WheelState) -> WheelState:
     )
 
 
-def on_put_assigned(state: WheelState) -> WheelState:
+def on_put_assigned(state: Position) -> Position:
     if state.leg != "PUT_OPEN":
         raise IllegalTransition(f"no open put to assign in leg {state.leg}")
     contract = state.contracts[0]
@@ -102,7 +104,7 @@ def on_put_assigned(state: WheelState) -> WheelState:
     )
 
 
-def on_call_assigned(state: WheelState) -> WheelState:
+def on_call_assigned(state: Position) -> Position:
     if state.leg != "CALL_OPEN":
         raise IllegalTransition(f"no open call to assign in leg {state.leg}")
     contract = state.contracts[0]

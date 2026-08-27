@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from drawdownguard.domain import OpenContract, Portfolio, ProposedOrder, WheelState
+from drawdownguard.domain import OpenContract, Portfolio, Position, ProposedOrder
 from drawdownguard.risk.gate import veto
 from drawdownguard.risk.limits import Limits
 
@@ -47,7 +47,7 @@ def portfolio(**overrides) -> Portfolio:
         "deployed": Decimal("0"),
         "net_delta": 0.0,
         "vega": 0.0,
-        "wheels": {"SPY": WheelState(symbol="SPY")},
+        "positions": {"SPY": Position(symbol="SPY")},
     }
     values.update(overrides)
     return Portfolio(**values)
@@ -64,7 +64,9 @@ def test_naked_call_is_rejected_when_no_shares_are_held():
 
 
 def test_covered_call_is_approved_when_shares_are_held():
-    held = portfolio(wheels={"SPY": WheelState(symbol="SPY", leg="SHARES", shares=100)})
+    held = portfolio(
+        positions={"SPY": Position(symbol="SPY", leg="SHARES", shares=100)}
+    )
     assert veto(order(right="C", delta=0.30), held, LIMITS).approved is True
 
 
@@ -194,7 +196,7 @@ def holding(shares: int = 1000, contracts=None, **overrides) -> Portfolio:
     portfolio whose shares have no delta, and every test below would be
     measuring a book that cannot exist.
     """
-    state = WheelState(
+    state = Position(
         symbol="SPY", leg="SHARES", shares=shares, contracts=contracts or []
     )
     values = {
@@ -202,7 +204,7 @@ def holding(shares: int = 1000, contracts=None, **overrides) -> Portfolio:
         "cash": Decimal("400000"),
         "peak_equity": Decimal("1000000"),
         "net_delta_value": float(shares) * 600.0,
-        "wheels": {"SPY": state},
+        "positions": {"SPY": state},
     }
     values.update(overrides)
     return portfolio(**values)

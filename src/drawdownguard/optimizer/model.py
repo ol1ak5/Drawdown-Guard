@@ -36,8 +36,8 @@ def _covered_call_cap(candidates: list[Candidate], portfolio: Portfolio) -> int:
     """
     if not candidates or candidates[0].right != "C":
         return MAX_CONTRACTS_PER_LEG * max(len(candidates), 1)
-    wheel = portfolio.wheels.get(candidates[0].symbol)
-    shares = getattr(wheel, "shares", 0) if wheel else 0
+    position = portfolio.positions.get(candidates[0].symbol)
+    shares = getattr(position, "shares", 0) if position else 0
     return int(shares) // SHARES_PER_CONTRACT
 
 
@@ -66,7 +66,7 @@ def optimize(
     #
     # That is not hypothetical. It cost this project 819 days: an assignment of
     # one contract left 100 shares, the optimizer kept proposing four, the gate
-    # kept refusing "naked call: 100 shares held, 400 required", and the wheel
+    # kept refusing "naked call: 100 shares held, 400 required", and the position
     # stood still for two years while the backtest reported a cautious strategy
     # that chose not to trade.
     covered_cap = _covered_call_cap(candidates, portfolio)

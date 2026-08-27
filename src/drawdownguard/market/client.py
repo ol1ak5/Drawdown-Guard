@@ -33,7 +33,7 @@ the fields left at zero for a caller to forget about.
 from decimal import Decimal
 from typing import Any
 
-from drawdownguard.domain import SHARES_PER_CONTRACT, Portfolio, WheelState
+from drawdownguard.domain import SHARES_PER_CONTRACT, Portfolio, Position
 from drawdownguard.execution.reconcile import reconcile
 from drawdownguard.mcp.alpaca_client import FULL_TOOLSETS, alpaca_session
 from drawdownguard.optimizer.payoff import bs_delta, contract_vega
@@ -51,7 +51,7 @@ async def _read(session, tool: str, args: dict | None = None) -> Any:
 
 
 def position_greeks(
-    wheels: dict[str, WheelState],
+    positions: dict[str, Position],
     spots: dict[str, float],
     vols: dict[str, float],
     as_of_tau: dict[str, float],
@@ -63,7 +63,7 @@ def position_greeks(
     *Delta.* A position's delta is `contracts * per_share_delta * 100`, with
     `contracts` negative for a short. Selling four puts at −0.30 gives
     `-4 * -0.30 * 100 = +120`: short puts are long the underlying, which is the
-    whole reason the wheel is a bullish strategy.
+    whole reason the position is a bullish strategy.
 
     *Vega.* `Portfolio.vega` is *dollars lost* per one point rise in implied
     volatility, so it carries the opposite sign to the position's own vega. We
@@ -74,12 +74,12 @@ def position_greeks(
     net_delta_value = 0.0
     vega = 0.0
 
-    for symbol, wheel in wheels.items():
-        net_delta += float(wheel.shares)
+    for symbol, position in positions.items():
+        net_delta += float(position.shares)
         spot = spots.get(symbol)
         if spot is not None:
-            net_delta_value += float(wheel.shares) * spot
-        for contract in wheel.contracts:
+            net_delta_value += float(position.shares) * spot
+        for contract in position.contracts:
             key = contract.occ_symbol
             vol, tau = vols.get(key), as_of_tau.get(key)
             if spot is None or not vol or not tau or tau <= 0:
@@ -110,7 +110,7 @@ async def get_spot(symbol: str) -> float:
 
 
 async def get_account(
-    local_wheels: dict[str, WheelState] | None = None,
+    local_wheels: dict[str, Position] | None = None,
     peak_equity: Decimal | None = None,
 ) -> tuple[Portfolio, list[str]]:
     """The broker's account folded into a `Portfolio`, plus any corrections.
@@ -130,18 +130,18 @@ async def get_account(
         account = await _read(session, "get_account_info")
         positions = (await _read(session, "get_all_positions")).get("result") or []
 
-        wheels, discrepancies = reconcile(local_wheels or {}, positions)
+        positions, discrepancies = reconcile(local_wheels or {}, positions)
 
         # Greeks need a spot per underlying and an implied volatility per held
         # contract. Fetched only when something is actually held.
-        held = [c.occ_symbol for w in wheels.values() for c in w.contracts]
+        held = [c.occ_symbol for w in positions.values() for c in w.contracts]
         spots: dict[str, float] = {}
         vols: dict[str, float] = {}
         taus: dict[str, float] = {}
 
         if held:
-            for symbol in wheels:
-                if wheels[symbol].contracts:
+            for symbol in positions:
+                if positions[symbol].contracts:
                     quote = (
                         await _read(
                             session, "get_stock_latest_quote", {"symbols": symbol}
@@ -155,8 +155,8 @@ async def get_account(
             from datetime import date
 
             today = date.today()
-            for wheel in wheels.values():
-                for contract in wheel.contracts:
+            for position in positions.values():
+                for contract in position.contracts:
                     snap = snaps.get(contract.occ_symbol) or {}
                     iv = snap.get("impliedVolatility")
                     if iv:
@@ -164,11 +164,11 @@ async def get_account(
                     days = (contract.expiry - today).days
                     taus[contract.occ_symbol] = days / 365.0 if days > 0 else 0.0
 
-    net_delta, net_delta_value, vega = position_greeks(wheels, spots, vols, taus)
+    net_delta, net_delta_value, vega = position_greeks(positions, spots, vols, taus)
 
     equity = _money(account["equity"])
     deployed = sum(
-        (c.notional for w in wheels.values() for c in w.contracts if c.is_short),
+        (c.notional for w in positions.values() for c in w.contracts if c.is_short),
         Decimal("0"),
     )
 
@@ -180,6 +180,6 @@ async def get_account(
         net_delta=net_delta,
         net_delta_value=net_delta_value,
         vega=vega,
-        wheels=wheels,
+        positions=positions,
     )
     return portfolio, discrepancies

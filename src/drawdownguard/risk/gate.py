@@ -29,15 +29,15 @@ def veto(order: ProposedOrder, portfolio: Portfolio, limits: Limits) -> Verdict:
 
 def closes_a_short(order: ProposedOrder, portfolio: Portfolio) -> bool:
     """Whether this purchase buys back a short the account already carries."""
-    wheel = portfolio.wheels.get(order.symbol)
-    if wheel is None:
+    position = portfolio.positions.get(order.symbol)
+    if position is None:
         return False
     return any(
         leg.is_short
         and leg.right == order.right
         and leg.strike == order.strike
         and leg.expiry == order.expiry
-        for leg in wheel.contracts
+        for leg in position.contracts
     )
 
 
@@ -73,8 +73,8 @@ def _permitted_purpose(
             "losses and cannot be repaired by paying for upside"
         )
 
-    wheel = portfolio.wheels.get(order.symbol)
-    if wheel is None or wheel.shares <= 0:
+    position = portfolio.positions.get(order.symbol)
+    if position is None or position.shares <= 0:
         return Verdict.reject(
             f"the portfolio does not hold {order.symbol}, so a put on it is a "
             "directional bet rather than protection"
@@ -94,11 +94,11 @@ def _must_not_be_naked(
     if not limits.forbid_naked:
         return Verdict.approve()
 
-    wheel = portfolio.wheels.get(order.symbol)
+    position = portfolio.positions.get(order.symbol)
     quantity = abs(order.contracts)
 
     if order.right == "C":
-        held = wheel.shares if wheel else 0
+        held = position.shares if position else 0
         required = quantity * SHARES_PER_CONTRACT
         if held < required:
             return Verdict.reject(

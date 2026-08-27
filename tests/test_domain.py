@@ -4,11 +4,11 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
-from drawdownguard.domain import OpenContract, Portfolio, Verdict, WheelState
+from drawdownguard.domain import OpenContract, Portfolio, Position, Verdict
 
 
 def test_wheel_state_defaults_to_cash():
-    state = WheelState(symbol="SPY")
+    state = Position(symbol="SPY")
     assert state.leg == "CASH"
     assert state.shares == 0
     assert state.basis is None

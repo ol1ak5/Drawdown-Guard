@@ -1,1 +1,1 @@
-"""Drawdown-Guard: an autonomous ETF wheel overlay agent."""
+"""Drawdown-Guard: it keeps the loss promise a portfolio cannot keep alone."""

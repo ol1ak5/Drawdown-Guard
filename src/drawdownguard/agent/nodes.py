@@ -65,7 +65,7 @@ async def reconcile_node(state: GuardState) -> GuardState:
     """
     limits = load_limits()
     try:
-        portfolio, discrepancies = await get_account(state.get("wheels") or {})
+        portfolio, discrepancies = await get_account(state.get("positions") or {})
     except Exception as exc:  # noqa: BLE001 — a dead cycle must still journal
         return GuardState(
             halted=True,
@@ -79,7 +79,7 @@ async def reconcile_node(state: GuardState) -> GuardState:
     if portfolio.drawdown_pct > limits.max_drawdown_pct:
         return GuardState(
             portfolio=portfolio,
-            wheels=portfolio.wheels,
+            positions=portfolio.positions,
             discrepancies=discrepancies,
             halted=True,
             halt_reason=(
@@ -90,7 +90,7 @@ async def reconcile_node(state: GuardState) -> GuardState:
 
     return GuardState(
         portfolio=portfolio,
-        wheels=portfolio.wheels,
+        positions=portfolio.positions,
         discrepancies=discrepancies,
         halted=False,
     )

@@ -28,8 +28,6 @@ from drawdownguard.agent.nodes import (
     mandate_node,
     protect_node,
     reconcile_node,
-    regime_node,
-    snapshot_node,
 )
 from drawdownguard.agent.state import GuardState, initial_state
 
@@ -50,20 +48,25 @@ from drawdownguard.agent.state import GuardState, initial_state
 # the chain makes it the better of the two. That decision belongs to `protect`,
 # which is where it now lives.
 #
-# `snapshot` and `regime` moved ahead of `protect` on 2026-08-27. They used to
-# run after it, which meant the analyst's reading of the market arrived once
-# the protection had already been chosen -- the model was consulted and its
-# answer could not reach any decision, which is the most expensive way to have
-# no opinion. Nothing downstream reads it yet; the ordering is the prerequisite
-# for anything that will.
+# `snapshot` and `regime` are not here, and their absence is a decision rather
+# than an omission.
 #
-# `mandate` still comes first. What the client is owed is not a market
-# observation and must not wait on one.
+# `regime` called a language model every cycle, wrote the answer to the
+# journal, and was read by nothing. It once narrowed the delta band and shrank
+# the size multiplier; both of those belonged to the options overlay and left
+# with it. What remained was a paid API call whose result could not reach a
+# decision -- the most expensive way to have no opinion, and billed daily.
+#
+# `snapshot` existed to feed it.
+#
+# `analyst/` and its tests are kept. There is a real job here -- reading what
+# the options market charges for protection, and why, which is the one thing a
+# model does better than arithmetic -- and it becomes reachable once the agent
+# can buy ahead of need instead of only at the moment the promise breaks. It
+# returns when it decides something.
 NODES = (
     ("reconcile", reconcile_node),
     ("mandate", mandate_node),
-    ("snapshot", snapshot_node),
-    ("regime", regime_node),
     ("protect", protect_node),
     ("execute", execute_node),
     ("journal", journal_node),

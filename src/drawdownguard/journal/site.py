@@ -30,7 +30,7 @@ from drawdownguard.journal import writer
 # footer simply carries no link.
 REPOSITORY_URL_VAR = "DRAWDOWNGUARD_REPO_URL"
 DEFAULT_OUTPUT = Path("docs/index.html")
-DEFAULT_SNAPSHOT = Path("data/state/wheels.json")
+DEFAULT_SNAPSHOT = Path("data/state/positions.json")
 
 # Vetoes are the system working as designed; a defect means the risk-gate
 # middleware fired, which can only happen if something reached it that never
@@ -258,27 +258,27 @@ def _cell(value) -> str:
     return html.escape("" if value is None else str(value))
 
 
-def _wheel_rows(wheels: list[dict]) -> str:
-    if not wheels:
-        return '<tr><td colspan="4" class="empty">No wheels open.</td></tr>'
+def _position_rows(positions: list[dict]) -> str:
+    if not positions:
+        return '<tr><td colspan="4" class="empty">No positions open.</td></tr>'
     rows = []
-    for wheel in wheels:
-        basis = wheel.get("basis")
-        # A wheel in CASH has no basis. Showing a zero would read as a number
+    for position in positions:
+        basis = position.get("basis")
+        # A position in CASH has no basis. Showing a zero would read as a number
         # the agent knows, when in fact it is a number that does not exist yet.
         basis_cell = _cell(basis) if basis is not None else "&mdash;"
         rows.append(
             "<tr>"
-            f"<td>{_cell(wheel.get('symbol'))}</td>"
-            f"<td>{_cell(wheel.get('leg'))}</td>"
+            f"<td>{_cell(position.get('symbol'))}</td>"
+            f"<td>{_cell(position.get('leg'))}</td>"
             f"<td>{basis_cell}</td>"
-            f"<td>{_cell(wheel.get('cycles'))}</td>"
+            f"<td>{_cell(position.get('cycles'))}</td>"
             "</tr>"
         )
     return "\n".join(rows)
 
 
-def _wheel_cards(wheels: list[dict]) -> str:
+def _position_cards(positions: list[dict]) -> str:
     """The state of the book, as headline figures.
 
     Rendered from the same snapshot the table below uses, so the two cannot
@@ -286,19 +286,19 @@ def _wheel_cards(wheels: list[dict]) -> str:
     printing a zero: a zero here reads as a measurement, and "nothing yet" is
     the honest claim on a first run.
     """
-    if not wheels:
+    if not positions:
         return (
             '<div class="wide shell"><div class="core">'
             '<div class="k">Book</div>'
-            '<div class="v">Flat<small>no wheel has opened yet</small></div>'
+            '<div class="v">Flat<small>no position has opened yet</small></div>'
             "</div></div>"
         )
-    open_legs = [w for w in wheels if str(w.get("leg", "CASH")) != "CASH"]
-    cycles = sum(int(w.get("cycles") or 0) for w in wheels)
-    shares = [w for w in wheels if str(w.get("leg")) == "SHARES"]
+    open_legs = [w for w in positions if str(w.get("leg", "CASH")) != "CASH"]
+    cycles = sum(int(w.get("cycles") or 0) for w in positions)
+    shares = [w for w in positions if str(w.get("leg")) == "SHARES"]
     cards = [
-        ("Symbols tracked", str(len(wheels)), ""),
-        ("Wheels turning", str(len(open_legs)), f"of {len(wheels)}"),
+        ("Symbols tracked", str(len(positions)), ""),
+        ("Options held", str(len(open_legs)), f"of {len(positions)} symbols"),
         ("Cycles completed", str(cycles), ""),
     ]
     if shares:
@@ -393,7 +393,7 @@ def _source_link(repository_url: str) -> str:
 
 def render_site(
     entries: list[dict],
-    wheels: list[dict],
+    positions: list[dict],
     generated_at: datetime,
     repository_url: str = "",
 ) -> str:
@@ -403,7 +403,7 @@ def render_site(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Drawdown-Guard &mdash; autonomous ETF wheel overlay</title>
+<title>Drawdown-Guard &mdash; the loss a client named, kept</title>
 <style>{_STYLE}</style>
 </head>
 <body>
@@ -412,26 +412,28 @@ def render_site(
 <header class="reveal">
 <span class="eyebrow">Alpaca paper trading &middot; live</span>
 <h1>Drawdown-Guard</h1>
-<p class="lede">An autonomous ETF wheel overlay. It sells cash-secured puts,
-takes assignment, writes covered calls against the shares, and repeats. The
-LLM proposes, the optimizer decides, and a deterministic risk gate holds veto
-power over both.</p>
+<p class="lede">An investor can say how much they are willing to lose. A
+portfolio cannot keep that promise on its own. Every weekday this agent
+measures the client&rsquo;s book against the loss they agreed to, and when the
+promise stops holding it buys back the difference &mdash; the cheapest
+structure that floors the loss at every depth, never a view on where the market
+is going.</p>
 </header>
 
 <section class="reveal">
 <h2>Position</h2>
 <div class="bento">
-{_wheel_cards(wheels)}
+{_position_cards(positions)}
 </div>
 </section>
 
 <section class="reveal">
-<h2>Open wheels</h2>
+<h2>Open positions</h2>
 <div class="shell"><div class="core"><div class="scroll">
 <table>
 <thead><tr><th>Symbol</th><th>Leg</th><th>Basis</th><th>Cycles</th></tr></thead>
 <tbody>
-{_wheel_rows(wheels)}
+{_position_rows(positions)}
 </tbody>
 </table>
 </div></div></div>
@@ -472,7 +474,7 @@ nothing remote
 """
 
 
-def _wheels_from_snapshot(path: Path) -> list[dict]:
+def _positions_from_snapshot(path: Path) -> list[dict]:
     """Read the committed snapshot straight, without opening the database.
 
     The page is built after the cycle has already exported its state, and going
@@ -485,11 +487,11 @@ def _wheels_from_snapshot(path: Path) -> list[dict]:
     return [
         {
             "symbol": symbol,
-            "leg": wheel.get("leg"),
-            "basis": wheel.get("basis"),
-            "cycles": wheel.get("cycle_count", 0),
+            "leg": position.get("leg"),
+            "basis": position.get("basis"),
+            "cycles": position.get("cycle_count", 0),
         }
-        for symbol, wheel in sorted(snapshot.items())
+        for symbol, position in sorted(snapshot.items())
     ]
 
 
@@ -509,9 +511,9 @@ def build_site(
         entry_from_journal(line)
         for line in writer.read_entries(limit=limit, directory=journal_dir)
     ]
-    wheels = _wheels_from_snapshot(Path(snapshot))
+    positions = _positions_from_snapshot(Path(snapshot))
     document = render_site(
-        entries, wheels, datetime.now(UTC), os.environ.get(REPOSITORY_URL_VAR, "")
+        entries, positions, datetime.now(UTC), os.environ.get(REPOSITORY_URL_VAR, "")
     )
     destination = Path(out_path)
     destination.parent.mkdir(parents=True, exist_ok=True)

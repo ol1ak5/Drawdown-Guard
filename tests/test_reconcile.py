@@ -1,7 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
-from drawdownguard.domain import OpenContract, WheelState
+from drawdownguard.domain import OpenContract, Position
 from drawdownguard.execution.reconcile import reconcile
 
 SHORT_PUT = OpenContract(
@@ -43,7 +43,7 @@ def test_an_overnight_put_assignment_is_detected():
     notifies it; the only evidence is that the broker's positions no longer
     match its own record.
     """
-    local = {"SPY": WheelState(symbol="SPY", leg="PUT_OPEN", contracts=[SHORT_PUT])}
+    local = {"SPY": Position(symbol="SPY", leg="PUT_OPEN", contracts=[SHORT_PUT])}
     state, discrepancies = reconcile(local, [shares("SPY", 100)])
 
     assert state["SPY"].leg == "SHARES"
@@ -56,7 +56,7 @@ def test_an_overnight_put_assignment_is_detected():
 
 
 def test_an_expired_put_returns_the_wheel_to_cash():
-    local = {"SPY": WheelState(symbol="SPY", leg="PUT_OPEN", contracts=[SHORT_PUT])}
+    local = {"SPY": Position(symbol="SPY", leg="PUT_OPEN", contracts=[SHORT_PUT])}
     state, discrepancies = reconcile(local, [])
 
     assert state["SPY"].leg == "CASH"
@@ -66,7 +66,7 @@ def test_an_expired_put_returns_the_wheel_to_cash():
 
 def test_a_call_assignment_returns_the_wheel_to_cash():
     local = {
-        "SPY": WheelState(
+        "SPY": Position(
             symbol="SPY",
             leg="CALL_OPEN",
             shares=100,
@@ -84,7 +84,7 @@ def test_a_call_assignment_returns_the_wheel_to_cash():
 
 def test_an_expired_call_leaves_the_shares_in_place():
     local = {
-        "SPY": WheelState(
+        "SPY": Position(
             symbol="SPY",
             leg="CALL_OPEN",
             shares=100,
@@ -102,8 +102,8 @@ def test_an_expired_call_leaves_the_shares_in_place():
 
 def test_agreement_produces_no_discrepancies():
     local = {
-        "SPY": WheelState(symbol="SPY", leg="PUT_OPEN", contracts=[SHORT_PUT]),
-        "IWM": WheelState(symbol="IWM", leg="CASH"),
+        "SPY": Position(symbol="SPY", leg="PUT_OPEN", contracts=[SHORT_PUT]),
+        "IWM": Position(symbol="IWM", leg="CASH"),
     }
     state, discrepancies = reconcile(local, [option("SPY260918P00620000", -1)])
 
@@ -113,7 +113,7 @@ def test_agreement_produces_no_discrepancies():
 
 def test_an_open_position_the_agent_never_recorded_is_adopted():
     """A fill that landed after the last snapshot, or a hand-placed trade."""
-    local: dict[str, WheelState] = {}
+    local: dict[str, Position] = {}
     state, discrepancies = reconcile(
         local, [option("QQQ260918P00500000", -2, avg_entry_price="3.40")]
     )
@@ -149,7 +149,7 @@ def test_an_adopted_position_has_no_basis_and_says_so():
 
 
 def test_the_broker_share_count_wins():
-    local = {"SPY": WheelState(symbol="SPY", leg="SHARES", shares=100)}
+    local = {"SPY": Position(symbol="SPY", leg="SHARES", shares=100)}
     state, discrepancies = reconcile(local, [shares("SPY", 200)])
 
     assert state["SPY"].shares == 200
@@ -164,7 +164,7 @@ def test_a_long_equity_position_does_not_look_like_an_option():
 
 def test_reconcile_does_not_mutate_the_state_it_was_given():
     """It is pure so the backtest can use it, and so a bad cycle is recoverable."""
-    original = WheelState(symbol="SPY", leg="PUT_OPEN", contracts=[SHORT_PUT])
+    original = Position(symbol="SPY", leg="PUT_OPEN", contracts=[SHORT_PUT])
     local = {"SPY": original}
     reconcile(local, [shares("SPY", 100)])
 
@@ -180,8 +180,8 @@ def test_a_string_quantity_from_the_broker_is_accepted():
 
 def test_several_symbols_are_reconciled_independently():
     local = {
-        "SPY": WheelState(symbol="SPY", leg="PUT_OPEN", contracts=[SHORT_PUT]),
-        "IWM": WheelState(symbol="IWM", leg="CASH"),
+        "SPY": Position(symbol="SPY", leg="PUT_OPEN", contracts=[SHORT_PUT]),
+        "IWM": Position(symbol="IWM", leg="CASH"),
     }
     state, discrepancies = reconcile(local, [shares("SPY", 100)])
 

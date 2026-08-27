@@ -10,7 +10,7 @@ from decimal import Decimal
 
 import pytest
 
-from drawdownguard.domain import OpenContract, WheelState
+from drawdownguard.domain import OpenContract, Position
 from drawdownguard.market import features
 from drawdownguard.market.client import position_greeks
 from drawdownguard.market.features import MIN_OBSERVATIONS, iv_rank, record_iv
@@ -68,8 +68,8 @@ def test_observations_outside_the_trailing_year_are_ignored():
 # --- portfolio greeks ------------------------------------------------------
 
 
-def wheel_with_short_puts(contracts: int, strike: str = "700") -> WheelState:
-    return WheelState(
+def wheel_with_short_puts(contracts: int, strike: str = "700") -> Position:
+    return Position(
         symbol="SPY",
         leg="PUT_OPEN",
         contracts=[
@@ -86,15 +86,15 @@ def wheel_with_short_puts(contracts: int, strike: str = "700") -> WheelState:
 
 
 def test_short_puts_are_long_the_underlying():
-    """The sign that makes the wheel a bullish strategy.
+    """The sign that makes the position a bullish strategy.
 
     Selling four puts at −0.30 delta is +120 share equivalents, not −120. Get
     this backwards and the delta limit binds hardest exactly when the position
     is most neutral.
     """
-    wheels = {"SPY": wheel_with_short_puts(-4)}
+    positions = {"SPY": wheel_with_short_puts(-4)}
     net_delta, _value, _ = position_greeks(
-        wheels,
+        positions,
         {"SPY": 764.0},
         {"SPY260918P00700000": 0.20},
         {"SPY260918P00700000": 0.07},
@@ -103,17 +103,17 @@ def test_short_puts_are_long_the_underlying():
 
 
 def test_shares_count_one_for_one():
-    wheels = {"SPY": WheelState(symbol="SPY", leg="SHARES", shares=400)}
-    net_delta, _value, vega = position_greeks(wheels, {"SPY": 764.0}, {}, {})
+    positions = {"SPY": Position(symbol="SPY", leg="SHARES", shares=400)}
+    net_delta, _value, vega = position_greeks(positions, {"SPY": 764.0}, {}, {})
     assert net_delta == 400.0
     assert vega == 0.0
 
 
 def test_writing_options_costs_money_when_volatility_rises():
     """Portfolio vega is dollars *lost* per point, so a short book is positive."""
-    wheels = {"SPY": wheel_with_short_puts(-4)}
+    positions = {"SPY": wheel_with_short_puts(-4)}
     _, _value, vega = position_greeks(
-        wheels,
+        positions,
         {"SPY": 764.0},
         {"SPY260918P00700000": 0.20},
         {"SPY260918P00700000": 0.07},
@@ -123,8 +123,8 @@ def test_writing_options_costs_money_when_volatility_rises():
 
 def test_a_contract_with_no_implied_volatility_is_skipped_not_zeroed():
     """A missing input must not silently read as a position with no risk."""
-    wheels = {"SPY": wheel_with_short_puts(-4)}
-    net_delta, _value, vega = position_greeks(wheels, {"SPY": 764.0}, {}, {})
+    positions = {"SPY": wheel_with_short_puts(-4)}
+    net_delta, _value, vega = position_greeks(positions, {"SPY": 764.0}, {}, {})
     assert net_delta == 0.0
     assert vega == 0.0
 
@@ -135,14 +135,14 @@ def test_an_assignment_leaves_an_exposure_the_band_can_actually_measure():
     An assignment of four SPY puts leaves 400 shares. Under the old band —
     `max_net_delta: 150`, in share equivalents — that was an instant breach,
     and the gate could never approve the covered call that would bring it back.
-    The wheel stalled on its own normal mechanics.
+    The position stalled on its own normal mechanics.
 
     Measured in dollars against equity it is 30.6% of a 1,000,000 account,
-    inside the 50% band, and the wheel can continue. The same position, the
+    inside the 50% band, and the position can continue. The same position, the
     same risk, a unit that describes it.
     """
-    wheels = {"SPY": WheelState(symbol="SPY", leg="SHARES", shares=400)}
-    net_delta, value, _ = position_greeks(wheels, {"SPY": 764.0}, {}, {})
+    positions = {"SPY": Position(symbol="SPY", leg="SHARES", shares=400)}
+    net_delta, value, _ = position_greeks(positions, {"SPY": 764.0}, {}, {})
 
     assert net_delta == 400.0  # the share count a trader reads
     assert value == pytest.approx(305_600.0)  # what the limit measures
@@ -159,8 +159,8 @@ def test_the_same_dollar_exposure_reads_the_same_on_a_cheap_instrument():
     a 764 dollar one. In share equivalents they differed by more than three
     times; in dollars they agree.
     """
-    expensive = {"SPY": WheelState(symbol="SPY", leg="SHARES", shares=400)}
-    cheap = {"IWM": WheelState(symbol="IWM", leg="SHARES", shares=1247)}
+    expensive = {"SPY": Position(symbol="SPY", leg="SHARES", shares=400)}
+    cheap = {"IWM": Position(symbol="IWM", leg="SHARES", shares=1247)}
     _, spy_value, _ = position_greeks(expensive, {"SPY": 764.0}, {}, {})
     _, iwm_value, _ = position_greeks(cheap, {"IWM": 245.0}, {}, {})
     assert spy_value == pytest.approx(iwm_value, rel=0.001)

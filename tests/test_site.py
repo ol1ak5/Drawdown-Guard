@@ -46,8 +46,8 @@ def test_rejections_are_shown_not_hidden():
 
 
 def test_open_wheels_render_their_basis():
-    wheels = [{"symbol": "SPY", "leg": "SHARES", "basis": "472.70", "cycles": 3}]
-    html = render_site([], wheels, datetime(2026, 8, 25, 14, 5))
+    positions = [{"symbol": "SPY", "leg": "SHARES", "basis": "472.70", "cycles": 3}]
+    html = render_site([], positions, datetime(2026, 8, 25, 14, 5))
     assert "472.70" in html
     assert "SHARES" in html
 
@@ -66,9 +66,9 @@ def test_an_empty_journal_still_renders():
 
 
 def test_a_wheel_with_no_basis_yet_renders_without_inventing_one():
-    """A wheel in CASH has no basis. The cell must be blank, not 0.00."""
-    wheels = [{"symbol": "IWM", "leg": "CASH", "basis": None, "cycles": 0}]
-    html = render_site([], wheels, datetime(2026, 8, 25, 14, 5))
+    """A position in CASH has no basis. The cell must be blank, not 0.00."""
+    positions = [{"symbol": "IWM", "leg": "CASH", "basis": None, "cycles": 0}]
+    html = render_site([], positions, datetime(2026, 8, 25, 14, 5))
     assert "IWM" in html
     assert "0.00" not in html
 
@@ -168,7 +168,7 @@ def test_build_site_writes_a_page_from_the_journal_and_the_snapshot(tmp_path):
         {"symbol": "SPY", "action": "sell_put", "detail": "SPY260918P00620000 x1"},
         directory=tmp_path / "journal",
     )
-    snapshot = tmp_path / "wheels.json"
+    snapshot = tmp_path / "positions.json"
     snapshot.write_text(
         json.dumps({"SPY": {"leg": "PUT_OPEN", "basis": "615.80", "cycle_count": 2}})
     )

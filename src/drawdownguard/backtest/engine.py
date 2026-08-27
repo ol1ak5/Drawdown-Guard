@@ -16,7 +16,7 @@ like a measured one is the thing that makes a backtest dishonest.
 
 - **Execution price.** There is no bid to sell at, so one is constructed: the
   bar close less a haircut. The fill is booked at that constructed bid and
-  never at the mid. Mid-pricing is the most common way a wheel backtest invents
+  never at the mid. Mid-pricing is the most common way a position backtest invents
   returns nobody could have captured, and the haircut is the stand-in for the
   spread that really would have been crossed.
 - **Implied volatility** is solved for from the bar close, so the delta band,
@@ -53,17 +53,15 @@ from drawdownguard.domain import (
     SHARES_PER_CONTRACT,
     OpenContract,
     Portfolio,
+    Position,
     ProposedOrder,
     Right,
-    WheelState,
 )
 from drawdownguard.execution.reconcile import parse_occ
 from drawdownguard.optimizer.candidates import Candidate, build_candidates
 from drawdownguard.optimizer.model import optimize
 from drawdownguard.optimizer.payoff import bs_price
-from drawdownguard.risk.gate import veto
-from drawdownguard.risk.limits import Limits
-from drawdownguard.wheel import (
+from drawdownguard.position import (
     next_action,
     on_call_assigned,
     on_expired_worthless,
@@ -71,6 +69,8 @@ from drawdownguard.wheel import (
     on_sold_call,
     on_sold_put,
 )
+from drawdownguard.risk.gate import veto
+from drawdownguard.risk.limits import Limits
 
 # The checks the historical data cannot support. Anything listed here is turned
 # off in the open and reported in the result, rather than fed a made-up input.
@@ -83,7 +83,7 @@ DEFAULT_HAIRCUT_PCT = 2.0
 # a real account that collateral sits in Treasury bills. Leaving it at zero
 # understated the strategy by more than the entire premium it collected.
 #
-# Over 2024-02 to 2026-08 the wheel was roughly 20 percent deployed, so the
+# Over 2024-02 to 2026-08 the position was roughly 20 percent deployed, so the
 # idle 80 percent at this rate is worth about 9.5 percent over the window,
 # against 1 to 6 percent of premium. Reporting only the premium would have
 # been reporting the smaller half.
@@ -255,7 +255,7 @@ class CycleRecord(BaseModel):
     spot: float
     equity_before: Decimal
     cash_before: Decimal
-    wheel_before: WheelState
+    wheel_before: Position
     outcome: str = "open"  # open | expired | assigned
     close_at_expiry: Decimal | None = None
 
@@ -272,7 +272,7 @@ class BacktestResult(BaseModel):
 def _entry_days(expiry: date, days: list[date], dte: dict) -> date | None:
     """The day the position is opened: the earliest inside the DTE band.
 
-    Earliest, not latest, because a wheel is paid for time. Within a band that
+    Earliest, not latest, because a position is paid for time. Within a band that
     the strategy has already declared acceptable, more of it is better.
     """
     eligible = [d for d in days if dte["min"] <= (expiry - d).days <= dte["max"]]
@@ -327,7 +327,7 @@ def run_backtest(
     target_delta = (delta_band["min"], delta_band["max"])
     multiplier = strategy["size_multiplier"][regime]
 
-    wheel = WheelState(symbol=symbol)
+    position = Position(symbol=symbol)
     cash = initial_capital
     shares = 0
     peak_equity = initial_capital
@@ -336,21 +336,21 @@ def run_backtest(
     equity_by_day: list[float] = []
 
     # Compounded per trading day rather than applied once a year, because a
-    # wheel moves in and out of cash constantly and a lump annual credit
+    # position moves in and out of cash constantly and a lump annual credit
     # would pay interest on balances that were not held.
     daily_rate = Decimal(str((1 + cash_rate) ** (1 / TRADING_DAYS_PER_YEAR) - 1))
 
-    for position, today in enumerate(days):
+    for index, today in enumerate(days):
         # Collateral earns. Accrued before anything is decided, so a day the
         # agent trades and a day it skips are paid the same.
         if cash > 0:
             cash += cash * daily_rate
         cursor = Cursor(today)
-        spot = float(closes.iloc[position])
+        spot = float(closes.iloc[index])
 
         # 1. Resolve anything expiring today, by the close that actually printed.
-        if wheel.contracts and wheel.contracts[0].expiry == today:
-            contract = wheel.contracts[0]
+        if position.contracts and position.contracts[0].expiry == today:
+            contract = position.contracts[0]
             in_the_money = (
                 spot < float(contract.strike)
                 if contract.right == "P"
@@ -362,21 +362,21 @@ def run_backtest(
             if in_the_money and contract.right == "P":
                 cash -= contract.strike * quantity * SHARES_PER_CONTRACT
                 shares += quantity * SHARES_PER_CONTRACT
-                wheel = on_put_assigned(wheel)
+                position = on_put_assigned(position)
                 record.outcome = "assigned"
             elif in_the_money:
                 cash += contract.strike * quantity * SHARES_PER_CONTRACT
                 shares -= quantity * SHARES_PER_CONTRACT
-                wheel = on_call_assigned(wheel)
+                position = on_call_assigned(position)
                 record.outcome = "assigned"
             else:
-                wheel = on_expired_worthless(wheel)
+                position = on_expired_worthless(position)
                 record.outcome = "expired"
 
-        # 2. Open a position, if today is an entry day and the wheel is resting.
+        # 2. Open a position, if today is an entry day and the position is resting.
         expiry = entry_for.get(today)
-        if expiry is not None and next_action(wheel) != "HOLD":
-            action = next_action(wheel)
+        if expiry is not None and next_action(position) != "HOLD":
+            action = next_action(position)
             right: Right = "P" if action == "SELL_PUT" else "C"
             cursor.check(today)
             rows = pricer.rows(expiry, today, right)
@@ -390,14 +390,14 @@ def run_backtest(
                 if vol is None:
                     continue
                 # Never write a call below what the shares cost. This is the
-                # wheel's whole discipline: the premium is not worth locking in
+                # position's whole discipline: the premium is not worth locking in
                 # a loss on the stock. Recorded rather than silently dropped —
                 # a cycle that traded nothing because every call was underwater
                 # is a decision, and it should read as one.
                 if (
                     right == "C"
-                    and wheel.basis is not None
-                    and row["strike"] < wheel.basis
+                    and position.basis is not None
+                    and row["strike"] < position.basis
                 ):
                     below_basis += 1
                     continue
@@ -405,7 +405,7 @@ def run_backtest(
 
             if below_basis:
                 skipped.append(
-                    f"{today}: {below_basis} calls below the {wheel.basis} share "
+                    f"{today}: {below_basis} calls below the {position.basis} share "
                     f"basis were not offered; writing one locks in a loss"
                 )
 
@@ -427,7 +427,7 @@ def run_backtest(
                     f"priced for the {expiry} expiry"
                 )
 
-            history = closes.iloc[: position + 1]
+            history = closes.iloc[: index + 1]
             candidates = build_candidates(
                 chain_rows=priced,
                 spot=spot,
@@ -441,7 +441,9 @@ def run_backtest(
 
             equity = cash + Decimal(str(shares * spot))
             deployed = (
-                wheel.contracts[0].notional if wheel.leg == "PUT_OPEN" else Decimal("0")
+                position.contracts[0].notional
+                if position.leg == "PUT_OPEN"
+                else Decimal("0")
             )
             portfolio = Portfolio(
                 equity=equity,
@@ -453,7 +455,7 @@ def run_backtest(
                 # directional exposure: the short option's own delta is
                 # carried by the order under test, not by the portfolio.
                 net_delta_value=float(shares) * spot,
-                wheels={symbol: wheel},
+                positions={symbol: position},
             )
             budget = (
                 equity
@@ -507,22 +509,23 @@ def run_backtest(
                         spot=spot,
                         equity_before=equity,
                         cash_before=cash,
-                        wheel_before=wheel,
+                        wheel_before=position,
                     )
                 )
-                wheel = (
-                    on_sold_put(wheel, contract)
+                position = (
+                    on_sold_put(position, contract)
                     if right == "P"
-                    else on_sold_call(wheel, contract)
+                    else on_sold_call(position, contract)
                 )
                 cash += proceeds
-                break  # one contract open per wheel; the state machine allows no more
+                # One contract open per position; no more is representable.
+                break
 
         # 3. Mark to market. The open short is a liability, valued at its own
         #    printed close where there is one and at intrinsic where there is not.
         liability = Decimal("0")
-        if wheel.contracts:
-            contract = wheel.contracts[0]
+        if position.contracts:
+            contract = position.contracts[0]
             printed = pricer.close_of(contract.occ_symbol, contract.expiry, today)
             if printed is None:
                 intrinsic = (

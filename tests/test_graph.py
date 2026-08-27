@@ -16,7 +16,7 @@ import pytest
 from drawdownguard.agent.graph import build_graph
 from drawdownguard.agent.nodes import strategy
 from drawdownguard.agent.state import initial_state
-from drawdownguard.domain import Portfolio, WheelState
+from drawdownguard.domain import Portfolio, Position
 from drawdownguard.journal import writer
 from drawdownguard.market.features import MarketSnapshot
 from drawdownguard.risk.mandate import load_mandate
@@ -47,7 +47,7 @@ def healthy_portfolio(**overrides) -> Portfolio:
         "equity": Decimal("1000000"),
         "cash": Decimal("1000000"),
         "peak_equity": Decimal("1000000"),
-        "wheels": {s: WheelState(symbol=s) for s in SYMBOLS},
+        "positions": {s: Position(symbol=s) for s in SYMBOLS},
     }
     values.update(overrides)
     return Portfolio(**values)
@@ -543,25 +543,23 @@ def test_the_wheel_cannot_come_back_into_the_cycle():
     assert names == [
         "reconcile",
         "mandate",
-        "snapshot",
-        "regime",
         "protect",
         "execute",
         "journal",
     ]
 
 
-def test_the_market_is_read_before_the_protection_is_chosen():
-    """`regime` used to run after `protect`, so the analyst's reading of the
-    market arrived once the decision was already made -- a model consulted and
-    unable to reach anything, which is the most expensive way to have no
-    opinion.
+def test_no_model_is_called_for_an_answer_nothing_reads():
+    """`regime` classified the market with a language model every cycle and
+    was read by no decision. It narrowed the delta band and the size multiplier
+    once; both belonged to the options overlay and left with it, leaving a paid
+    API call that could not reach anything.
 
-    `mandate` stays ahead of both. What the client is owed is not a market
-    observation and must not wait on one.
+    The analyst module and its tests are kept. There is a real job here --
+    reading what the options market charges for protection, and why -- and it
+    becomes reachable once the agent can buy ahead of need. It returns when it
+    decides something, and this test should be deleted then.
     """
     from drawdownguard.agent.graph import NODES
 
-    order = [name for name, _ in NODES]
-    assert order.index("mandate") < order.index("snapshot")
-    assert order.index("regime") < order.index("protect")
+    assert "regime" not in [name for name, _ in NODES]

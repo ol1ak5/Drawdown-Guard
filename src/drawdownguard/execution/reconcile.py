@@ -14,8 +14,8 @@ import re
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
-from drawdownguard.domain import Leg, OpenContract, WheelState
-from drawdownguard.wheel import (
+from drawdownguard.domain import Leg, OpenContract, Position
+from drawdownguard.position import (
     on_call_assigned,
     on_expired_worthless,
     on_put_assigned,
@@ -94,7 +94,7 @@ def _group(positions: list[dict]) -> dict[str, dict]:
 
 
 def _broker_leg(holding: dict) -> Leg:
-    """What the broker's positions say the wheel's leg is."""
+    """What the broker's positions say the position's leg is."""
     for _position, occ in holding["options"]:
         if occ["right"] == "P":
             return "PUT_OPEN"
@@ -115,8 +115,8 @@ _EXPLAINED = {
 
 
 def _adopt_wholesale(
-    state: WheelState, leg: Leg, holding: dict
-) -> tuple[WheelState, str]:
+    state: Position, leg: Leg, holding: dict
+) -> tuple[Position, str]:
     """Take the broker's view when no ordinary transition explains the gap.
 
     A fill that landed after the last snapshot, or a hand-placed trade. Basis
@@ -143,19 +143,19 @@ def _adopt_wholesale(
 
 
 def reconcile(
-    local: dict[str, WheelState], broker_positions: list[dict]
-) -> tuple[dict[str, WheelState], list[str]]:
+    local: dict[str, Position], broker_positions: list[dict]
+) -> tuple[dict[str, Position], list[str]]:
     """Correct local state against the broker, and describe every correction.
 
     Returns a new mapping; the one passed in is never mutated. Discrepancies
     are plain sentences meant to be journalled and read by a human.
     """
     grouped = _group(broker_positions)
-    corrected: dict[str, WheelState] = {}
+    corrected: dict[str, Position] = {}
     discrepancies: list[str] = []
 
     for symbol in sorted(set(local) | set(grouped)):
-        state = local.get(symbol, WheelState(symbol=symbol))
+        state = local.get(symbol, Position(symbol=symbol))
         holding = grouped.get(symbol, {"shares": 0, "options": []})
         leg = _broker_leg(holding)
 

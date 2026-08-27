@@ -30,7 +30,7 @@ class OpenContract(BaseModel):
         return self.strike * abs(self.contracts) * SHARES_PER_CONTRACT
 
 
-class WheelState(BaseModel):
+class Position(BaseModel):
     symbol: str
     leg: Leg = "CASH"
     shares: int = 0
@@ -119,7 +119,7 @@ class Portfolio(BaseModel):
     # at every account size. Dollars compare; share counts do not.
     net_delta_value: float = 0.0
     vega: float = 0.0  # dollars lost per one point rise in implied volatility
-    wheels: dict[str, WheelState] = Field(default_factory=dict)
+    positions: dict[str, Position] = Field(default_factory=dict)
 
     @property
     def drawdown_pct(self) -> float:

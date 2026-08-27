@@ -144,7 +144,7 @@ def test_the_pricer_sells_at_the_bid_and_never_at_the_mid():
 
     There is no historical bid, so one is constructed from the bar close. The
     fill must still be booked at that constructed bid: booking the mid is how
-    a wheel backtest invents returns nobody could have captured.
+    a position backtest invents returns nobody could have captured.
     """
     days, _, chains = flat_world()
     pricer = BarPricer(lambda expiry: chains[expiry], haircut_pct=2.0)
@@ -251,7 +251,7 @@ def test_a_thirty_percent_gap_down_produces_assignment_and_a_loss():
 
 
 def test_the_cycle_count_matches_the_number_of_expiries():
-    """One entry per expiry when the wheel keeps returning to cash."""
+    """One entry per expiry when the position keeps returning to cash."""
     expiries = [date(2024, 5, 17), date(2024, 6, 21)]
     spot = 500.0
     days = trading_days(expiries[-1], 300)
@@ -312,13 +312,13 @@ def test_no_recorded_order_ever_violated_a_limit():
             cash=cycle.cash_before,
             peak_equity=cycle.equity_before,
             deployed=Decimal("0"),
-            wheels={cycle.symbol: cycle.wheel_before},
+            positions={cycle.symbol: cycle.wheel_before},
         )
         assert veto(order, portfolio, limits).approved, cycle.occ_symbol
 
 
 def test_a_covered_call_is_never_written_below_the_share_basis():
-    """The wheel's whole discipline: never lock in a loss on the stock.
+    """The position's whole discipline: never lock in a loss on the stock.
 
     After assignment the basis sits far above the market, so no call in the
     delta band clears it. The correct behaviour is to hold the shares and

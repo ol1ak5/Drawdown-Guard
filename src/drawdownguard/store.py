@@ -1,9 +1,9 @@
-"""Where the wheel's bookkeeping lives between cycles.
+"""Where the position's bookkeeping lives between cycles.
 
 Two layers, and the second one exists because of how the agent is deployed.
 
 `data/drawdownguard.db` is a SQLite file: the working store for one run. It is
-gitignored. `data/state/wheels.json` is a snapshot committed to the repository
+gitignored. `data/state/positions.json` is a snapshot committed to the repository
 after every cycle.
 
 The duplication is not redundancy. Each scheduled run starts on a fresh GitHub
@@ -23,10 +23,10 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from drawdownguard.domain import WheelState
+from drawdownguard.domain import Position
 
 DEFAULT_DB = Path("data/drawdownguard.db")
-DEFAULT_SNAPSHOT = Path("data/state/wheels.json")
+DEFAULT_SNAPSHOT = Path("data/state/positions.json")
 
 _db_path: Path = DEFAULT_DB
 
@@ -55,7 +55,7 @@ def init_db(
     _db_path.parent.mkdir(parents=True, exist_ok=True)
     with _connect() as connection:
         connection.execute(
-            "CREATE TABLE IF NOT EXISTS wheels ("
+            "CREATE TABLE IF NOT EXISTS positions ("
             "  symbol TEXT PRIMARY KEY,"
             "  state  TEXT NOT NULL"
             ")"
@@ -64,8 +64,8 @@ def init_db(
         import_snapshot(snapshot)
 
 
-def save_wheel(state: WheelState) -> None:
-    """Persist one wheel, replacing any earlier version of it.
+def save_wheel(state: Position) -> None:
+    """Persist one position, replacing any earlier version of it.
 
     The whole model goes into a single TEXT column as JSON. A column per field
     would buy nothing — nothing queries these by anything but symbol — and
@@ -73,34 +73,34 @@ def save_wheel(state: WheelState) -> None:
     """
     with _connect() as connection:
         connection.execute(
-            "INSERT INTO wheels (symbol, state) VALUES (?, ?) "
+            "INSERT INTO positions (symbol, state) VALUES (?, ?) "
             "ON CONFLICT(symbol) DO UPDATE SET state = excluded.state",
             (state.symbol, state.model_dump_json()),
         )
 
 
-def load_wheel(symbol: str) -> WheelState:
-    """The stored wheel, or a fresh `CASH` one when the symbol is unknown.
+def load_wheel(symbol: str) -> Position:
+    """The stored position, or a fresh `CASH` one when the symbol is unknown.
 
     Absence is not an error: every symbol starts here on the first cycle.
     """
     with _connect() as connection:
         row = connection.execute(
-            "SELECT state FROM wheels WHERE symbol = ?", (symbol,)
+            "SELECT state FROM positions WHERE symbol = ?", (symbol,)
         ).fetchone()
     if row is None:
-        return WheelState(symbol=symbol)
-    return WheelState.model_validate_json(row[0])
+        return Position(symbol=symbol)
+    return Position.model_validate_json(row[0])
 
 
-def load_all() -> dict[str, WheelState]:
+def load_all() -> dict[str, Position]:
     with _connect() as connection:
-        rows = connection.execute("SELECT symbol, state FROM wheels").fetchall()
-    return {symbol: WheelState.model_validate_json(state) for symbol, state in rows}
+        rows = connection.execute("SELECT symbol, state FROM positions").fetchall()
+    return {symbol: Position.model_validate_json(state) for symbol, state in rows}
 
 
 def export_snapshot(path: str | Path = DEFAULT_SNAPSHOT) -> None:
-    """Write the committed JSON snapshot of every wheel.
+    """Write the committed JSON snapshot of every position.
 
     Keys are sorted and the file is indented because this lands in a git commit
     after every cycle. Unsorted output would reshuffle untouched symbols and
@@ -126,4 +126,4 @@ def import_snapshot(path: str | Path = DEFAULT_SNAPSHOT) -> None:
     if not source.exists():
         return
     for state in json.loads(source.read_text()).values():
-        save_wheel(WheelState.model_validate(state))
+        save_wheel(Position.model_validate(state))
