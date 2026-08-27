@@ -22,10 +22,15 @@ protection at all is:
 
     0.2 * E <= 100,000   ->   E <= 500,000
 
-600,000 is deliberately above that line. At -20% it produces a 20,000 gap the
+800,000 is deliberately above that line. At -20% it produces a 60,000 gap the
 agent has to close, and at -10% no gap at all. A portfolio that never breaches
 gives the agent nothing to do; one that always breaches makes the mandate
 theatre. This one breaches where hedging is actually the question.
+
+It is also, deliberately, an allocation nobody would query. Eighty percent in
+equities and twenty in reserve is what any adviser would sign, and that is the
+argument: the promise is broken by an ordinary portfolio, not by one built to
+break.
 
 WHY MARKET ORDERS HERE, HAVING BANNED THEM FOR OPTIONS
 -------------------------------------------------------
@@ -68,12 +73,22 @@ from drawdownguard.execution.reconcile import parse_occ
 from drawdownguard.journal import writer
 from drawdownguard.mcp.alpaca_client import FULL_TOOLSETS, _unwrap, alpaca_session
 
-# Target dollars per instrument. Equity totals 600,000 — see the docstring.
+# Target dollars per instrument. Equity totals 800,000 — see the docstring.
+#
+# Raised from 600,000 on 2026-08-27 to match what the README describes, because
+# the two had drifted apart and the document was the thing being read. An
+# 80/20 split is also the allocation a reader recognises: nobody argues with
+# it, which is the point -- the promise breaks on an ordinary portfolio rather
+# than on one built to break.
+#
+# 150,000 of the reserve sits in bills and the rest stays as cash. The agent
+# spends cash on protection, and a reserve entirely in an ETF would be a
+# reserve it cannot reach without selling something first.
 TARGET = {
-    "SPY": Decimal("300000"),
-    "QQQ": Decimal("150000"),
-    "IWM": Decimal("150000"),
-    "BIL": Decimal("250000"),
+    "SPY": Decimal("400000"),
+    "QQQ": Decimal("200000"),
+    "IWM": Decimal("200000"),
+    "BIL": Decimal("150000"),
 }
 
 # Cash held back beyond the collateral, so a fill a few cents through the quote
@@ -88,6 +103,13 @@ ROLE = {
     "IWM": "equity exposure",
     "BIL": "ballast — not protection",
 }
+
+# Everything the client may end up holding, for the guard that refuses to run
+# on an account that already has a portfolio on it. TLT
+# is here because the scenario has the client buy it mid-week believing it
+# diversifies; it is not in TARGET, and the agent counts it as exposure rather
+# than protection for the reason written in risk/book.py.
+KNOWN = (*TARGET, "TLT")
 
 
 def short_put_collateral(positions: list[dict]) -> Decimal:
@@ -143,7 +165,7 @@ async def main() -> int:
         held_shares = [
             p
             for p in positions
-            if parse_occ(str(p["symbol"])) is None and str(p["symbol"]) in TARGET
+            if parse_occ(str(p["symbol"])) is None and str(p["symbol"]) in KNOWN
         ]
         if held_shares:
             print(f"refusing: {len(held_shares)} of the target holdings already exist.")

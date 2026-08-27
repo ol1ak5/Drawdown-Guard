@@ -73,13 +73,23 @@ days:
     date: 2026-09-03
     client_action: buy_equity
     detail:
-      symbol: QQQ
-      shares: 100
+      symbol: TLT
+      shares: 850
     expect: >
-      Exposure rises by roughly 72,000. The same promise now stands behind a
-      larger book, so the floor has to be re-struck and more protection bought.
-      This is "hedge rebalancing" -- the second half of the pair, and the half
-      most overlays never do.
+      The client buys long-duration Treasuries, believing bonds diversify away
+      equity risk. Roughly 70,000 of them, and the agent should count every
+      dollar as exposure rather than as protection -- so the gap widens and
+      more hedging is needed, which is the opposite of what the client
+      expected to happen.
+
+      TLT is not on the cash-like list in risk/book.py and the reason is
+      written there: it fell 31% in 2022 alongside equities. Short bills sit
+      still in a crash and are marked unshocked; long bonds do not, and a
+      portfolio that books one as insurance finds out at the worst moment.
+
+      This is "hedge rebalancing" in the direction most overlays never test,
+      and it is also the sharpest thing the week can show: an instrument that
+      looks like protection, measured honestly, and found not to be.
 
   - day: 6
     date: 2026-09-04
