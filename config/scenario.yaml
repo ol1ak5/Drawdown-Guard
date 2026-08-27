@@ -1,0 +1,89 @@
+# What the client does, decided in advance and committed before it runs.
+#
+# WHY THIS FILE EXISTS AND WHY IT IS DATED
+# ----------------------------------------
+# The agent's whole claim is that it never takes a view on where the market is
+# going. A demonstration whose client actions were chosen day by day, as the
+# market moved, would quietly break that claim -- shares sold the morning
+# before a fall would look like a forecast whatever the code did, and there
+# would be no way to prove otherwise after the fact.
+#
+# So every action below is fixed before the first cycle runs and committed to
+# git. The commit timestamp is the evidence. If the agent behaves badly on day
+# three, the scenario cannot be quietly adjusted to make it look better.
+#
+# Nothing here is simulated. The market is real, the account is real, the
+# orders are real. The only thing scripted is what the client asks for -- which
+# is the one thing a client actually does.
+#
+# WHAT IT IS MEANT TO SHOW
+# -------------------------
+# Track 03 asks for agents that know when to step in, how much protection to
+# buy, and when to release a hedge no longer needed. Those are three different
+# events and none of them is triggered by the market, so a week of ordinary
+# price action would demonstrate at most the first. The client moving their own
+# money is what produces the other two.
+#
+# The days with no action are not filler. An agent that does nothing while
+# prices move is the claim being tested, and it can only be shown by leaving it
+# alone and letting the journal record the silence.
+
+recorded: 2026-08-27
+account: PA3BER5PHGFO
+mandate: balanced
+
+days:
+  - day: 1
+    date: 2026-08-28
+    client_action: none
+    expect: >
+      The book is equity only and the promise is broken by roughly 20,000. The
+      agent should solve for a strike, buy protection dated past the twelve
+      month horizon, and journal what it cost. This is "when to step in".
+
+  - day: 2
+    date: 2026-08-31
+    client_action: none
+    expect: >
+      Nothing. The promise is held, the book has not changed, and prices moving
+      over a weekend is not a reason to trade. A cycle that finds something to
+      do here would be an agent looking for a reason.
+
+  - day: 3
+    date: 2026-09-01
+    client_action: sell_equity
+    detail:
+      symbol: IWM
+      shares: 250
+    expect: >
+      Exposure falls by roughly 75,000, so the protection bought on day one is
+      now larger than the book it stands behind. The agent should hand some of
+      it back. This is "when to release a hedge that is no longer needed", and
+      the trigger is the client's own decision rather than anything the market
+      did.
+
+  - day: 4
+    date: 2026-09-02
+    client_action: none
+    expect: >
+      Nothing again. Two quiet days in one week is the honest shape of this
+      strategy and the journal should say so rather than hide it.
+
+  - day: 5
+    date: 2026-09-03
+    client_action: buy_equity
+    detail:
+      symbol: QQQ
+      shares: 100
+    expect: >
+      Exposure rises by roughly 72,000. The same promise now stands behind a
+      larger book, so the floor has to be re-struck and more protection bought.
+      This is "hedge rebalancing" -- the second half of the pair, and the half
+      most overlays never do.
+
+  - day: 6
+    date: 2026-09-04
+    client_action: none
+    expect: >
+      Final state. Whatever the market did across the week, the client's worst
+      case should sit inside the budget they named on day one.
