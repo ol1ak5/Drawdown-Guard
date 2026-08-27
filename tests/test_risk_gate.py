@@ -3,9 +3,9 @@ from decimal import Decimal
 
 import pytest
 
-from flywheel.domain import Portfolio, ProposedOrder, WheelState
-from flywheel.risk.gate import veto
-from flywheel.risk.limits import Limits
+from drawdownguard.domain import Portfolio, ProposedOrder, WheelState
+from drawdownguard.risk.gate import veto
+from drawdownguard.risk.limits import Limits
 
 LIMITS = Limits(
     max_position_pct=25.0,

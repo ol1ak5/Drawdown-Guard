@@ -11,7 +11,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from flywheel.market.chain import adapt_chain_row
+from drawdownguard.market.chain import adapt_chain_row
 
 FIXTURE = json.loads(
     (Path(__file__).parent / "fixtures" / "spy_chain.json").read_text()

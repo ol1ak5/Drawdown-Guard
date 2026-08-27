@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
-from flywheel.domain import OpenContract, Portfolio, Verdict, WheelState
+from drawdownguard.domain import OpenContract, Portfolio, Verdict, WheelState
 
 
 def test_wheel_state_defaults_to_cash():

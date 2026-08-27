@@ -12,6 +12,14 @@
 # one, never weaker. `load_mandate` enforces that and refuses to construct a
 # mandate that tries.
 #
+# THE DOWNSIDE BUDGET IS THE ONE PROMISE ABOUT LOSSES
+# ----------------------------------------------------
+# Every other field here limits what may be *opened*. `downside_budget_pct`
+# limits what the book already held would *cost* if the market fell, which no
+# single order can keep or break by itself. It is checked every cycle by
+# `risk/stress.py`, against the positions that actually exist, and the shortfall
+# it reports is what the agent is hired to close.
+#
 # THE CONCENTRATION CAPS ARE NOT ROUND NUMBERS PICKED FOR LOOKS
 # -------------------------------------------------------------
 # Measured 2026-08-25 on cached history. The equity ETFs correlate 0.78 to 0.95
@@ -38,6 +46,29 @@ conservative:
   # the cap is what forces the diversification rather than suggesting it.
   max_concentration_pct: 75.0
   stress_allows_new_risk: false
+  # 5% of the account. Under a 20% equity shock this permits an unprotected
+  # exposure of only a quarter of capital, so this mandate is nearly always in
+  # deficit and nearly always buying protection. That is what conservative
+  # means once it is written as arithmetic instead of as a word.
+  downside_budget_pct: 5.0
+  # Reluctant to let go. A quarter of the budget in headroom before any hedge
+  # is released, so this client keeps paying for protection through the range
+  # where the other two would have handed it back.
+  release_margin_pct: 25.0
+  # Removed on 2026-08-26: this ranked the three remedies, and a ranking in a
+  # config file gives the same answer on every day of every market. An agent
+  # reading it was not choosing between a put and a collar, it was replaying a
+  # decision taken once by whoever wrote the line. `remedy.choose` reads the
+  # chain instead. What a client fixes in advance is a constraint; which of two
+  # structures is better value this Tuesday is an observation, and observations
+  # are not the client's job.
+  #
+  # Shares are not sold. Off by default in the model as well, so this line is a
+  # restatement rather than the thing doing the work -- and at a 5% budget this
+  # mandate is in deficit nearly every cycle, so a permission granted here would
+  # not be an occasional last resort but a standing instruction to sell. A
+  # profile named for preserving capital would have disposed of it.
+  allow_reduce_exposure: false
 
 balanced:
   description: >
@@ -48,6 +79,19 @@ balanced:
   target_delta: {min: 0.15, max: 0.30}
   max_concentration_pct: 90.0
   stress_allows_new_risk: false
+  # 10%. On a 1,000,000 account that is 100,000, and a 20% shock keeps the
+  # promise unprotected up to 500,000 of exposure. The demonstration book is
+  # deliberately sized above that line -- see scripts/build_portfolio.py.
+  downside_budget_pct: 10.0
+  # 15% of a 100,000 budget is 15,000 of headroom before protection goes back.
+  # Wide enough that ordinary daily movement cannot walk the book across the
+  # line and back; narrow enough that a hedge against a position which has
+  # actually closed does not survive the week.
+  release_margin_pct: 15.0
+  # Whether a collar beats a bare put is decided per cycle on the chain, not
+  # here. A client whose whole purpose is to remain in the market does not sell
+  # shares to fix a breach that expires.
+  allow_reduce_exposure: false
 
 aggressive:
   description: >
@@ -66,3 +110,18 @@ aggressive:
   # instead of "no opinion".
   max_concentration_pct: 100.0
   stress_allows_new_risk: true
+  # 15%, which is the ceiling rather than a choice. The permanent kill-switch
+  # halts the agent at a 15% drawdown, so a larger budget would be a promise
+  # the system stops trading before it could ever honour. `validate_against`
+  # refuses to construct it, which is the correct outcome: an unkeepable
+  # promise should fail loudly at load time, not quietly in a crash.
+  downside_budget_pct: 15.0
+  # Quick to hand protection back, because carrying it is the drag this mandate
+  # least wants to pay. The band is still a band -- 10% of the budget rather
+  # than nothing -- since even an impatient client should not fund a round trip
+  # across the spread every time the book crosses its own line.
+  release_margin_pct: 10.0
+  # Even here. This mandate is willing to be concentrated and willing to pay for
+  # protection; it is not willing to answer a three-week problem by permanently
+  # shrinking the book it exists to run.
+  allow_reduce_exposure: false

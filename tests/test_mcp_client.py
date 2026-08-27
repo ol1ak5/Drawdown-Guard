@@ -8,7 +8,7 @@ the network is up is a check that stops running.
 
 import pytest
 
-from flywheel.mcp.alpaca_client import (
+from drawdownguard.mcp.alpaca_client import (
     FULL_TOOLSETS,
     KNOWN_TOOLSETS,
     MUTATING_TOOLS,

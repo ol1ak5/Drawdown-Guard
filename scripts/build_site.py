@@ -4,7 +4,7 @@ Run at the end of every cycle, including cycles that traded nothing. The
 workflow commits the result alongside the journal and the state snapshot.
 """
 
-from flywheel.journal.site import build_site
+from drawdownguard.journal.site import build_site
 
 if __name__ == "__main__":
     written = build_site()

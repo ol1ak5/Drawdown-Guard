@@ -9,7 +9,7 @@ import argparse
 import asyncio
 import sys
 
-from flywheel.agent.graph import run_cycle
+from drawdownguard.agent.graph import run_cycle
 
 
 def main() -> int:

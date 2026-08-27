@@ -1,4 +1,4 @@
-# Flywheel
+# Drawdown-Guard
 
 **An AI trading agent you are allowed to distrust.**
 
@@ -8,7 +8,7 @@ as probably wrong where they look too good, and is built so that the language
 model inside it **cannot** place a bad trade — not because we asked it nicely,
 but because it has no hands.
 
-Live decisions → **[status page](https://ol1ak5.github.io/Flywheel-Agent/)** ·
+Live decisions → **[status page](https://ol1ak5.github.io/Drawdown-Guard/)** ·
 Backtest → **[report](docs/backtest-report.md)**
 
 ---
@@ -25,7 +25,7 @@ questions correctly: put or call, which strike, which expiry, how many. Get one
 wrong and a year of premium disappears in a day. Most people either overpay a
 fund or don't bother.
 
-## What Flywheel does
+## What Drawdown-Guard does
 
 It runs the wheel for you, on your own account, and shows its work.
 
@@ -48,7 +48,7 @@ That is a real cycle, from a real run, on a real paper account.
 This is the part worth stealing.
 
 Most AI trading projects put the model in charge and bolt on guardrails.
-Flywheel does the opposite: the model is **structurally incapable** of a bad
+Drawdown-Guard does the opposite: the model is **structurally incapable** of a bad
 trade. Three properties, none of which depend on the prompt being obeyed:
 
 **It has no hands.** The analyst is connected to the broker with a read-only
@@ -149,7 +149,7 @@ The honest limits, since the whole pitch is that we state them:
 ## Layout
 
 ```
-src/flywheel/
+src/drawdownguard/
   agent/       the cycle, its nodes, the analyst, the guards
   market/      Alpaca adapters: account, chain, snapshot
   optimizer/   candidate filtering, Black-Scholes, the convex program

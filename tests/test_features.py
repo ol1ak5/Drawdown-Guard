@@ -10,11 +10,11 @@ from decimal import Decimal
 
 import pytest
 
-from flywheel.domain import OpenContract, WheelState
-from flywheel.market import features
-from flywheel.market.client import position_greeks
-from flywheel.market.features import MIN_OBSERVATIONS, iv_rank, record_iv
-from flywheel.risk.limits import load_limits
+from drawdownguard.domain import OpenContract, WheelState
+from drawdownguard.market import features
+from drawdownguard.market.client import position_greeks
+from drawdownguard.market.features import MIN_OBSERVATIONS, iv_rank, record_iv
+from drawdownguard.risk.limits import load_limits
 
 TODAY = date(2026, 8, 24)
 

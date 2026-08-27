@@ -1,5 +1,5 @@
 [project]
-name = "flywheel"
+name = "drawdownguard"
 version = "0.1.0"
 description = "Autonomous ETF wheel overlay agent on Alpaca paper trading"
 readme = "README.md"

@@ -7,8 +7,8 @@ the same event as breaching a promise.
 
 import pytest
 
-from flywheel.risk.limits import load_limits
-from flywheel.risk.mandate import (
+from drawdownguard.risk.limits import load_limits
+from drawdownguard.risk.mandate import (
     Counterfactual,
     Mandate,
     audit,
@@ -168,3 +168,131 @@ def test_the_counterfactual_never_reports_a_negative_saving():
         concentration_available=40,
     )
     assert cost.forgone == 0
+
+
+# --- the downside budget ----------------------------------------------------
+
+
+def test_a_budget_the_kill_switch_would_never_let_you_reach_is_refused():
+    """The promise has to be one the system can actually be around to keep.
+
+    The permanent kill-switch halts the agent at a 15% drawdown. A mandate
+    offering the client a 20% downside budget would be selling tolerance the
+    agent stops trading before it could ever exercise -- true on paper, useless
+    in fact. It fails at load time rather than quietly on the worst day.
+    """
+    with pytest.raises(ValueError, match="kill-switch"):
+        mandate(downside_budget_pct=20.0).validate_against(load_limits())
+
+
+def test_a_mandate_may_not_invent_its_own_shock():
+    """The ladder is fixed and published, and a mandate picks a rung from it.
+
+    Left free, a mandate could promise against a 3% shock and report a perfect
+    record forever. The rungs are the same every day for every client, which is
+    what makes two mandates comparable at all.
+    """
+    with pytest.raises(ValueError, match="not a rung"):
+        mandate(stress_shock_pct=7.0)
+
+
+def test_the_budget_is_dollars_and_scales_with_the_account():
+    """A promise stated in percent has to survive the account changing size."""
+    m = mandate(downside_budget_pct=10.0)
+    assert m.budget(1_000_000) == 100_000
+    assert m.budget(400_000) == 40_000
+
+
+def test_the_three_shipped_mandates_imply_three_different_portfolio_sizes():
+    """The mandate sizes the book. This is the demonstration, in one assertion.
+
+    Same market, same shock, three clients: the exposure each can carry
+    unprotected differs by 3x, and nobody had to have a view on the market to
+    work that out.
+    """
+    limits = {
+        name: m.budget(1_000_000) / (m.stress_shock_pct / 100)
+        for name, m in load_all().items()
+    }
+    assert limits["conservative"] == pytest.approx(250_000)
+    assert limits["balanced"] == pytest.approx(500_000)
+    assert limits["aggressive"] == pytest.approx(750_000)
+
+
+def test_the_release_band_is_a_band_and_not_a_line():
+    """Both ends refused, for opposite reasons.
+
+    At 0 the agent buys and sells protection at the same threshold and pays the
+    spread twice to end where it started. At 100 it would have to hold the
+    entire budget as unused headroom before letting any hedge go, which is a
+    band so wide nothing ever leaves.
+    """
+    with pytest.raises(ValueError, match="not a band"):
+        mandate(release_margin_pct=-1.0)
+    with pytest.raises(ValueError, match="not a band"):
+        mandate(release_margin_pct=100.0)
+
+
+def test_the_release_headroom_is_dollars_off_the_budget_not_the_account():
+    """15% of the budget, not 15% of the equity. On a 1,000,000 account at a 10%
+    budget that is 15,000 of slack -- a band inside the promise, not a second
+    promise."""
+    m = mandate(downside_budget_pct=10.0, release_margin_pct=15.0)
+    assert m.release_headroom(1_000_000) == pytest.approx(15_000)
+
+
+def test_the_three_mandates_let_go_of_protection_at_three_different_speeds():
+    """The same dial the client already turned for the budget, turned again.
+
+    Conservative demands the widest headroom before releasing a hedge and so
+    carries protection longest; aggressive hands it back soonest. Neither is a
+    tuning constant the agent chose.
+    """
+    margins = {name: m.release_margin_pct for name, m in load_all().items()}
+    assert margins["conservative"] > margins["balanced"] > margins["aggressive"]
+    assert margins["aggressive"] > 0, "even the impatient client keeps a band"
+
+
+def test_no_shipped_mandate_may_sell_the_clients_shares():
+    """A correction, pinned so it cannot drift back.
+
+    `conservative` once ranked selling shares *first*, on the argument that
+    owning less risk beats insuring it. At a 5% budget that mandate is in
+    deficit almost every cycle, so "first" meant "every time": sell on every
+    gap, buy back on none, and a profile named for preserving capital would
+    have spent itself down to a quarter invested through a series of permanent
+    answers to temporary breaches.
+
+    None of the three may now sell. The machinery stays -- a client who grants
+    the power gets it -- but a profile name does not grant it.
+    """
+    for name, m in load_all().items():
+        assert not m.allow_reduce_exposure, name
+
+
+def test_a_mandate_that_says_nothing_has_not_granted_the_power_to_sell():
+    """The one default in this file that points at less freedom, not more.
+
+    Every other field is a limit the client relaxes, so silence sensibly means
+    the permissive value. This one is a power the client grants, and silence
+    cannot mean yes: inheriting permission to dispose of somebody's assets from
+    an unwritten line is exactly the failure the mandate exists to prevent.
+    """
+    assert not mandate().allow_reduce_exposure
+    assert mandate(allow_reduce_exposure=True).allow_reduce_exposure
+
+
+def test_the_mandate_no_longer_ranks_the_option_remedies():
+    """Removed, not renamed, and this test is the reason it stays removed.
+
+    `protection_order` gave the same answer on every day of every market. An
+    agent reading it was replaying a decision somebody made once, which is the
+    opposite of the behaviour a mandate is supposed to constrain. Choosing
+    between a put and a collar is an observation about today's prices and lives
+    in `remedy.choose`; the mandate keeps the constraints.
+    """
+    m = mandate()
+    assert not hasattr(m, "protection_order")
+    # Pydantic ignores unknown keys by default, so this asserts the field is
+    # gone rather than merely unset.
+    assert "protection_order" not in m.model_dump()

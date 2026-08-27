@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from flywheel.backtest.data import realized_vol, return_scenarios
+from drawdownguard.backtest.data import realized_vol, return_scenarios
 
 
 def closes(values):
