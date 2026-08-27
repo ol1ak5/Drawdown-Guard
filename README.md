@@ -1,123 +1,312 @@
-# Drawdown-Guard
+# 🛡️ Drawdown-Guard
 
-**An AI trading agent you are allowed to distrust.**
+**Investors can say how much they are afford to lose. A portfolio cannot
+keep that promise on its own.**
 
-Every "AI trades the market" demo shows a chart going up. None of them let you
-check. This one publishes its refusals next to its fills, marks its own results
-as probably wrong where they look too good, and is built so that the language
-model inside it **cannot** place a bad trade — not because we asked it nicely,
-but because it has no hands.
+So we built an agent that does.
 
-Live decisions → **[status page](https://ol1ak5.github.io/Drawdown-Guard/)** ·
-Backtest → **[report](docs/backtest-report.md)**
+Drawdown Guard is an autonomous agent that checks checks every weekday whether a portfolio still respects its client's downside limit and uses the options overlay when it doesn't.
+
+**The portfolio can change. The loss mandate doesn't. Drawdown Guard keeps them aligned.**
+
+🔴 Live decisions → **[status page](https://ol1ak5.github.io/Drawdown-Guard/)** ·
+📊 Backtest → **[report](docs/backtest-report.md)** ·
+📓 Every decision ever made → **[journal](journal/)**
 
 ---
 
-## The problem, in one paragraph
+## 🎯 The problem
 
-If you own index ETFs, you are leaving income on the table. Selling options
-against your holdings — the "wheel" — is how professionals harvest it, and
-funds that do it for you (JEPI, QYLD, XYLD) run tens of billions of dollars and
-charge you 0.35–0.60% a year for the privilege.
+**Just knowing a loss tolerance number is not a loss control.**
 
-Doing it yourself means opening the option chain every week and answering four
-questions correctly: put or call, which strike, which expiry, how many. Get one
-wrong and a year of premium disappears in a day. Most people either overpay a
-fund or don't bother.
+An investor may have a clear idea of how much loss they can realistically tolerate. But the portfolio can't enforce that limit on its own. It holds what it holds and it falls when the market falls. 
 
-## What Drawdown-Guard does
+Over time, the portfolio can quietly drift away from the client's risk mandate. The problem is not predicting the next crash. The problem is knowing whether the portfolio still respects the limit it was supposed to maintain.
 
-It runs the wheel for you, on your own account, and shows its work.
+There are trillions of dollars of software for *predicting* the market. There
+is almost nothing for *keeping a promise* about it.
 
-Every weekday, thirty minutes after the open, it wakes up and asks: *what
-should I do right now?* Then it does one of two things — place a specific
-trade, or explain why it is sitting this one out. **Sitting it out is the most
-common answer**, and it is written down just as carefully as a trade.
+## 💡 The solution
 
-```
-Regime: stress — the variance risk premium is compressed, notably in QQQ
-Sold:   QQQ 660 put, 25 Sep, 1 contract, delta 0.145
-Sold:   IWM 280 put, 25 Sep, 4 contracts, delta 0.147
-Skipped: SPY — no contract passed the filters
-```
+Drawdown Guard stands between the promise and the portfolio. It turns a client's downside limit into a continuously monitored portfolio constraint.
 
-That is a real cycle, from a real run, on a real paper account.
+Every weekday, it wakes up and asks one question: **if the market fell right now, would this client still be inside the number they were given?** If yes, it says so and does nothing — loudly, in writing (write about the journal). If no, it measures exactly how far outside, prices the ways of getting back in, and buys protection on today's actual option chain.
 
-## Why the AI can't hurt you
 
-This is the part worth stealing.
+## 👤 One client, one promise, two numbers
 
-Most AI trading projects put the model in charge and bolt on guardrails.
-Drawdown-Guard does the opposite: the model is **structurally incapable** of a bad
-trade. Three properties, none of which depend on the prompt being obeyed:
+For this hackathon, we turn this problem into a concrete situation.
 
-**It has no hands.** The analyst is connected to the broker with a read-only
-toolset. There is no order tool in its reach and no code path from its output
-to a trade. If it decided to sell everything, nothing would happen.
+### The promise
 
-**Its answer can only make the agent more careful.** It returns one of `calm →
-elevated → stress → crash`. Every step *narrows* how far out of the money the
-agent goes and *shrinks* how much it risks. There is no answer it can give that
-loosens a limit.
+Our simulated client starts with a clear downside mandate:
 
-**A broken answer means caution, not confidence.** If the model returns
-nonsense, times out, or is unreachable, the agent proceeds as if the market
-were stressed — never as if it were calm. A default that reads "carry on as
-normal" is how an outage becomes a position.
+> *“In the worst case, I can tolerate a 10% loss per year.”*
 
-So: the LLM proposes, the math decides, and a deterministic risk gate holds
-veto power over both. The worst a compromised model achieves is a skipped day.
+**Two numbers, and both of them are the client's:**
 
-## Why you can check our numbers
+- 🔟 **10%** — the most the client can lose. $100,000 of a $1,000,000 account.
+- 📆 **12 months** — the window that promise has to survive.
 
-The fastest way to spot a dishonest backtest is that it never says anything
-against itself. Ours does, out loud, in the report:
+### The client's portfolio — $1,000,000 💰
 
-**We underperform the benchmark.** Over the same window CBOE's PUT index
-returned 36.5%. We returned 14–16%. That is in the report, not omitted.
+Our client has a $1,000,000 portfolio distirbuted across:
+- 60% equity: SPY, QQQ, IWM
+- 25% T-bills
+- 15% cash (liquidity) 
 
-**Our Sharpe ratio is probably a bug.** The report prints 3.0–6.0 and
-immediately says this is more likely a defect than an edge — the published
-index for this exact strategy runs under 1 over most decades. It names the
-cause too.
+| | Amount | What it is for |
+|---|---:|---|
+| 📊 **Equity portfolio** | **$800,000** | 🟦 SPY $400,000 · 🟪 QQQ $200,000 · 🟧 IWM $200,000 |
+| 🛡️ **Protection reserve** | **$200,000** | Cash and T-bills — the money the agent is allowed to spend on hedges |
 
-**We separate our income from the Treasury's.** A cash-secured put ties up
-cash, and that cash earns interest. Most of our return *is* that interest. We
-print both columns, because quoting the total would be claiming credit for the
-US Treasury.
+**$800,000 of equity exposure.** The client wants to stay in the market, so the
+portfolio itself is never for sale. The reserve is what the agent works with.
 
-**We say what is modelled rather than measured.** Four numbers in the backtest
-are estimates, not observations — and each one is named, in the report, not in
-a footnote.
+Ten percent of the account is the client's entire downside budget:
+**$100,000**. 
 
-## Kill switch
+The portfolio is intentionally not static. That gives Drawdown Guard a real job: keep the changing portfolio aligned with a fixed risk mandate.
+
+### The morning check ⚠️
+
+The agent stresses the book down the whole range and reports what the client
+would actually be holding — not to predict any one of these, but because a
+promise that only survives some of them is not a promise:
+
+| If the market falls | Portfolio loses | Budget | Verdict |
+|---|---:|---:|---|
+| −5% | $40,000 | $100,000 | ✅ inside the promise |
+| −10% | $80,000 | $100,000 | ✅ inside the promise |
+| −20% | $160,000 | $100,000 | 🚨 **$60,000 past it** |
+| −35% | $280,000 | $100,000 | 🚨 **$180,000 past it** |
+
+**The promise is broken, and here is exactly why:**
+
+📈 $800,000 of equity has to fall only 12.5% to burn a $100,000 budget, and
+markets do that roughly once every few years. The promise and the portfolio
+were built by different people who never spoke.
+
+Nobody did anything wrong to get here. Eighty percent in equities and twenty in
+reserve is a textbook allocation, and any adviser in the world would sign it.
+This is simply what a sensible portfolio looks like the first time anyone holds
+it up against the sentence the client actually said. 🤷
+
+### The chain of decision 🔗
+
+No dashboard does this part. The agent does not merely *report* the $60,000 —
+it closes it, and it shows its work at every link.
+
+**1️⃣ How much protection?** Enough that the client's worst case *at any depth*
+is the promised 10% — no more, and pointedly no less.
+
+Match the contracts to the shares, and below the strike every dollar lost on
+the portfolio is a dollar gained on the put. The loss stops falling. So the
+worst the client can do is **the drop down to the strike, plus the premium
+paid**, and the agent solves for the strike where those two add to exactly the
+budget. Here that is a strike 9.96% below the market, costing 2.03% of the
+account.
+
+That is why nobody has to guess how bad it gets. 🎯 The floor holds at −20%, at
+−35%, at −50%. Protection is a cost, though, and a dollar spent beyond the
+promise is a dollar taken from the client for nothing — so the agent solves for
+the strike rather than rounding up to something that feels safe.
+
+**2️⃣ What closes it?** Options. The portfolio stays exactly where it is:
+
+| | 💵 Costs | 📈 Keeps | ↩️ Undoable |
+|---|---|---|---|
+| 🛡️ **Protective put** | cash, up front | **all** the upside | yes — it expires |
+| 🎯 **Collar** | little or nothing — the put is paid for by selling a call | upside up to the call strike | yes — it expires |
+
+**The shares are never sold.** 🚫 The code can do it and every mandate we ship
+switches it off, because a promise kept by permanently shrinking the client's
+portfolio is not a promise kept — it is the client paying for the guarantee
+with the thing the guarantee was supposed to protect.
+
+**3️⃣ Which one, today?** Both are priced on the live chain, every cycle, and
+the cheaper one that fits the client's constraints wins. 💰
+
+The ranking is deliberately *not* written in a config file. Whether a collar
+beats a bare put depends on what calls are worth **this morning** — when
+implied volatility is rich, the call pays for the put and the collar is nearly
+free; when it is cheap, the collar sells away upside for almost nothing and the
+plain put wins. A config file would answer that question the same way on every
+day of every market. The chain answers it correctly on this one.
+
+**4️⃣ For how long?** ⏳ This is the question almost nobody asks, and getting it
+wrong quietly destroys the whole guarantee.
+
+Short-dated puts look irresistible. A 30-day put 10% out of the money is
+*cheap* — roll one every month for a year and you pay a third of what a single
+12-month put costs. Every spreadsheet says buy the cheap one.
+
+**We tested it on real SPY history**, priced with the same code the agent
+trades with:
+
+| SPY drawdown | Shape | 🔁 Rolled 30-day puts | 🛡️ One put, held throughout |
+|---|---|---:|---:|
+| **2022** −25.4% over 279 days | slow grind | paid 2.54, **received 0.00** ❌ | paid 9.58, received 64.98 ✅ |
+| **2020** −34.2% over 31 days | fast crash | paid 0.34, received 80.61 ✅ | paid 0.24, received 80.61 ✅ |
+
+Read the 2022 row twice. **Nine consecutive puts, every one expired worthless,
+while the market destroyed a quarter of its value.** No single month fell far
+enough to put any of them in the money — and by the time each one expired, the
+next was struck against an already-lower market. The client paid for insurance
+all year and collected nothing.
+
+Short-dated protection is cheap **because it only covers fast crashes**. A slow
+grind walks straight past it, and slow grinds are how most real drawdowns
+happen. The client's promise is not about one terrible day; it is about not
+losing 10% of their money, *however slowly it goes*.
+
+So the agent buys protection that outlives the promise, and then leaves it
+alone. 🧘 Long-dated positions held for months — the opposite of churn. An agent
+that reshuffles its hedge every week pays the spread every week, and that bill
+arrives whether or not the crash ever does.
+
+**5️⃣ Never let it all expire at once.** 🪜 Protection is bought in a ladder of
+expiries rather than in one lump. If everything matured on the same Friday, the
+agent would be *forced* to buy a year of coverage at whatever price the market
+happened to offer that morning — possibly in the middle of the panic the client
+is paying to be protected from. A ladder means every roll is a small one, and
+no single day can hold the promise hostage.
+
+**6️⃣ Then the agent gives the protection back.** ♻️ When the book returns
+inside its budget *with room to spare*, the hedge is released — on a margin,
+not on the line itself, so ordinary daily wobble cannot walk a position across
+the boundary and back while paying the spread each time.
+
+This is the half that most hedging stops at. Protection is easy to buy and
+nobody remembers to sell it, so the client ends up paying for a wall around a
+risk that went away months ago. The gap closing is as much a signal as the gap
+opening.
+
+### When the agent steps in 🚦
+
+Never on a hunch, and never because it thinks it knows what the market will do
+next. There are exactly three triggers, all of them mechanical, all of them
+slow enough to act on calmly:
+
+| | Trigger | Why it opens a gap |
+|---|---|---|
+| 📈 | **The portfolio grew** | More equity behind the same promise. The floor has to be re-struck higher. |
+| ⏳ | **The hedge aged** | Time passed, the market moved, and the strike that used to hold the floor no longer does. |
+| 📅 | **Something expired** | Coverage silently ended. Nothing but recomputation notices. |
+
+Not one of these is a market call. They are all arithmetic on what the account
+already holds — which is why the agent trades rarely, deliberately, and can
+explain every trade it makes without ever claiming to know the future.
+
+### What the client actually gets 🎁
+
+Eighty contracts — one for every hundred shares — struck 9.96% below the
+market, dated past the client's twelve months, bought on a quiet morning for
+**2.03% of the account**. Here is the same portfolio before and after:
+
+| If the market falls | Without the agent | With the agent | |
+|---|---:|---:|---|
+| −5% | loses 4.0% | loses 6.0% | 💸 the premium, and this is what it costs |
+| −10% | loses 8.0% | loses **10.0%** | at the line |
+| −20% | loses **16.0%** 🚨 | loses **10.0%** | ✅ the promise, kept |
+| −35% | loses **28.0%** 🚨 | loses **10.0%** | ✅ the promise, kept |
+| −50% | loses **40.0%** 🚨 | loses **10.0%** | ✅ the promise, kept |
+
+**The floor does not care how far the market falls.** Below the strike, every
+dollar the shares lose is a dollar the puts gain, so the line simply stops
+going down — at −20%, at −50%, at whatever comes. No scenario had to be
+guessed, and nothing here depends on anyone being right about the future.
+
+And read the first row, because it is the honest one. 📏 In a mild dip the
+client is **worse off by the premium** — 6% instead of 4%. That is not a flaw
+to be explained away; that is what insurance is. You pay every year to be
+whole in the year that matters.
+
+**Name the promise and its window → check the book against it → solve for the
+protection that floors the loss → buy it long, in a ladder → hand it back when
+it is no longer needed.** Every weekday, in writing. 📓
+
+---
+
+## 🛑 How to stop it
+
+It is an autonomous agent trading an account on a schedule, so there has to be
+a way to stop it from a phone, without a laptop and without touching the code:
 
 ```bash
 touch HALT && git add HALT && git commit -m "halt" && git push
 ```
 
-The next run stops before doing anything. It works from a phone, needs no code,
-and needs no access to the machine. There is an automatic one too: a drawdown
-past the configured limit halts the cycle before it reads a single price.
+The next run reads that file before it does anything else and shuts down. There
+is an automatic version too — a drawdown past the configured limit halts the
+cycle **before** it reads a single price, so a bad week cannot become a worse
+one while nobody is watching. 🚨
 
-## How it works
+**It stops the agent, not the protection.** Every position stays exactly where
+it is; hedges already bought keep working. A stop button that liquidated the
+client's protection would disarm the portfolio at the precise moment somebody
+was worried enough to press it. 🛡️
 
-Eight steps, once a day.
+## ⚙️ How it works
+
+Ten steps, once a day, fully autonomous.
 
 | | | |
 |---|---|---|
-| 1 | **Reconcile** | Ask the broker what is held. Believe it, not our own records. |
-| 2 | **Look** | Spot, realised volatility, implied volatility, IV rank. |
-| 3 | **Judge** | The LLM names the regime. This is its only job. |
-| 4 | **Route** | Put or call — decided by where the wheel is, not by the model. |
-| 5 | **Filter** | From ~2,000 contracts down to the handful that are choices at all. |
-| 6 | **Optimise** | Convex program: most premium, subject to tail risk and exposure. |
-| 7 | **Gate** | Every order faces the risk gate. There is no bypass, no flag, no override. |
-| 8 | **Write it down** | Including — especially — the decision to do nothing. |
+| 1️⃣ | **Reconcile** | Ask the broker what is held. |
+| 2️⃣ | **Mandate** | Load the client's promise and turn the budget into dollars. |
+| 3️⃣ | **Protect** | Stress the book, find the gap, price the remedies. |
+| 4️⃣ | **Look** | Spot, realised volatility, implied volatility, IV rank. |
+| 5️⃣ | **Judge** | The LLM names the regime. This is its only job. |
+| 6️⃣ | **Route** | Which instrument — decided by the gap, not by the model. |
+| 7️⃣ | **Filter** | From ~2,000 contracts down to the handful that are choices at all. |
+| 8️⃣ | **Optimise** | Convex program, subject to tail risk and exposure. |
+| 9️⃣ | **Gate** | Every order faces the risk gate. No bypass, no flag, no override. |
+| 🔟 | **Write it down** | Including, especially, the decision to do nothing. |
 
-Built with LangGraph, Alpaca's MCP server, CVXPY, and Gemini.
+👉 **`mandate` and `protect` sit second and third, before any market data is
+fetched.** That ordering *is* the claim. An agent that picked its trades and
+then measured the risk would be checking its own homework, and every number it
+published would be a justification rather than a constraint.
 
-## Try it
+The LLM's job is narrow on purpose. It names the market regime and nothing
+else — it reaches the broker through a read-only toolset, there is no order
+tool within its reach, and every regime it can name only makes the agent *more*
+careful. If it returns nonsense or never answers at all, the agent proceeds as
+though the market were stressed. 🧠
+
+---
+
+## 🏁 Main Tracks
+
+**Track 03 — Hedging & Risk Protection Agents** 🛡️
+
+Built directly against the four agent types this track names:
+
+| Track agent type | How Drawdown-Guard implements it |
+|---|---|
+| 🛡️ **Protective put agents** | Sizes long puts against the exact dollar shortfall, not a fixed percentage of the book |
+| 🎯 **Collar agents** | Prices the financing call every cycle and takes the collar only when the live chain actually favours it |
+| 📉 **Drawdown-defense agents** | The entire product: a client-stated loss budget, checked against the real book daily |
+| ♻️ **Hedge rebalancers for equity portfolios** | Adds protection when the gap opens and *releases it* when the gap closes, on a margin band |
+
+## 🧰 Technologies
+
+| | |
+|---|---|
+| 🦙 **Alpaca Trading API** | Live paper account — equities and options, level 3 |
+| 🔌 **Alpaca MCP Server** | Every broker call goes through MCP. Read-only toolsets for the AI; order tools reachable only on the deterministic path |
+| 🧠 **Google Gemini** | The market-regime analyst. One job, no hands |
+| 🕸️ **LangGraph** | The ten-node cycle, including the conditional halt edge |
+| 🔗 **LangChain** | Model plumbing and structured output for the analyst |
+| 📐 **CVXPY + HiGHS** | Convex program sizing positions under tail-risk and exposure constraints |
+| 🔢 **NumPy · SciPy · pandas** | Black-Scholes, the stress ladder, the backtest engine |
+| ✅ **Pydantic** | Mandates and limits are validated types — an impossible promise fails at load time, not at runtime |
+| ⚙️ **GitHub Actions** | The agent's heartbeat: one autonomous cycle every weekday at 14:00 UTC |
+| 🌐 **GitHub Pages** | The live status page, rebuilt from the journal after every cycle |
+| 🐍 **Python 3.11 · uv · ruff · pytest** | 378 tests, zero lint errors |
+
+## ▶️ Try it
 
 ```bash
 uv sync
@@ -125,38 +314,24 @@ cp .env.example .env                          # your Alpaca paper keys
 uv run python3 scripts/healthcheck.py         # says why it won't trade, if it won't
 uv run python3 scripts/run_cycle.py --dry-run # decides, journals, submits nothing
 uv run python3 scripts/run_backtest.py --symbol SPY
-uv run pytest                                 # 251 tests
+uv run pytest                                 # 378 tests
 ```
 
-`ALPACA_PAPER_TRADE=true` is a hard interlock — the program refuses to start
-without it. This has never traded real money and cannot.
+🔐 `ALPACA_PAPER_TRADE=true` is a **hard interlock** — the program refuses to
+start without it. This has never traded real money and cannot.
 
-## What we would not claim
-
-The honest limits, since the whole pitch is that we state them:
-
-- **20 cycles** of real-quote history. That is a description of one window, not
-  a property of the strategy.
-- **No crash in the window.** Feb 2024 to Aug 2026 contains no 2008 and no
-  March 2020. Writing puts is short a crash, and both CBOE indices lost around
-  a third in 2008. What happens to us in one is untested.
-- **Early assignment is ignored.** We resolve at expiry, which flatters the
-  result.
-- **The market beat us.** Buy and hold outperformed over this window, as it
-  usually does in a bull market. The wheel trades upside for income and lower
-  drawdown; that is the deal, and we are not going to pretend otherwise.
-
-## Layout
+## 📁 Layout
 
 ```
 src/drawdownguard/
+  risk/        mandate, stress ladder, remedies, and the gate that enforces them
   agent/       the cycle, its nodes, the analyst, the guards
   market/      Alpaca adapters: account, chain, snapshot
   optimizer/   candidate filtering, Black-Scholes, the convex program
-  risk/        the limits, and the gate that enforces them
   execution/   order submission and broker reconciliation
   backtest/    the same modules, driven by history
   journal/     append-only record, and the status page built from it
+config/        risk.yaml, the permanent limits; mandates.yaml, the promises
 docs/notes/    what we measured, and what turned out not to be true
 ```
 

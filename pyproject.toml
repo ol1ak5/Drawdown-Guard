@@ -1,7 +1,7 @@
 [project]
 name = "drawdownguard"
 version = "0.1.0"
-description = "Autonomous ETF wheel overlay agent on Alpaca paper trading"
+description = "Autonomous drawdown-mandate agent: it keeps the loss promise a portfolio cannot keep by itself"
 readme = "README.md"
 authors = [
     { name = "Olya", email = "ol2ksenova@gmail.com" }

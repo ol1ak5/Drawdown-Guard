@@ -156,16 +156,22 @@ async def test_a_halted_cycle_submits_nothing(journal_dir):
 
 
 async def test_an_empty_chain_produces_no_orders_but_a_full_record(journal_dir):
-    """Skipping is the most common outcome, and it has to read as a decision."""
+    """Doing nothing is the most common outcome, and it has to read as a
+    decision rather than as an absence.
+
+    With no chain there is nothing to price, so no remedy can be chosen and no
+    order can be sent -- and the cycle still writes its entry. A run that
+    stopped without journalling is indistinguishable, a week later, from a run
+    that crashed.
+    """
     final, broker = await run(
         healthy_portfolio(), chain_rows=[], journal_dir=journal_dir
     )
     broker.assert_not_awaited()
-    assert final["candidates"] == []
-    assert final["allocations"] == []
+    assert not final.get("results")
     payload = [e for e in entries(journal_dir) if e["event"] == "cycle.complete"][-1]
     assert payload["payload"]["halted"] is False
-    assert payload["payload"]["candidates"] == 0
+    assert payload["payload"]["submitted"] == 0
 
 
 async def test_a_broker_that_cannot_be_read_halts_rather_than_guesses(journal_dir):
@@ -512,16 +518,6 @@ async def test_a_book_inside_its_budget_is_offered_no_protection(journal_dir):
     )
     assert final["protection"] is None
     assert not [e for e in entries(journal_dir) if e["event"] == "protection.plan"]
-
-
-async def test_symbols_already_holding_a_position_are_not_traded_again(journal_dir):
-    """Route drops anything on HOLD. The wheel writes one contract at a time."""
-    busy = healthy_portfolio(
-        wheels={s: WheelState(symbol=s, leg="PUT_OPEN") for s in SYMBOLS}
-    )
-    final, broker = await run(busy, journal_dir=journal_dir)
-    assert final["actionable"] == []
-    broker.assert_not_awaited()
 
 
 def test_the_wheel_cannot_come_back_into_the_cycle():

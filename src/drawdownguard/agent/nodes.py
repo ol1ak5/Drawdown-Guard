@@ -1,4 +1,4 @@
-"""The ten nodes of one trading cycle.
+"""The seven nodes of one trading cycle.
 
 The plan asked for one file per node. They are together here because they are
 one sequence over one state type, each is a dozen lines, and ten files whose
@@ -7,10 +7,9 @@ same function with import statements between the paragraphs. The boundaries
 that matter are enforced by the state, not by the filesystem: a node returns a
 partial update and can touch nothing else.
 
-Order: reconcile, mandate, protect, snapshot, regime, route, candidates,
-optimize, execute, journal. A halt after reconcile jumps straight to the
-journal, because a cycle that stopped and said nothing is indistinguishable
-from one that crashed.
+Order: reconcile, mandate, protect, snapshot, regime, execute, journal. A
+halt after reconcile jumps straight to the journal, because a cycle that
+stopped and said nothing is indistinguishable from one that crashed.
 
 The first three run before any market data is fetched, and that is the argument
 of the whole project rather than an accident of wiring. The agent finds out what
@@ -18,8 +17,6 @@ it already owes the client, and what it would take to make good on it, before it
 is allowed to look at what it might like to buy.
 """
 
-from datetime import date
-from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -30,8 +27,6 @@ from drawdownguard.execution.orders import submit_order
 from drawdownguard.journal import writer
 from drawdownguard.market.client import get_account, get_positions
 from drawdownguard.market.features import build_snapshot
-from drawdownguard.optimizer.candidates import build_candidates
-from drawdownguard.optimizer.model import optimize
 from drawdownguard.risk.book import to_book
 from drawdownguard.risk.limits import load_limits
 from drawdownguard.risk.mandate import load_mandate
@@ -44,7 +39,6 @@ from drawdownguard.risk.remedy import (
     release,
 )
 from drawdownguard.risk.stress import gap_at, ladder, unhedged_limit, worst_gap
-from drawdownguard.wheel import next_action
 
 STRATEGY_PATH = Path("config/strategy.yaml")
 
@@ -280,7 +274,7 @@ async def protect_node(state: GuardState) -> GuardState:
         return GuardState(released=given, protection_gap=gap)
 
     # Imported here rather than at module scope for the same reason
-    # `candidates_node` does it: the name is resolved at call time, so a test
+    # `snapshot_node` does it: the name is resolved at call time, so a test
     # patching `drawdownguard.market.chain.load_chain` reaches this node too. A
     # top-level import would bind the real function before any patch was applied
     # and the test would exercise the network it meant to replace.
@@ -463,113 +457,7 @@ async def regime_node(state: GuardState) -> GuardState:
     return GuardState(regime=regime, regime_rationale=rationale)
 
 
-# --- 6. route ---------------------------------------------------------------
-
-
-async def route_node(state: GuardState) -> GuardState:
-    """Which symbols have something to do this cycle.
-
-    A symbol with a position already open returns HOLD and is dropped. This is
-    where the wheel decides put or call — from the leg it is on, not from any
-    model's opinion.
-    """
-    wheels = state.get("wheels") or {}
-    actionable = [
-        symbol
-        for symbol in state.get("snapshots", {})
-        if next_action(wheels.get(symbol) or _resting(symbol)) != "HOLD"
-    ]
-    return GuardState(actionable=actionable)
-
-
-def _resting(symbol: str):
-    from drawdownguard.domain import WheelState
-
-    return WheelState(symbol=symbol)
-
-
-# --- 7. candidates ----------------------------------------------------------
-
-
-async def candidates_node(state: GuardState) -> GuardState:
-    """Build the tradable set for every actionable symbol.
-
-    The delta band comes from the regime. Nothing here chooses a strike: it
-    filters to the contracts that are choices at all, and the optimizer picks
-    among them.
-    """
-    from drawdownguard.market.chain import load_chain
-
-    config = strategy()
-    band = config["target_delta"][state.get("regime", "calm")]
-    limits = load_limits()
-    wheels = state.get("wheels") or {}
-    today = date.today()
-
-    candidates = []
-    for symbol in state.get("actionable", []):
-        snapshot = state["snapshots"][symbol]
-        wheel = wheels.get(symbol) or _resting(symbol)
-        right = "P" if next_action(wheel) == "SELL_PUT" else "C"
-        try:
-            rows = await load_chain(
-                symbol, right, config["dte"]["min"], config["dte"]["max"], today
-            )
-        except Exception as exc:  # noqa: BLE001
-            writer.write(
-                "chain.failed", {"symbol": symbol, "detail": str(exc)}, severity="info"
-            )
-            continue
-
-        # Never write a call below what the shares cost. The premium is not
-        # worth locking in a loss on the stock.
-        if right == "C" and wheel.basis is not None:
-            rows = [r for r in rows if r["strike"] >= wheel.basis]
-
-        candidates.extend(
-            build_candidates(
-                chain_rows=rows,
-                spot=snapshot.spot,
-                symbol=symbol,
-                right=right,
-                as_of=today,
-                limits=limits,
-                returns=snapshot.returns,
-                target_delta=(band["min"], band["max"]),
-            )
-        )
-    return GuardState(candidates=candidates)
-
-
-# --- 8. optimize ------------------------------------------------------------
-
-
-async def optimize_node(state: GuardState) -> GuardState:
-    """Choose how many of what to sell. Allocating nothing is a valid answer."""
-    portfolio = state.get("portfolio")
-    candidates = state.get("candidates") or []
-    if portfolio is None or not candidates:
-        return GuardState(allocations=[])
-
-    config = strategy()
-    limits = load_limits()
-    multiplier = config["size_multiplier"][state.get("regime", "calm")]
-    budget = (
-        portfolio.equity
-        * Decimal(str(limits.max_deployed_pct / 100))
-        * Decimal(str(multiplier))
-    )
-    allocations = optimize(
-        candidates=candidates,
-        portfolio=portfolio,
-        limits=limits,
-        capital_budget=budget,
-        cvar_limit=float(portfolio.equity) * CVAR_PCT / 100,
-    )
-    return GuardState(allocations=[a for a in allocations if a.contracts > 0])
-
-
-# --- 9. execute -------------------------------------------------------------
+# --- 6. execute -------------------------------------------------------------
 
 
 async def execute_node(state: GuardState) -> GuardState:
@@ -631,7 +519,7 @@ async def execute_node(state: GuardState) -> GuardState:
     return GuardState(results=results)
 
 
-# --- 10. journal -------------------------------------------------------------
+# --- 7. journal -------------------------------------------------------------
 
 
 async def journal_node(state: GuardState) -> GuardState:
@@ -653,9 +541,6 @@ async def journal_node(state: GuardState) -> GuardState:
             "net_delta": portfolio.net_delta if portfolio else None,
             "net_delta_value": portfolio.net_delta_value if portfolio else None,
             "vega": portfolio.vega if portfolio else None,
-            "actionable": state.get("actionable", []),
-            "candidates": len(state.get("candidates") or []),
-            "allocations": len(state.get("allocations") or []),
             "submitted": sum(1 for r in state.get("results", []) if r.submitted),
             "refused": sum(1 for r in state.get("results", []) if not r.submitted),
             "protection_gap": state.get("protection_gap", 0.0),

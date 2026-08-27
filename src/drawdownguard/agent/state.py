@@ -15,8 +15,6 @@ from typing import TypedDict
 from drawdownguard.domain import Portfolio, Regime, WheelState
 from drawdownguard.execution.orders import OrderResult
 from drawdownguard.market.features import MarketSnapshot
-from drawdownguard.optimizer.candidates import Candidate
-from drawdownguard.optimizer.model import Allocation
 from drawdownguard.risk.book import Book
 from drawdownguard.risk.remedy import Release, Remedy
 from drawdownguard.risk.stress import Rung
@@ -56,9 +54,6 @@ class GuardState(TypedDict, total=False):
     protection_options: list[Remedy]
     regime: Regime
     regime_rationale: str
-    actionable: list[str]
-    candidates: list[Candidate]
-    allocations: list[Allocation]
     results: list[OrderResult]
     discrepancies: list[str]
     halted: bool
@@ -86,9 +81,6 @@ def initial_state(dry_run: bool = False) -> GuardState:
         protection_options=[],
         regime="calm",
         regime_rationale="",
-        actionable=[],
-        candidates=[],
-        allocations=[],
         results=[],
         discrepancies=[],
         halted=False,

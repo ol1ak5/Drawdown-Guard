@@ -31,9 +31,6 @@ def main() -> int:
     refused = sum(1 for r in state.get("results", []) if not r.submitted)
     print(f"regime      : {state.get('regime')}")
     print(f"halted      : {state.get('halted')} {state.get('halt_reason', '')}".strip())
-    print(f"actionable  : {', '.join(state.get('actionable') or []) or 'none'}")
-    print(f"candidates  : {len(state.get('candidates') or [])}")
-    print(f"allocations : {len(state.get('allocations') or [])}")
     print(f"submitted   : {submitted}")
     print(f"refused     : {refused}")
     for result in state.get("results", []):
