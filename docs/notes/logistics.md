@@ -56,7 +56,7 @@ Paper-only accounts need no funding and no KYC, and are available worldwide.
 | Reset | no longer exists; delete the account and create a new one |
 | API base URL | `https://paper-api.alpaca.markets` |
 | API keys | generated per account; the secret is displayed once only |
-| Options level | Level 1 covers covered calls and cash-secured puts, which is this entire strategy. **Verified 2026-08-22: the paper account is granted Level 3**, two levels more than we use. |
+| Options level | **Level 2 is the minimum.** Level 1 permits only selling covered calls and cash-secured puts; Level 2 adds *buying* calls and puts, which is what a protective put is and therefore what this entire strategy is. Level 3 adds multi-leg orders — the collar is sent as two single-leg orders, so nothing here needs it. **Verified 2026-08-22: the paper account is granted Level 3**, and Alpaca grants Level 3 to paper accounts automatically. `healthcheck.py` refuses below Level 2. |
 
 **Planned accounts:**
 

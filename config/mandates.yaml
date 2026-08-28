@@ -81,7 +81,15 @@ balanced:
   description: >
     Generate income while keeping the risk being sold from collapsing into a
     single factor.
-  universe: [SPY, QQQ, IWM, TLT]
+  # What this client's book may hold. SPY and QQQ came off the list when the
+  # account moved to 100,000: at 770 and 720 a share, no position small enough
+  # to fit the account is a whole multiple of the hundred shares an option
+  # contract covers, so every hedge on them would overshoot by half.
+  #
+  # Declared, and currently not enforced anywhere -- `Mandate` checks only that
+  # it is non-empty. It is kept accurate so the profile describes the book it
+  # actually governs rather than one it used to.
+  universe: [IWM, XLF, AAPL, TLT]
   max_deployed_pct: 60.0
   target_delta: {min: 0.15, max: 0.30}
   max_concentration_pct: 90.0

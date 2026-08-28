@@ -111,12 +111,19 @@ def _group(positions: list[dict]) -> dict[str, dict]:
 
 
 def _broker_leg(holding: dict) -> Leg:
-    """What the broker's positions say the position's leg is."""
-    for _position, occ in holding["options"]:
-        if occ["right"] == "P":
-            return "PUT_OPEN"
-        if occ["right"] == "C":
-            return "CALL_OPEN"
+    """What the broker's positions say the position's leg is.
+
+    A collar is a put and a call on one underlying, and `Leg` has no name for
+    both. The put wins, deliberately and not merely by arriving first: the
+    broker returns positions in whatever order it likes, and reading the leg
+    off that order made one portfolio reconcile two different ways on two
+    mornings. Between the floor and the ceiling, the floor is the promise.
+    """
+    rights = {occ["right"] for _position, occ in holding["options"]}
+    if "P" in rights:
+        return "PUT_OPEN"
+    if "C" in rights:
+        return "CALL_OPEN"
     return "SHARES" if holding["shares"] > 0 else "CASH"
 
 
@@ -140,21 +147,30 @@ def _adopt_wholesale(
     is left as None rather than guessed: the covered-call floor is computed
     from it, and a fabricated basis would let the agent write calls below what
     it actually paid for the shares.
+
+    Basis is kept whenever the shares are still there, which is the question it
+    is an answer to. It used to be kept by leg instead, and `PUT_OPEN` was not
+    on the list -- so the agent buying a protective put against the client's
+    own shares moved the leg from `SHARES` to `PUT_OPEN`, found no ordinary
+    transition for it, and discarded the cost basis of shares that had not
+    moved. The number cannot be recovered from a position listing, and the
+    thing it protects against is writing a call below what the shares cost.
     """
     contracts = [_adopt(position, occ) for position, occ in holding["options"]]
+    keeps_shares = holding["shares"] > 0
     updated = state.model_copy(
         update={
             "leg": leg,
             "shares": holding["shares"],
             "contracts": contracts,
-            "basis": state.basis if leg in ("SHARES", "CALL_OPEN") else None,
+            "basis": state.basis if keeps_shares else None,
         }
     )
     note = (
         f"{state.symbol}: local {state.leg} but broker shows {leg}; "
         f"adopted the broker's view"
     )
-    if updated.basis is None and leg in ("SHARES", "CALL_OPEN"):
+    if updated.basis is None and keeps_shares:
         note += " with no basis, which cannot be recovered from a position"
     return updated, note
 

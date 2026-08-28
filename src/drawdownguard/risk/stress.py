@@ -148,7 +148,7 @@ class Rung:
     protected_by_options: float
 
     @property
-    def gap(self) -> float:
+    def shortfall(self) -> float:
         """How far past the promise this scenario takes the portfolio.
 
         Zero when the mandate holds. Positive is the dollars of protection the
@@ -158,7 +158,7 @@ class Rung:
 
     @property
     def breached(self) -> bool:
-        return self.gap > 0
+        return self.shortfall > 0
 
 
 def ladder(
@@ -193,19 +193,19 @@ def ladder(
     return rungs
 
 
-def worst_gap(rungs: list[Rung]) -> Rung | None:
+def worst_shortfall(rungs: list[Rung]) -> Rung | None:
     """The rung that breaches the mandate by the most, or None if none do.
 
     Reported, but not what the agent acts on — see `gap_at`.
     """
     breaches = [r for r in rungs if r.breached]
-    return max(breaches, key=lambda r: r.gap) if breaches else None
+    return max(breaches, key=lambda r: r.shortfall) if breaches else None
 
 
 def gap_at(rungs: list[Rung], shock: float) -> Rung | None:
     """The rung at one specific shock: the one the mandate actually promises.
 
-    THE REASON THIS EXISTS RATHER THAN JUST `worst_gap`
+    THE REASON THIS EXISTS RATHER THAN JUST `worst_shortfall`
     ----------------------------------------------------
     The deepest rung essentially always breaches. At a 10% budget, holding the
     promise through a 35% shock means capping equity exposure at 28.6% of
@@ -289,7 +289,7 @@ def gap_within(
     """
     low, high = min(promise, 0.0), max(promise, 0.0)
     shocks = tuple(sorted({low, high, *bends(options, low, high)}))
-    return max(ladder(holdings, options, budget, shocks), key=lambda r: r.gap)
+    return max(ladder(holdings, options, budget, shocks), key=lambda r: r.shortfall)
 
 
 def worst_loss(

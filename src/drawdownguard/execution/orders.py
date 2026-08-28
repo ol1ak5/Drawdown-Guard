@@ -24,18 +24,22 @@ holds short options is worse than one that never opened them.
 """
 
 from datetime import date
+from decimal import Decimal
 
 from pydantic import BaseModel
 
 from drawdownguard.domain import Portfolio, ProposedOrder
 from drawdownguard.mcp.alpaca_client import call_tool
-from drawdownguard.risk.gate import closes_a_short, veto
+from drawdownguard.risk.gate import closes_a_long, closes_a_short, veto
 from drawdownguard.risk.limits import Limits
 
 # From docs/notes/mcp-tools.md, read off the running server. Options accept no
 # time in force other than "day".
 ORDER_TOOL = "place_option_order"
 TIME_IN_FORCE = "day"
+
+# Read back by the key this program minted, not the one the broker returned.
+FILL_TOOL = "get_order_by_client_id"
 
 
 class OrderResult(BaseModel):
@@ -44,6 +48,21 @@ class OrderResult(BaseModel):
     occ_symbol: str
     broker_order_id: str | None = None
     client_order_id: str | None = None
+    # Whether the gate let this through, which is a different question from
+    # whether it reached the broker. A dry run and a broker timeout both leave
+    # `submitted` False on an order the gate approved, and only the caller
+    # knows which -- so the verdict is carried rather than inferred from the
+    # reason string.
+    approved: bool = True
+    # What the broker did with it, filled in by `confirm`. `submitted` means
+    # the order was accepted, which is not the same as bought: an option order
+    # is a day limit, and a limit priced at the ask when the decision was made
+    # sits unfilled the moment the ask ticks up. Until these are read back, a
+    # cycle reporting "submitted 2" is reporting that it asked, not that the
+    # client is protected.
+    filled_qty: int = 0
+    filled_avg_price: Decimal | None = None
+    broker_status: str | None = None
 
 
 def idempotency_key(order: ProposedOrder, today: date | None = None) -> str:
@@ -90,8 +109,17 @@ def _position_intent(order: ProposedOrder, portfolio: Portfolio | None) -> str:
     This used to read `buy_to_close` for every purchase, which was true while
     the only thing the agent ever bought was its own short. A protective put
     sent that way asks the broker to close a position that does not exist.
+
+    A sale is not one action either, and for a while only the buy side knew it.
+    Writing a put opens a short; handing back a protective put the account owns
+    closes a long. `remedy.closing_orders` produces the second, and sending it
+    as `sell_to_open` asks the broker to open a fresh naked short while leaving
+    the original long in place -- the exact opposite of handing protection
+    back, and on a rejected order, no handback at all.
     """
     if order.contracts < 0:
+        if portfolio is not None and closes_a_long(order, portfolio):
+            return "sell_to_close"
         return "sell_to_open"
     if portfolio is not None and closes_a_short(order, portfolio):
         return "buy_to_close"
@@ -143,6 +171,58 @@ def _broker_order_id(payload: object) -> str | None:
     return None
 
 
+async def confirm(result: OrderResult) -> OrderResult:
+    """Ask the broker what actually happened to an order it accepted.
+
+    WHY THIS EXISTS
+    ---------------
+    `submitted` has always meant "the broker took it", and the cycle reported
+    that number as though it meant the client was protected. Those are not the
+    same thing and on 2026-08-28 they came apart in the ordinary way: two
+    protective puts were accepted at limits set to the ask at the moment of the
+    decision, the ask ticked up a few cents, and both sat unfilled until the
+    close. The journal said `submitted: 2`, the account held no options, and
+    nothing in the record connected the two facts.
+
+    Options are day orders, so an unfilled limit does not survive to the next
+    morning and shows up in no position listing -- the same property the
+    idempotency key is built on. Which means the only moment this can be
+    observed is now, in the cycle that sent it.
+
+    Read by `client_order_id` rather than the broker's id, because that key is
+    derived from the order itself and is the one thing guaranteed to exist even
+    if the response shape changes.
+
+    A failure to read back is not a failure of the order. The order may well
+    have filled; what is unknown is the outcome, and the result says so rather
+    than downgrading a fill to a refusal.
+    """
+    if not result.submitted or not result.client_order_id:
+        return result
+
+    try:
+        payload = await call_tool(
+            FILL_TOOL, {"client_order_id": result.client_order_id}
+        )
+    except Exception as exc:  # noqa: BLE001 — an unread fill is not a failed order
+        return result.model_copy(update={"broker_status": f"unread: {exc}"})
+
+    body = payload.get("data", payload) if isinstance(payload, dict) else {}
+    if not isinstance(body, dict):
+        return result.model_copy(update={"broker_status": "unread: no order returned"})
+    body = body.get("result", body)
+
+    filled = body.get("filled_qty")
+    price = body.get("filled_avg_price")
+    return result.model_copy(
+        update={
+            "filled_qty": int(Decimal(str(filled))) if filled is not None else 0,
+            "filled_avg_price": Decimal(str(price)) if price is not None else None,
+            "broker_status": str(body.get("status") or "unknown"),
+        }
+    )
+
+
 async def submit_order(
     order: ProposedOrder,
     portfolio: Portfolio,
@@ -158,7 +238,9 @@ async def submit_order(
 
     verdict = veto(order, portfolio, limits)
     if not verdict.approved:
-        return OrderResult(submitted=False, reason=verdict.reason, occ_symbol=occ)
+        return OrderResult(
+            submitted=False, reason=verdict.reason, occ_symbol=occ, approved=False
+        )
 
     if dry_run:
         return OrderResult(

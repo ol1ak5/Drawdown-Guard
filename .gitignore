@@ -25,3 +25,9 @@ graphify-out/
 # HALT`, commit, push, and the next scheduled run stops before doing
 # anything. Ignoring it would make the file local-only and the switch
 # would silently do nothing in the environment it exists for.
+
+# Tool caches. Not committed for the same reason __pycache__ is not: they are
+# rebuilt from the source beside them and say nothing a reader needs.
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/

@@ -126,7 +126,7 @@ async def run(
         patch("drawdownguard.journal.writer.JOURNAL_DIR", journal_dir),
         patch(
             "drawdownguard.execution.orders.call_tool",
-            new=AsyncMock(return_value={"data": {"id": "abc-123"}}),
+            new=AsyncMock(return_value=BROKER_FILLED),
         ) as broker,
     ):
         final = await build_graph().ainvoke(initial_state())
@@ -227,7 +227,7 @@ async def test_the_gap_is_measured_before_the_market_is_looked_at(journal_dir):
     # 600,000 of exposure against a 100,000 budget. Shares have no floor, so
     # the worst is losing all 600,000 and the gap is the 500,000 the budget
     # does not cover -- not the 20,000 that a -20% probe used to report.
-    assert final["protection_gap"] == pytest.approx(500_000, abs=1)
+    assert final["uncovered_risk"] == pytest.approx(500_000, abs=1)
     assert final["book_complete"] is True
 
     stress = [e for e in entries(journal_dir) if e["event"] == "mandate.stress"]
@@ -244,8 +244,8 @@ async def test_the_gap_is_measured_before_the_market_is_looked_at(journal_dir):
     # milder than the number the agent acts on -- 110,000 at -35% against a
     # worst case of 600,000 -- because a rung is one price and the gap is
     # every price. Both are published; only one decides.
-    assert payload["worst_gap"] < payload["gap"]
-    assert payload["gap_at_binding_shock"] == pytest.approx(20_000, abs=1)
+    assert payload["worst_shortfall"] < payload["uncovered_risk"]
+    assert payload["shortfall_at_shock"] == pytest.approx(20_000, abs=1)
 
 
 async def test_a_book_inside_its_budget_reports_no_gap(journal_dir):
@@ -272,11 +272,11 @@ async def test_a_book_inside_its_budget_reports_no_gap(journal_dir):
         }
     ]
     final, _ = await run(healthy_portfolio(), journal_dir=journal_dir, positions=inside)
-    assert final["protection_gap"] == 0.0
+    assert final["uncovered_risk"] == 0.0
     stress = [e for e in entries(journal_dir) if e["event"] == "mandate.stress"][-1]
     assert stress["severity"] == "info"
-    assert stress["payload"]["gap"] == 0.0
-    assert stress["payload"]["worst_gap"] == 0.0
+    assert stress["payload"]["uncovered_risk"] == 0.0
+    assert stress["payload"]["worst_shortfall"] == 0.0
     assert stress["payload"]["worst_case"] == pytest.approx(80_000, abs=1)
 
 
@@ -285,7 +285,7 @@ async def test_a_broker_that_cannot_list_positions_stops_the_cycle(journal_dir):
 
     This used to continue on the reasoning that the risk limits downstream were
     unaffected -- true of a strategy that sells, false of one that measures a
-    book. Returning an empty state left `protection_gap` at its initial 0.0 and
+    book. Returning an empty state left `uncovered_risk` at its initial 0.0 and
     `book_complete` at True, so a cycle that read nothing came out
     byte-identical to a healthy one and the status page republished yesterday's
     numbers as today's.
@@ -337,6 +337,19 @@ def chain_row(
 # enough to fund it. Together they make all three remedies available, which is
 # what lets a test about *choosing* mean anything.
 CHAIN = [chain_row(440, 3.90, 4.00, "P"), chain_row(540, 5.00, 5.10, "C")]
+
+# One payload answers both calls the execute node makes: placing the order,
+# which wants an id back, and reading the fill, which wants a status and a
+# quantity. `filled_qty` is deliberately larger than any order these tests
+# send, so a test asserting "this reached the broker" gets `order.filled`.
+BROKER_FILLED = {
+    "data": {
+        "id": "abc-123",
+        "status": "filled",
+        "filled_qty": "99",
+        "filled_avg_price": "1.00",
+    }
+}
 
 EXPOSED = [
     {"symbol": "SPY", "qty": "1200", "current_price": "500", "avg_entry_price": "500"}
@@ -413,7 +426,7 @@ async def test_the_remedy_that_was_declined_is_recorded_too(journal_dir):
     assert set(priced) == {"protective_put", "collar"}
     assert plan["payload"]["excluded"] == ["reduce_exposure"]
     assert len(only_sleeve(plan)["offers"]) == 2
-    assert all(o["closes_the_gap"] for o in priced.values())
+    assert all(o["covers_the_risk"] for o in priced.values())
 
     # The two prices in the two units they are actually paid in, plus the terms
     # of the financing that decided between them.
@@ -548,7 +561,7 @@ async def test_a_chain_that_cannot_be_read_leaves_the_gap_open_and_says_so(journ
     failed = [e for e in written if e["event"] == "protection.chain_unreadable"]
     assert failed and failed[-1]["severity"] == "breach"
     assert final["protection"] == []
-    assert final["protection_gap"] == pytest.approx(500_000, abs=1)
+    assert final["uncovered_risk"] == pytest.approx(500_000, abs=1)
     assert final["halted"] is False, "one bad chain is not a reason to stop"
 
 
@@ -639,3 +652,212 @@ async def test_the_halt_file_stops_the_cycle_and_still_journals(journal_dir, tmp
     broker.assert_not_awaited()
     complete = [e for e in entries(journal_dir) if e["event"] == "cycle.complete"]
     assert complete and complete[-1]["payload"]["halted"] is True
+
+
+def occ_for(strike: int, expiry: date, right: str = "P") -> str:
+    """The OCC symbol the book parses a held leg out of."""
+    return f"SPY{expiry:%y%m%d}{right}{int(strike * 1000):08d}"
+
+
+async def test_a_handback_that_closes_the_gap_still_reaches_the_broker(journal_dir):
+    """The path that had no order on it, and the journal that said it did.
+
+    A redundant release keeps headroom at or above the margin by construction,
+    which is to say it leaves the worst case inside the budget -- so `gap <= 0`
+    is the ordinary outcome of handing protection back, not a corner. That
+    return carried `released` and the journal line saying "executed": True, and
+    dropped the orders that would have executed it. `execute` then read the
+    empty list the state was initialised with and sent nothing, so the puts
+    stayed in the account while the record said they had gone.
+    """
+    # Eight hundred shares behind twelve puts: the shape the third day of the
+    # scenario produces, where the client sold stock and the hedge bought
+    # against the larger book is now bigger than the book it stands behind.
+    # Four contracts are redundant, and the eight that remain still hold the
+    # promise with room to spare -- which is exactly why `gap` comes out zero.
+    expiry = date.today() + timedelta(days=28)
+    over_protected = [
+        {
+            "symbol": "SPY",
+            "qty": "800",
+            "current_price": "500",
+            "avg_entry_price": "500",
+        },
+        {
+            "symbol": occ_for(440, expiry),
+            "qty": "12",
+            "current_price": "4.00",
+            "avg_entry_price": "4.00",
+        },
+    ]
+    final, _ = await run(
+        healthy_portfolio(),
+        chain_rows=CHAIN,
+        journal_dir=journal_dir,
+        positions=over_protected,
+    )
+
+    released = [e for e in entries(journal_dir) if e["event"] == "protection.released"]
+    assert released, "twelve puts behind eight hundred shares is four to give back"
+    assert released[-1]["payload"]["executed"] is True
+
+    # The state carries the orders out of `protect`...
+    assert final["release_orders"], "the orders were priced and then dropped"
+    # ...and `execute` actually sent them.
+    sent = [e for e in entries(journal_dir) if e["event"] == "order.filled"]
+    assert sent, "a handback reported as executed has to have reached the broker"
+    assert any(e["payload"]["contracts"] < 0 for e in sent)
+
+
+async def test_a_dry_run_is_not_journalled_as_a_refusal(journal_dir):
+    """The gate runs before `dry_run` is looked at, so an order that reaches
+    the dry-run check was approved and then deliberately not sent.
+
+    It used to be written as `order.refused` at severity `veto` -- the same
+    record a genuine rejection leaves -- and the status page reads that
+    severity as "rejected", so a clean dry run displayed two approved orders in
+    red. Three outcomes, three names.
+    """
+    # The shares have to actually be held, or `_permitted_purpose` refuses the
+    # put for standing behind nothing -- which is a real refusal and would be
+    # the wrong thing for this test to be measuring.
+    holds_the_shares = healthy_portfolio(
+        positions={
+            "SPY": Position(symbol="SPY", leg="SHARES", shares=1200),
+            **{s: Position(symbol=s) for s in SYMBOLS if s != "SPY"},
+        }
+    )
+    with (
+        patch(
+            "drawdownguard.agent.nodes.get_account",
+            new=AsyncMock(return_value=(holds_the_shares, [])),
+        ),
+        patch(
+            "drawdownguard.agent.nodes.get_positions",
+            new=AsyncMock(return_value=EXPOSED),
+        ),
+        patch(
+            "drawdownguard.market.chain.load_chain",
+            new=AsyncMock(
+                side_effect=lambda s, r, *a, **k: [
+                    row for row in CHAIN if row.get("right", r) == r
+                ]
+            ),
+        ),
+        patch("drawdownguard.journal.writer.JOURNAL_DIR", journal_dir),
+        patch("drawdownguard.execution.orders.call_tool", new=AsyncMock()) as broker,
+    ):
+        await build_graph().ainvoke(initial_state(dry_run=True))
+
+    broker.assert_not_awaited()
+    written = entries(journal_dir)
+
+    simulated = [e for e in written if e["event"] == "order.simulated"]
+    assert simulated, "a dry run has to leave a record of what it would have sent"
+    assert all(e["severity"] == "info" for e in simulated)
+    assert all("dry run" in e["payload"]["reason"] for e in simulated)
+
+    refused = [e for e in written if e["event"] == "order.refused"]
+    assert not refused, "unexpected refusals: " + "; ".join(
+        f"{e['payload']['occ_symbol']} x{e['payload']['contracts']}: "
+        f"{e['payload']['reason']}"
+        for e in refused
+    )
+
+
+async def test_a_dry_run_still_reports_a_real_refusal_as_one(journal_dir):
+    """The other half, and the reason the verdict is carried rather than
+    inferred from `dry_run`.
+
+    The gate runs *before* the dry-run check, so an order refused during a dry
+    run was genuinely refused. Reading "not submitted, and this was a dry run"
+    as "simulated" would hide exactly the finding a dry run is performed to
+    surface -- here, a put bought against shares the client does not own.
+    """
+    with (
+        patch(
+            "drawdownguard.agent.nodes.get_account",
+            new=AsyncMock(return_value=(healthy_portfolio(), [])),  # holds no shares
+        ),
+        patch(
+            "drawdownguard.agent.nodes.get_positions",
+            new=AsyncMock(return_value=EXPOSED),
+        ),
+        patch(
+            "drawdownguard.market.chain.load_chain",
+            new=AsyncMock(
+                side_effect=lambda s, r, *a, **k: [
+                    row for row in CHAIN if row.get("right", r) == r
+                ]
+            ),
+        ),
+        patch("drawdownguard.journal.writer.JOURNAL_DIR", journal_dir),
+        patch("drawdownguard.execution.orders.call_tool", new=AsyncMock()) as broker,
+    ):
+        await build_graph().ainvoke(initial_state(dry_run=True))
+
+    broker.assert_not_awaited()
+    refused = [e for e in entries(journal_dir) if e["event"] == "order.refused"]
+    assert refused, "the gate refused this and the journal has to say so"
+    assert all(e["severity"] == "veto" for e in refused)
+    assert not [e for e in entries(journal_dir) if e["event"] == "order.simulated"]
+
+
+async def test_an_order_the_market_walked_away_from_is_not_reported_as_bought(
+    journal_dir,
+):
+    """The failure this cycle could not previously describe.
+
+    An option order is a day limit priced at the ask the decision was made on.
+    On 2026-08-28 two protective puts were accepted, the ask moved a few cents
+    while the cycle was still running, and both sat unfilled until the close.
+    The journal said `submitted: 2` and the account held no options -- and
+    nothing in the record connected those two facts.
+
+    Accepted is now read back and reported as what it is: working, not bought,
+    and a breach because the book is still over its budget.
+    """
+    accepted_unfilled = {
+        "data": {
+            "id": "abc-123",
+            "status": "new",
+            "filled_qty": "0",
+            "filled_avg_price": None,
+        }
+    }
+    holds_the_shares = healthy_portfolio(
+        positions={"SPY": Position(symbol="SPY", leg="SHARES", shares=1200)}
+    )
+    with (
+        patch(
+            "drawdownguard.agent.nodes.get_account",
+            new=AsyncMock(return_value=(holds_the_shares, [])),
+        ),
+        patch(
+            "drawdownguard.agent.nodes.get_positions",
+            new=AsyncMock(return_value=EXPOSED),
+        ),
+        patch(
+            "drawdownguard.market.chain.load_chain",
+            new=AsyncMock(
+                side_effect=lambda s, r, *a, **k: [
+                    row for row in CHAIN if row.get("right", r) == r
+                ]
+            ),
+        ),
+        patch("drawdownguard.journal.writer.JOURNAL_DIR", journal_dir),
+        patch(
+            "drawdownguard.execution.orders.call_tool",
+            new=AsyncMock(return_value=accepted_unfilled),
+        ),
+    ):
+        await build_graph().ainvoke(initial_state())
+
+    written = entries(journal_dir)
+    working = [e for e in written if e["event"] == "order.working"]
+    assert working, "an accepted order that bought nothing has to say so"
+    assert all(e["severity"] == "breach" for e in working), (
+        "the promise is still broken, which is what breach is for"
+    )
+    assert all(e["payload"]["filled"] == 0 for e in working)
+    assert not [e for e in written if e["event"] == "order.filled"]

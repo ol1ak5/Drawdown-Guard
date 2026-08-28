@@ -29,12 +29,18 @@ def _stress(**overrides):
         "downside_budget_pct": 10.0,
         "budget": 100000.0,
         "equity_exposure": 600000.0,
-        "gap": 20000.0,
+        "uncovered_risk": 20000.0,
         "ladder": [
-            {"shock": -0.05, "loss": -30000.0, "from_options": 0, "gap": 0.0},
-            {"shock": -0.10, "loss": -60000.0, "from_options": 0, "gap": 0.0},
-            {"shock": -0.20, "loss": -120000.0, "from_options": 0, "gap": 20000.0},
-            {"shock": -0.35, "loss": -210000.0, "from_options": 0, "gap": 110000.0},
+            {"shock": -0.05, "loss": -30000.0, "from_options": 0, "shortfall": 0.0},
+            {"shock": -0.10, "loss": -60000.0, "from_options": 0, "shortfall": 0.0},
+            {
+                "shock": -0.20, "loss": -120000.0,
+                "from_options": 0, "shortfall": 20000.0,
+            },
+            {
+                "shock": -0.35, "loss": -210000.0,
+                "from_options": 0, "shortfall": 110000.0,
+            },
         ],
     }
     payload.update(overrides)
@@ -54,7 +60,7 @@ def _plan(**overrides):
     """A `protection.plan` line: one sleeve, hedged on its own underlying."""
     payload = {
         "mandate": "balanced",
-        "gap": 20287.0,
+        "uncovered_risk": 20287.0,
         "total_premium": 8272.0,
         "sleeves": [
             {
@@ -71,8 +77,8 @@ def _plan(**overrides):
                         "premium_cost": 8272.0,
                         "forgone_upside": 0.0,
                         "protection_iv": 0.228,
-                        "gap_after": 0.0,
-                        "closes_the_gap": True,
+                        "uncovered_after": 0.0,
+                        "covers_the_risk": True,
                     }
                 ],
             }
@@ -347,15 +353,21 @@ def test_the_promise_is_stated_in_the_client_s_own_terms():
 
 
 def test_a_broken_promise_is_labelled_as_broken():
+    """Named as risk, not as a shortfall.
+
+    The figure is `worst_case - budget`, so on a bare equity book it is most of
+    the portfolio -- 20,000 here and 72,000 on the live account. "Short by"
+    reads as money that has to be found, and it is closed by a few thousand of
+    premium. What it measures is risk nobody has agreed to carry."""
     html = render_site([_stress()], [], datetime(2026, 8, 25, 14, 5))
-    assert "short by $20,000" in html
+    assert "$20,000 of risk not covered" in html
 
 
 def test_a_promise_that_holds_says_so_rather_than_showing_a_zero():
     """Zero dollars of shortfall is a number. "The promise holds" is the
     sentence a client is owed, and a page that only prints figures makes them
     do the interpreting."""
-    intact = _stress(gap=0.0)
+    intact = _stress(uncovered_risk=0.0)
     html = render_site([intact], [], datetime(2026, 8, 25, 14, 5))
     assert "the promise holds" in html
 
@@ -403,3 +415,70 @@ def test_a_page_built_before_any_cycle_has_run_says_so():
     html = render_site([], [], datetime(2026, 8, 25, 14, 5))
     assert "No cycle has measured the promise yet." in html
     assert "No ladder has been measured yet." in html
+
+
+def test_a_breach_is_not_rendered_as_an_approval():
+    """`breach` is the one severity that means the client's promise broke.
+
+    The map held only `veto` and `defect`, and everything else fell through to
+    the default -- so the stress ladder reporting a broken promise wore the
+    same badge as a routine fill, on the page built to surface exactly that.
+    """
+    line = {
+        "timestamp": "2026-08-25T14:02:11+00:00",
+        "drawdownguard_env": "dev",
+        "event": "mandate.stress",
+        "severity": "breach",
+        "payload": {"symbol": "SPY", "uncovered_risk": 20362.56},
+    }
+    assert entry_from_journal(line)["verdict"] == "breach"
+
+
+def test_a_breach_row_is_findable_and_filterable():
+    html = render_site(
+        [_entry(verdict="breach", action="mandate.stress")],
+        [],
+        datetime(2026, 8, 25, 14, 5),
+    )
+    assert 'class="breach"' in html
+    assert 'data-verdict="breach"' in html
+    assert '<option value="breach">' in html
+
+
+def test_a_still_market_costs_nothing_on_the_floor_slider():
+    """The slider starts at 0% and the measured ladder starts at -5%.
+
+    Anything milder than the shallowest rung used to return that rung's loss,
+    so dragging to "if the market falls 0%" reported the loss at -5% -- a book
+    that had not moved, shown as down thirty thousand dollars.
+    """
+    import json as _json
+    import re
+    import shutil
+    import subprocess
+
+    import pytest
+
+    if not shutil.which("node"):
+        pytest.skip("node is needed to run the page's own script")
+
+    html = render_site([_stress()], [], datetime(2026, 8, 25, 14, 5))
+    found = re.search(r"function lossAt\(shock\) \{.*?\n  \}", html, re.S)
+    assert found, "lossAt is no longer in the page under that name"
+
+    harness = (
+        "var rungs=[{shock:-0.05,loss:30000},{shock:-0.10,loss:60000},"
+        "{shock:-0.20,loss:120000}];\n"
+        + found.group(0)
+        + "\nconsole.log(JSON.stringify("
+        "[lossAt(0),lossAt(-0.025),lossAt(-0.05),lossAt(-0.15)]));"
+    )
+    out = subprocess.run(
+        ["node", "-e", harness], capture_output=True, text=True, check=True
+    )
+    flat, halfway, measured, between = _json.loads(out.stdout)
+
+    assert flat == 0
+    assert halfway == 15000  # straight line from flat to the first rung
+    assert measured == 30000  # the measured rung itself is untouched
+    assert between == 90000  # and so is every segment between two rungs

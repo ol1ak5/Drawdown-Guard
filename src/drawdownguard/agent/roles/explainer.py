@@ -70,11 +70,11 @@ def render_facts(decision: dict[str, Any]) -> str:
         f"client's mandate: {decision.get('mandate', 'unknown')}",
         f"downside budget: {_money(decision.get('budget'))}",
         f"equity exposure: {_money(decision.get('exposure'))}",
-        f"shortfall against the promise: {_money(decision.get('gap'))}",
+        f"risk not covered by the promise: {_money(decision.get('uncovered_risk'))}",
         f"action taken: {decision.get('describe', 'nothing')}",
         f"cash cost: {_money(decision.get('premium_cost'))}",
         f"upside given up: {_money(decision.get('forgone_upside'))}",
-        f"shortfall remaining afterwards: {_money(decision.get('gap_after'))}",
+        f"risk not covered afterwards: {_money(decision.get('uncovered_after'))}",
     ]
     rejected = decision.get("rejected") or []
     for other in rejected:

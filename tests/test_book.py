@@ -10,7 +10,7 @@ from decimal import Decimal
 import pytest
 
 from drawdownguard.risk.book import CASH_LIKE, to_book
-from drawdownguard.risk.stress import ladder, worst_gap
+from drawdownguard.risk.stress import ladder, worst_shortfall
 
 
 def share(symbol: str, qty: int, price: str) -> dict:
@@ -140,8 +140,8 @@ def test_the_demonstration_book_breaches_at_twenty_and_holds_at_ten():
     by_shock = {r.shock: r for r in rungs}
     assert by_shock[-0.10].breached is False
     assert by_shock[-0.20].breached is True
-    assert by_shock[-0.20].gap == pytest.approx(19_967, abs=50)
-    assert worst_gap(rungs).shock == -0.35
+    assert by_shock[-0.20].shortfall == pytest.approx(19_967, abs=50)
+    assert worst_shortfall(rungs).shock == -0.35
 
 
 def test_three_puts_close_the_gap_the_book_actually_has():

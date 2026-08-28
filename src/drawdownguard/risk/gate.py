@@ -4,6 +4,8 @@ Checks run most-severe first and short-circuit, so the reason returned is
 always the most serious violation rather than an arbitrary one.
 """
 
+from decimal import Decimal
+
 from drawdownguard.domain import SHARES_PER_CONTRACT, Portfolio, ProposedOrder, Verdict
 from drawdownguard.risk.limits import Limits
 
@@ -45,6 +47,77 @@ def short_quantity(order: ProposedOrder, portfolio: Portfolio) -> int:
 def closes_a_short(order: ProposedOrder, portfolio: Portfolio) -> bool:
     """Whether this purchase buys back a short the account already carries."""
     return short_quantity(order, portfolio) > 0
+
+
+def long_quantity(order: ProposedOrder, portfolio: Portfolio) -> int:
+    """How many of this exact contract the account holds long. Zero if none."""
+    position = portfolio.positions.get(order.symbol)
+    if position is None:
+        return 0
+    return sum(
+        leg.contracts
+        for leg in position.contracts
+        if not leg.is_short
+        and leg.right == order.right
+        and leg.strike == order.strike
+        and leg.expiry == order.expiry
+    )
+
+
+def closes_a_long(order: ProposedOrder, portfolio: Portfolio) -> bool:
+    """Whether this sale hands back a long the account already carries.
+
+    The whole sale, not part of it. A sale larger than the long opens a short
+    for the surplus, and calling that "closing" is how a naked position gets
+    through a check written to allow a handback.
+    """
+    if order.is_purchase:
+        return False
+    return long_quantity(order, portfolio) >= abs(order.contracts)
+
+
+def opening_contracts(order: ProposedOrder, portfolio: Portfolio) -> int:
+    """How much of a sale actually opens a short. Zero when it only closes.
+
+    `ProposedOrder` cannot answer this alone -- a sale of a put is a written
+    put or a handback of one already owned, and the two are the same symbol,
+    side and size. Only the book tells them apart, so the book is asked here
+    and the answer is used by every check that prices an obligation.
+    """
+    if order.is_purchase:
+        return 0
+    return max(abs(order.contracts) - long_quantity(order, portfolio), 0)
+
+
+def capital_at_risk(order: ProposedOrder, portfolio: Portfolio) -> Decimal:
+    """What this order commits, counting only the part that opens something.
+
+    `ProposedOrder.capital_at_risk` charges every sale the whole strike,
+    because a written put must be able to buy the shares. A handback buys
+    nothing: the contracts leave the account and the capital they tied up comes
+    back. Charging it anyway made the release of three 560 puts read as a
+    168,000 position -- 56% of a 300,000 account against a 25% cap -- so the
+    concentration limit refused the order that was giving capital back.
+
+    A written *call* commits no cash either, and for a different reason:
+    `ProposedOrder.collateral` says so in its own docstring -- "calls are
+    collateralised by shares" -- but `capital_at_risk` reached for that number
+    anyway. `_must_not_be_naked` has already refused any call the shares do not
+    cover, so a call arriving here is covered by stock the book is holding and
+    the ladder is already counting. Charging it the strike as well counts the
+    same position twice and calls the second copy new risk.
+
+    It is not theoretical: the collar's financing leg on a 1,200 share book is
+    twelve contracts at 540, which reads as 648,000 against a 25% cap and is
+    refused. The put leg is not, so the cycle bought the expensive half of a
+    collar and was denied the half that pays for it.
+    """
+    if order.is_purchase:
+        return order.debit
+    opening = opening_contracts(order, portfolio)
+    if order.right == "C":
+        return Decimal("0")
+    return order.strike * opening * SHARES_PER_CONTRACT
 
 
 def _permitted_purpose(
@@ -132,11 +205,25 @@ def _must_not_be_naked(
         return Verdict.approve()
 
     position = portfolio.positions.get(order.symbol)
-    quantity = abs(order.contracts)
+
+    # Selling back a contract the account already owns creates no obligation.
+    # The contracts leave the account and there is nothing left to secure, so
+    # only the surplus past what is held opens a short and only the surplus is
+    # collateralised.
+    #
+    # This check used to read the whole order. `remedy.closing_orders` prices a
+    # handback as a sale of a long put, so releasing 3x SPY 440 asked for
+    # 132,000 of free cash to close a position that was already paid for --
+    # and a client holding their money in shares does not have it. The release
+    # the cycle had computed, journalled and reported as executed was vetoed
+    # here for being a naked put it was the opposite of.
+    opening = opening_contracts(order, portfolio)
+    if opening <= 0:
+        return Verdict.approve()
 
     if order.right == "C":
         held = position.shares if position else 0
-        required = quantity * SHARES_PER_CONTRACT
+        required = opening * SHARES_PER_CONTRACT
         if held < required:
             return Verdict.reject(
                 f"naked call: {held} shares of {order.symbol} held, "
@@ -144,7 +231,7 @@ def _must_not_be_naked(
             )
         return Verdict.approve()
 
-    required_cash = order.collateral
+    required_cash = order.strike * opening * SHARES_PER_CONTRACT
     if portfolio.cash < required_cash:
         return Verdict.reject(
             f"put is not cash-secured: {required_cash} of cash required, "
@@ -176,7 +263,7 @@ def _position_concentration(
 ) -> Verdict:
     if portfolio.equity <= 0:
         return Verdict.reject("equity is zero or negative")
-    pct = float(order.capital_at_risk / portfolio.equity * 100)
+    pct = float(capital_at_risk(order, portfolio) / portfolio.equity * 100)
     if pct > limits.max_position_pct:
         return Verdict.reject(
             f"position size {pct:.1f}% of equity exceeds the per-instrument "
@@ -191,7 +278,9 @@ def _total_deployed(
     if portfolio.equity <= 0:
         return Verdict.reject("equity is zero or negative")
     pct = float(
-        (portfolio.deployed + order.capital_at_risk) / portfolio.equity * 100
+        (portfolio.deployed + capital_at_risk(order, portfolio))
+        / portfolio.equity
+        * 100
     )
     if pct > limits.max_deployed_pct:
         return Verdict.reject(

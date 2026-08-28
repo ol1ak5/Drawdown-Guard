@@ -31,10 +31,10 @@ class GuardState(TypedDict, total=False):
     positions: dict[str, Position]
     portfolio: Portfolio | None
     # What today's book loses at each published shock, and by how much the
-    # worst of them breaks the client's promise. `protection_gap` is dollars,
+    # worst of them breaks the client's promise. `uncovered_risk` is dollars,
     # zero when the mandate holds.
     ladder: list[Rung]
-    protection_gap: float
+    uncovered_risk: float
     # False when a held position could not be priced, so the ladder above is
     # missing a leg. Carried into the journal rather than dropped: a gap
     # computed from an incomplete book is a weaker claim and has to read as one.
@@ -59,6 +59,13 @@ class GuardState(TypedDict, total=False):
     # nothing could send it, so the journal reported a handback while the puts
     # stayed in the account.
     release_orders: list
+    # The facts `journal` hands the language model. Assembled in `protect`,
+    # where they exist, and spent in `journal`, after the orders have gone.
+    # The model used to be called in `protect` itself, between choosing a
+    # strike and sending the order priced off it -- forty-one seconds in which
+    # the ask moved and the limit was left behind. Prose about a settled
+    # decision has no business preceding the trade it describes.
+    narration: dict
     results: list[OrderResult]
     discrepancies: list[str]
     halted: bool
@@ -77,12 +84,13 @@ def initial_state(dry_run: bool = False) -> GuardState:
         positions={},
         portfolio=None,
         ladder=[],
-        protection_gap=0.0,
+        uncovered_risk=0.0,
         book_complete=True,
         book=None,
         released=None,
         protection=[],
         release_orders=[],
+        narration={},
         results=[],
         discrepancies=[],
         halted=False,

@@ -188,3 +188,58 @@ def test_several_symbols_are_reconciled_independently():
     assert state["SPY"].leg == "SHARES"
     assert state["IWM"].leg == "CASH"
     assert len(discrepancies) == 1
+
+
+LONG_PUT = OpenContract(
+    occ_symbol="SPY260918P00560000",
+    right="P",
+    strike=Decimal("560"),
+    expiry=date(2026, 9, 18),
+    contracts=3,
+    premium=Decimal("20.68"),
+)
+
+
+def test_buying_protection_does_not_erase_what_the_shares_cost():
+    """The agent's own protective put used to discard the client's cost basis.
+
+    Local said SHARES, the broker says PUT_OPEN once the hedge is on, and no
+    ordinary transition explains that pair -- so it fell to the wholesale
+    adoption, which kept the basis only for SHARES and CALL_OPEN. The shares
+    never moved. Basis cannot be recovered from a position listing, and the
+    covered-call floor is computed from it.
+    """
+    local = {
+        "SPY": Position(
+            symbol="SPY", leg="SHARES", shares=400, basis=Decimal("612.40")
+        )
+    }
+    state, _ = reconcile(
+        local, [shares("SPY", 400), option("SPY260918P00560000", 3, "20.68")]
+    )
+
+    assert state["SPY"].leg == "PUT_OPEN"
+    assert state["SPY"].shares == 400
+    assert state["SPY"].basis == Decimal("612.40")
+
+
+def test_a_collar_reconciles_the_same_way_whatever_order_the_broker_lists_it():
+    """`Leg` has no name for a put and a call at once, so one has to win.
+
+    It used to be whichever the broker happened to return first, which made one
+    portfolio reconcile two different ways on two mornings -- and on the put
+    branch it also dropped the basis.
+    """
+    local = {
+        "SPY": Position(
+            symbol="SPY", leg="SHARES", shares=400, basis=Decimal("612.40")
+        )
+    }
+    put = option("SPY260918P00560000", 3, "20.68")
+    call = option("SPY260918C00900000", -3, "39.20")
+
+    put_first, _ = reconcile(local, [shares("SPY", 400), put, call])
+    call_first, _ = reconcile(local, [shares("SPY", 400), call, put])
+
+    assert put_first["SPY"].leg == call_first["SPY"].leg == "PUT_OPEN"
+    assert put_first["SPY"].basis == call_first["SPY"].basis == Decimal("612.40")

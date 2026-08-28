@@ -8,7 +8,12 @@ real orders to prove it does not place real orders is not a test.
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
-from drawdownguard.execution.orders import _order_arguments, submit_order
+from drawdownguard.execution.orders import (
+    OrderResult,
+    _order_arguments,
+    confirm,
+    submit_order,
+)
 from tests.test_risk_gate import LIMITS, portfolio
 from tests.test_risk_gate import order as make_order
 
@@ -191,3 +196,121 @@ def test_the_symbol_is_a_well_formed_occ_symbol():
     assert decoded is not None
     assert decoded["strike"] == Decimal("560")
     assert decoded["right"] == "P"
+
+
+def test_a_sale_is_not_one_action_either_and_the_book_decides_which():
+    """The mirror of the buy-side case above, which was fixed alone.
+
+    Writing a put opens a short; handing back a protective put the account
+    owns closes a long. Sent as `sell_to_open`, a handback asks the broker to
+    open a fresh naked short and leaves the original long in place -- twice the
+    position, and no protection given back.
+    """
+    from datetime import date
+
+    from drawdownguard.domain import OpenContract, Position
+
+    owned = OpenContract(
+        occ_symbol="SPY260828P00560000",
+        right="P",
+        strike=Decimal("560"),
+        expiry=date(2026, 8, 28),
+        contracts=2,
+        premium=Decimal("2.35"),
+    )
+    owns_the_put = portfolio(
+        positions={"SPY": Position(symbol="SPY", contracts=[owned])}
+    )
+    handback = _order_arguments(make_order(contracts=-2), "id", owns_the_put)
+    assert handback["side"] == "sell"
+    assert handback["position_intent"] == "sell_to_close"
+
+    writing = _order_arguments(make_order(contracts=-2), "id", portfolio())
+    assert writing["side"] == "sell"
+    assert writing["position_intent"] == "sell_to_open"
+
+
+FILLED = {
+    "_alpaca_mcp_security": {"trust": "untrusted_tool_output"},
+    "data": {
+        "id": "abc-123",
+        "status": "filled",
+        "qty": "2",
+        "filled_qty": "2",
+        "filled_avg_price": "2.41",
+    },
+}
+
+WORKING = {
+    "_alpaca_mcp_security": {"trust": "untrusted_tool_output"},
+    "data": {
+        "id": "abc-123",
+        "status": "new",
+        "qty": "2",
+        "filled_qty": "0",
+        "filled_avg_price": None,
+    },
+}
+
+
+async def test_a_fill_is_read_back_rather_than_assumed():
+    """`submitted` means the broker took it, which is not the same as bought."""
+    accepted = OrderResult(
+        submitted=True, reason="submitted", occ_symbol="SPY", client_order_id="k"
+    )
+    with patch(
+        "drawdownguard.execution.orders.call_tool",
+        new=AsyncMock(return_value=FILLED),
+    ):
+        done = await confirm(accepted)
+    assert done.filled_qty == 2
+    assert done.filled_avg_price == Decimal("2.41")
+    assert done.broker_status == "filled"
+
+
+async def test_an_accepted_order_that_did_not_fill_says_so():
+    """The case that made this necessary.
+
+    Two protective puts were accepted at limits set to the ask at the moment of
+    the decision, the ask moved a few cents, and both sat unfilled until the
+    close. The cycle reported `submitted: 2` and the account held no options.
+    """
+    accepted = OrderResult(
+        submitted=True, reason="submitted", occ_symbol="SPY", client_order_id="k"
+    )
+    with patch(
+        "drawdownguard.execution.orders.call_tool",
+        new=AsyncMock(return_value=WORKING),
+    ):
+        done = await confirm(accepted)
+    assert done.submitted is True, "the order was accepted; that part is true"
+    assert done.filled_qty == 0, "and it bought nothing"
+    assert done.broker_status == "new"
+
+
+async def test_a_fill_that_cannot_be_read_is_not_downgraded_to_a_failure():
+    """The order may well have filled. What is unknown is the outcome, and an
+    unreadable answer must not be recorded as a refusal."""
+    accepted = OrderResult(
+        submitted=True, reason="submitted", occ_symbol="SPY", client_order_id="k"
+    )
+    with patch(
+        "drawdownguard.execution.orders.call_tool",
+        new=AsyncMock(side_effect=RuntimeError("gateway timeout")),
+    ):
+        done = await confirm(accepted)
+    assert done.submitted is True
+    assert done.approved is True
+    assert "unread" in done.broker_status
+
+
+async def test_nothing_is_read_back_for_an_order_that_never_went():
+    """A refused or dry-run order has no broker state to ask about."""
+    refused = OrderResult(
+        submitted=False, reason="naked call", occ_symbol="SPY", approved=False
+    )
+    with patch("drawdownguard.execution.orders.call_tool", new=AsyncMock()) as broker:
+        done = await confirm(refused)
+    broker.assert_not_awaited()
+    assert done.filled_qty == 0
+    assert done.broker_status is None

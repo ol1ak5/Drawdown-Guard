@@ -38,6 +38,20 @@ FULL_SESSION_CLOSE = "16:00"
 # per-instrument share of capital on the cheapest instrument in the universe.
 MIN_EQUITY = 25_000.0
 
+# Level 2 permits buying calls and puts. Level 1 permits only selling covered
+# calls and cash-secured puts.
+#
+# This agent buys protective puts -- that is the entire product -- so Level 1
+# is not a reduced version of it, it is a version that can never place the one
+# order the mandate exists to place. The account notes claimed Level 1 was
+# enough, which was true of the options wheel this used to be and stopped being
+# true the day the strategy became buying protection.
+#
+# Checked here rather than discovered at the broker, because a rejected order
+# looks like a market problem in the journal and this is an account setting.
+# Level 3 adds multi-leg orders; nothing here builds one, so it is not needed.
+MIN_OPTIONS_LEVEL = 2
+
 
 class Failure(Exception):
     """Something is wrong. Worth a red build and an email."""
@@ -101,6 +115,13 @@ async def check_account(session) -> str:
     equity = float(account.get("equity", 0))
     if equity < MIN_EQUITY:
         raise Failure(f"equity {equity:,.0f} is below the {MIN_EQUITY:,.0f} floor")
+
+    level = account.get("options_trading_level")
+    if level is None or int(level) < MIN_OPTIONS_LEVEL:
+        raise Failure(
+            f"options level {level} cannot buy a put; this agent needs at least "
+            f"level {MIN_OPTIONS_LEVEL}"
+        )
 
     # Deliberately not reported: buying_power. It is four times equity on this
     # account and nothing may size against it. See market/client.py.

@@ -66,7 +66,7 @@ failing, and the days it flips are the days it earns its keep. And when either
 volatility is missing the rule declines to sell -- an unmeasurable trade in the
 client's upside is not one to take on the grounds that it looked cheap.
 
-WHY `gap_after` IS RECOMPUTED, NOT ESTIMATED
+WHY `uncovered_after` IS RECOMPUTED, NOT ESTIMATED
 ---------------------------------------------
 Every remedy reports the gap it would leave by building the proposed position
 and running the same `ladder()` over it. Nothing here approximates a payoff. If
@@ -143,8 +143,8 @@ class Remedy:
     premium_cost: float
     forgone_upside: float  # dollars of gain given up IF the market rises
     upside_measured_at: float  # the up-move `forgone_upside` is quoted at
-    gap_before: float
-    gap_after: float
+    uncovered_before: float
+    uncovered_after: float
     # The two volatilities the financing decision turns on: what the client is
     # buying, and what the client is selling to pay for it. Both None on a
     # remedy that sells nothing. Either None when the chain did not supply it,
@@ -168,13 +168,13 @@ class Remedy:
     ceiling_pct: float = 0.0
 
     @property
-    def closes_the_gap(self) -> bool:
-        return self.gap_after <= CLOSED_ENOUGH
+    def covers_the_risk(self) -> bool:
+        return self.uncovered_after <= CLOSED_ENOUGH
 
     @property
-    def gap_closed(self) -> float:
+    def risk_covered(self) -> float:
         """Dollars of shortfall this removes. Never negative."""
-        return max(self.gap_before - self.gap_after, 0.0)
+        return max(self.uncovered_before - self.uncovered_after, 0.0)
 
     @property
     def permanent(self) -> bool:
@@ -202,9 +202,9 @@ class Remedy:
         is not standing in. A remedy that costs no cash is not cheap, it is
         priced in something else, and the something else is on the next line.
         """
-        if self.premium_cost <= 0 or self.gap_closed <= 0:
+        if self.premium_cost <= 0 or self.risk_covered <= 0:
             return None
-        return self.premium_cost * 1000 / self.gap_closed
+        return self.premium_cost * 1000 / self.risk_covered
 
     @property
     def upside_price(self) -> float | None:
@@ -251,11 +251,11 @@ class Remedy:
             )
         return (
             f"{self.kind:<17} {self.describe:<44} "
-            f"gap {self.gap_before:,.0f} -> {self.gap_after:,.0f}   {cost}"
+            f"gap {self.uncovered_before:,.0f} -> {self.uncovered_after:,.0f}   {cost}"
         )
 
 
-def _gap(holdings, legs, budget, shock=None) -> float:
+def _uncovered(holdings, legs, budget, shock=None) -> float:
     """What the budget does not cover, anywhere on the way down.
 
     `shock` is accepted and ignored. It is kept so callers reporting a rung
@@ -289,7 +289,7 @@ def _slack(holdings, legs, budget, shock=None) -> float:
     shortfall to close; releasing protection needs to know *how far* inside,
     which is the part `gap` throws away.
 
-    Measured against the whole descent for the same reason `_gap` is. Read at
+    Measured against the whole descent for the same reason `_uncovered` is. Read at
     one shock it would hand back protection the real measure still needs: a
     book holding 800 shares and eight 460 puts has 68,000 of headroom by the
     point measure and 32,000 of true worst case, and releasing on the first
@@ -312,6 +312,33 @@ def _protection_at(leg: OptionLeg, shock: float) -> float:
     9.00 that expires worthless protected nothing; it merely cost 9.00.
     """
     return leg.pnl_at(shock) - leg.pnl_at(0.0)
+
+
+def _sleeve_slack(
+    holdings: list[Holding], legs: list[OptionLeg], budget: float, symbol: str
+) -> float:
+    """Headroom for one symbol, against that symbol's own share of the promise.
+
+    `_slack` reads the whole book, and the whole book cannot see a sleeve going
+    bare. `ladder` moves every holding by one shock, so a sleeve carrying more
+    protection than its shares -- which is ordinary, since contracts come in
+    hundreds -- shows a gain on the way down that offsets a different symbol's
+    loss. Read at book level that reads as headroom, and the headroom is spent
+    releasing the second symbol's protection.
+
+    It is the same cross-subsidy `protect` refuses on the buying side, and the
+    two have to agree. When they did not, the cycle handed back a sleeve's puts
+    because another sleeve was over-hedged and then bought the identical strike
+    back in the same cycle, paying the spread twice to end where it started.
+
+    Symbols the book does not hold have no sleeve and no exposure, so releasing
+    against them is unconstrained.
+    """
+    for held, sleeve, sleeve_budget in sleeves(holdings, budget):
+        if held == symbol:
+            own = [leg for leg in legs if leg.symbol == symbol]
+            return sleeve_budget - worst_loss(sleeve, own)
+    return float("inf")
 
 
 def _without(legs: list[OptionLeg], plan: dict[int, int]) -> list[OptionLeg]:
@@ -580,11 +607,14 @@ def protective_put(
     to the strike plus the premium -- the lowest strike where those two still
     fit the budget is the answer, and it is unique.
 
-    `gap_before` and `gap_after` still quote the mandate's own shock, because
-    that is the number the journal and the status page report and a reader can
-    check by hand. They describe the outcome; they no longer choose it.
+    `uncovered_before` and `uncovered_after` are the whole-descent measure, the
+    same one `solve_for_strike` answers to -- `_uncovered` takes a shock and
+    ignores it. The docstring here used to say they quoted the mandate's named
+    shock, which stopped being true when the two measures were reconciled and
+    was left behind saying otherwise. They describe the outcome; they do not
+    choose it.
     """
-    gap = _gap(holdings, legs, budget, shock)
+    gap = _uncovered(holdings, legs, budget, shock)
     if gap <= 0:
         return None
 
@@ -604,8 +634,8 @@ def protective_put(
         premium_cost=cost,
         forgone_upside=0.0,
         upside_measured_at=0.0,
-        gap_before=gap,
-        gap_after=_gap(holdings, [*legs, leg], budget, shock),
+        uncovered_before=gap,
+        uncovered_after=_uncovered(holdings, [*legs, leg], budget, shock),
         orders=(order_for(symbol, row, count, spot),) if _tradable(row) else (),
         protection_iv=row.get("implied_vol"),
     )
@@ -676,7 +706,7 @@ def collar(
     strike = Decimal(str(row["strike"]))
     call_leg = OptionLeg(symbol, "C", strike, -count, Decimal(str(bid)), spot)
     received = bid * count * SHARES_PER_CONTRACT
-    after = _gap(holdings, [*legs, put_leg, call_leg], budget, shock)
+    after = _uncovered(holdings, [*legs, put_leg, call_leg], budget, shock)
 
     terminal = spot * (1 + up_move)
     forgone = max(terminal - float(strike), 0.0) * count * SHARES_PER_CONTRACT
@@ -691,8 +721,8 @@ def collar(
         premium_cost=protection.premium_cost - received,
         forgone_upside=forgone,
         upside_measured_at=up_move,
-        gap_before=protection.gap_before,
-        gap_after=after,
+        uncovered_before=protection.uncovered_before,
+        uncovered_after=after,
         # Both legs, or neither. A collar that carried only its put would be
         # sent as an unfinanced purchase at a price the client never agreed
         # to; one that carried nothing at all was the bug this replaced --
@@ -730,7 +760,7 @@ def reduce_exposure(
     `forgone_upside` here is unbounded in principle and is quoted the same way
     as the collar's, at a stated up-move, so the three rows compare.
     """
-    gap = _gap(holdings, legs, budget, shock)
+    gap = _uncovered(holdings, legs, budget, shock)
     if gap <= 0:
         return None
 
@@ -753,7 +783,7 @@ def reduce_exposure(
     ]
     # The proceeds do not vanish; they sit in cash, which does not move.
     reduced.append(Holding("CASH", int(sell * holding.price), 1.0, shocked=False))
-    after = _gap(reduced, legs, budget, shock)
+    after = _uncovered(reduced, legs, budget, shock)
     return Remedy(
         kind="reduce_exposure",
         describe=f"sell {sell} shares of {symbol} at {holding.price:.2f}",
@@ -762,8 +792,8 @@ def reduce_exposure(
         premium_cost=0.0,
         forgone_upside=sell * holding.price * 0.10,
         upside_measured_at=0.10,
-        gap_before=gap,
-        gap_after=after,
+        uncovered_before=gap,
+        uncovered_after=after,
     )
 
 
@@ -799,7 +829,7 @@ def choose(offers: list[Remedy]) -> tuple[Remedy | None, str]:
     may never be sold. Which of two option structures is better value this
     Tuesday is not a preference, it is an observation, and the chain makes it.
     """
-    closing = [remedy for remedy in offers if remedy.closes_the_gap]
+    closing = [remedy for remedy in offers if remedy.covers_the_risk]
     if not closing:
         return None, "nothing on today's chain closes the gap"
 
@@ -973,12 +1003,16 @@ def release(
     )
     redundant = False
     for index in rest:
+        symbol = legs[index].symbol
         for count in range(legs[index].contracts, 0, -1):
             kept = _without(legs, {**plan, index: count})
-            if _slack(holdings, kept, budget, shock) >= required:
-                plan[index] = count
-                redundant = True
-                break
+            if _slack(holdings, kept, budget, shock) < required:
+                continue
+            if _sleeve_slack(holdings, kept, budget, symbol) < 0:
+                continue
+            plan[index] = count
+            redundant = True
+            break
 
     if not plan:
         return None

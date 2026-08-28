@@ -42,18 +42,17 @@ For this hackathon, we turn the problem into a concrete situation.
 
 ### Initial settings
 
-Our simulated client has a c. $1,000,000 portfolio that includes: 
-- 80% equity: SPY, QQQ, IWM
-- 15% fixed income: BIL
-- 5% cash
+Our simulated client has a c. $100,000 portfolio that includes:
+- 82% equity: IWM, XLF
+- 9% fixed income: BIL
+- 9% cash
 
-| Ticker | Shares | Entrance price | Total Amount | Exposure | 
-|---|---|---|
-| **SPY** | XXX | Aug 28 | XXX | **$400,000** | Equity exposure |
-| **QQQ** | XXX | Aug 28 | XXX | **$200,000** | Equity exposure |
-| **IWM** | XXX | Aug 28 | XXX | **$200,000** | Equity exposure |
-| **BIL** | XXX | Aug 28 | XXX | **$150,000** | Protection reserve |
-| **Cash** | n.a. | n.a. | n.a. | **$50,000** | liquidity for hedge |
+| Ticker | Shares | Price | Value | Exposure | Description |
+|---|---:|---:|---:|---|---|
+| **IWM** | 100 | 297.61 | **$29,761** | Equity | Small-cap index |
+| **XLF** | 900 | 58.25 | **$52,429** | Equity | Financial sector |
+| **BIL** | 100 | 91.66 | **$9,166** | Fixed income | 1–3 month T-bills |
+| **Cash** | n.a. | n.a. | **$8,644** | Liquidity | Used for the hedge |
 
 ### The promise
 
@@ -61,102 +60,178 @@ The client's mandate is simple:
 
 > *“In the worst case, I can tolerate a 10% loss per year.”*
 
-### Just two numbers:**
+### Just two numbers
 
-- 🔟 **10%** — the most the client can lose. $100,000 of a $1,000,000 account.
+- 🔟 **10%** — the most the client can lose. $10,000 of a $100,000 account.
 - 📆 **12 months** — the window that promise has to hold.
 
 ### Activity during the hackathon
 
 The client changes the portfolio mid-flight:
-- Sells 250 shares of IWM on September 1st
-- Buys 130 shares of AAPL on September 3rd
+- Sells the whole XLF position — 900 shares — on September 1st
+- Buys 100 shares of AAPL on September 3rd
 
 | Day | Date | Client does | Agent does |
 |---|---|---|---|
-| Day 1 | Aug 28 | - | Buys the protection - steps in |
-| Day 2 | Aug 31 | - | Checks the portfolio. Still within limit - holds |
-| Day 3 | Sep 1 | Sells 250 IWM | Risk drops - release the now-unnecessary protection |
-| Day 4 | Sep 2 | - | Checks the portfolio. Still within limit - holds |
-| Day 5 | Sep 3 | Buys 130 AAPL | Risk rises again — rebalances protection to match |
-| Day 5 | Sep 4 | - | Checks the portfolio. Confirms the mandate still holds |
+| Day 1 | Aug 28 | - | Buys the protection — steps in |
+| Day 2 | Aug 31 | - | Checks the portfolio. Still within limit — holds |
+| Day 3 | Sep 1 | Sells 900 XLF | Risk drops — hands back all nine XLF puts |
+| Day 4 | Sep 2 | - | Checks the portfolio. Still within limit — holds |
+| Day 5 | Sep 3 | Buys 100 AAPL | Risk rises again — hedges the new holding on its own underlying |
+| Day 6 | Sep 4 | - | Checks the portfolio. Confirms the mandate still holds |
 
 The portfolio is intentionally not static. A client who never touches their allocation isn't the point. That gives Drawdown Guard a real job: it keep the changing portfolio aligned with a fixed risk mandate.
 
 ## ⚙️ How the agent actually works
 
-Seven steps, once every weekday, fully autonomous.
+Seven steps, once every weekday, fully autonomous. Five of them are nodes in
+the LangGraph cycle; the stress ladder runs inside **Mandate** and the risk
+gate runs inside **Execute**, because a gate that can be skipped by taking a
+different path is not a gate.
 
-| # | Step | The agent does|
-|---|---|---|
-| 1️⃣ | **Reconcile** | Asks the broker what is actually held in the portfolio - never assumes |
-| 2️⃣ | **Mandate** | Turns the client's tolerance into a live dollar budget |
-| 3️⃣ | **Stresso** | Runs the book through a range of market drops, finds the gap |
-| 4️⃣ | **Protects** | Solves for the cheapest hedge that closes the gap, sleeve by sleeve |
-| 5️⃣ | **Gates** | Checks every order against hard limits before it can reach the broker |
-|  | **Executes** | Sends the approved orders and confirms the fills |
-|  | **Journal** | Writes down what happened and why, in plain language, with LLM |
+| # | Step | The agent does | Where it lives |
+|---|---|---|---|
+| 1️⃣ | **Reconcile** | Asks the broker what is actually held — never assumes | `reconcile` node |
+| 2️⃣ | **Mandate** | Turns the client's tolerance into a live dollar budget | `mandate` node |
+| 3️⃣ | **Stress** | Runs the book down the whole descent and measures the uncovered risk | inside `mandate` |
+| 4️⃣ | **Protect** | Solves for the cheapest hedge that covers it, sleeve by sleeve | `protect` node |
+| 5️⃣ | **Gate** | Checks every order against hard limits before it can reach the broker | inside `execute` |
+| 6️⃣ | **Execute** | Sends the approved orders, then reads back what the broker actually did with each | `execute` node |
+| 7️⃣ | **Journal** | Writes down what happened and why, in plain language, with an LLM | `journal` node |
 
 ### 1. Reconcile
-The cycle starts by reading the client's account, not by trusting what the agent thought it owned yesterday. Every number is computed from what's actually there this morning.
 
-### 2. Mandate
-The client's sentence becomes a dollar figure: **10% of $1,006,000 = $100,589**. That is the whole downside budget, and nothing the agent does may spend more of it than the client agreed to.
+The cycle starts by reading the client's account, not by trusting what the
+agent thought it owned yesterday. Assignment and expiry happen overnight
+without asking anyone, and the only evidence is that the broker's positions no
+longer match the agent's record. Every number below is computed from what is
+actually there this morning.
 
-### 3. Stress-scenario
+### 2. Mandate — the budget
 
-The agent stresses the book across a range of hypothetical drops:
+The client's sentence becomes a dollar figure:
+
+```
+10% × $100,000  =  $10,000
+       └── the reference ──┘
+```
+
+**The reference does not move.** It is the account value on the day the promise
+started, written down once and held for the whole twelve months.
+
+This matters more than it looks. A budget of "10% of whatever the account is
+worth this morning" is not a promise — it is a promise that re-bases. Lose ten
+percent and tomorrow the agent defends ten percent of the smaller number, then
+ten percent of the one after that. Five steps of that permits a **47% loss** and
+reports every one of them as kept. Worse, the budget shrinks fastest exactly
+when a fall has already begun, so the agent would buy *less* protection
+precisely as it became most necessary.
+
+A high-water mark was the other candidate and was rejected for a different
+reason: it moves when the market makes a new high, so the agent would re-strike
+its hedge because prices went **up**. This project's whole claim is that it
+never acts on where the market is going. One place where it does is enough to
+lose the argument.
+
+### 3. Stress — the ladder, and the risk
+
+The agent prices the book at four published shocks, the same four every day:
 
 | If the market falls | The portfolio loses | Budget | Verdict |
-|---|---|---|---|
-| −5% | $30,208 | $100,589 | ✅ inside the promise |
-| −10% | $60,415 | $100,589 | ✅ inside the promise |
-| −20% | $120,831 | $100,589 | 🚨 **$20,287 past it** |
-| −35% | $211,454 | $100,589 | 🚨 **$110,865 past it** |
-| −50% | $302,077 | $100,589 | 🚨 **$201,488 past it** |
+|---|---:|---:|---|
+| −5% | $4,110 | $10,000 | ✅ inside the promise |
+| −10% | $8,219 | $10,000 | ✅ inside the promise |
+| −20% | $16,438 | $10,000 | 🚨 **$6,438 past it** |
+| −35% | $28,766 | $10,000 | 🚨 **$18,766 past it** |
 
-**This is not a forecast.** The agent doesn't say the market will fall 20%. It says: *if it did, this book would break a promise that was already made.*
+The rungs are fixed and published on purpose. A ladder that moved with the
+market would let a bad day quietly redefine what "safe" means.
 
-### 4. Protects
+**This is not a forecast.** The agent does not say the market will fall 20%. It
+says: *if it did, this book would break a promise that was already made.*
 
-The agent splits the book and the hedge budget by ticker. For each sleeve, it solves one equation against the live option chain:
+## 📏 What "uncovered risk" actually measures
+
+This is the number everything else hangs on, and it is **not** the −20% row
+above. That row is the one a human reads. The number the agent sizes against is
+different, and larger, and the difference is the whole idea.
+
+**Nobody can name the next shock.** Not the client, not the agent. A promise
+that only holds down to a depth somebody guessed is not much of a promise. So
+the agent does not pick a rung. It asks the question that needs no guess:
+
+> What is the most this book can lose, **anywhere on the way down**?
+
+For a book of bare shares, the answer is *everything*. The loss keeps growing
+as the price approaches zero — there is no bottom, so the worst case is the
+entire equity exposure:
 
 ```
-        fall down to the strike   +   premium paid   =   that sleeve's budget
-        └── unprotected drop ──┘      └── certain ──┘
+worst case (unprotected)    $82,190     ← the whole equity sleeve
+downside budget           − $10,000
+─────────────────────────────────────
+uncovered risk              $72,190     ← risk nobody has agreed to carry
 ```
 
-It takes the **lowest strike that still fits**. Go lower and the market has too far to fall before the put engages. Go higher and the client will pay for protection he never asked for.
+That is why the journal reports seventy-two thousand of uncovered risk on a book
+whose −20% shortfall is only $6,438. Both numbers are true and they answer
+different questions. The agent acts on the first one.
 
-### 4. Gate
+**It is deliberately not called a "gap."** This field was named `gap` for most
+of the project's life and the name was doing real damage: a gap reads as money
+that has to be found, and a reader seeing "gap: 72,190" on a $100,000 account
+reasonably concludes something has gone badly wrong. Nothing has. The budget is
+the covered part — $10,000 the client has agreed in advance to absorb — and the
+rest is simply risk nobody has taken responsibility for. It is closed by
+**$4,159 of premium**, which would be impossible if it were a shortfall in
+dollars. The word `shortfall` is reserved for the numbers that really are
+one: `shortfall_at_shock`, and the per-rung `shortfall` inside the ladder.
 
-Every order faces a deterministic risk gate before it ever reaches the broker. It refuses naked shorts, illiquid strikes, and anything past the configured limits - no exceptions, no overrides.
+**Matching puts to shares is what makes the answer finite.** One contract per
+hundred shares, and below the strike every dollar the shares lose is a dollar
+the puts gain. The line stops falling. The worst case becomes a number you can
+write down:
 
-### 4. Execute
+```
+worst case (protected)  =  the fall down to the strike  +  the premium paid
+                           └── unprotected drop ──┘        └── certain ──┘
+```
 
-Approved orders go out, fills get confirmed, and the portfolio's actual position is updated to match what was really bought.
+Both terms move against each other as the strike moves — lower strike, further
+to fall, cheaper premium — so the total is monotonic and the answer is unique.
+The agent takes the **lowest strike that still fits inside the budget**. Go
+lower and the unprotected drop alone spends the promise. Go higher and the
+client pays for protection they never asked for.
 
-### 5. Journal
+A real sleeve, priced on the live chain: XLF at $58.25 with a $6,379 share of
+the budget — its share because it is 900 of the book's shares, and a symbol
+that can lose most of the money is allowed most of the promise.
 
-Every number, every refusal, and every quiet morning goes into an append-only record. An LLM then writes one paragraph explaining the decision, in plain language.
+```
+buy 9 × XLF 54 put @ 2.61
 
+fall to the strike    (58.25 − 54) × 900 shares  =  $3,825
+premium                       2.61 × 9 × 100     =  $2,349
+                                                    ───────
+worst case                                          $6,174   ≤  $6,379  ✅
+```
 
-## 🔗 The Chain of Decision 
+Below $54 the book stops losing. At −20%, at −50%, at whatever comes. **No
+scenario had to be guessed**, and nothing here depends on anyone being right
+about the future.
 
-**1️⃣ How much protection?** Enough that the client's worst case *at any depth*
-is the promised 10% — no more, and pointedly no less.
+> ⚠️ **Note for the demo:** the measure is charged for the hedge's own cost. A
+> hedge sized as though its premium were free comes up short by exactly that
+> premium — which is the amount that has to come out of the same account the
+> promise is written against.
 
-Match the contracts to the shares, and below the strike every dollar lost on
-the portfolio is a dollar gained on the put. The loss stops falling. So the
-worst the client can do is **the drop down to the strike, plus the premium
-paid**, and the agent solves for the strike where those two add to exactly the
-budget. Here that is a strike 9.96% below the market, costing 2.03% of the
-account.
+## 🔗 The chain of decision
 
-That is why nobody has to guess how bad it gets. 🎯 The floor holds at −20%, at
-−35%, at −50%. Protection is a cost, though, and a dollar spent beyond the
-promise is a dollar taken from the client for nothing — so the agent solves for
-the strike rather than rounding up to something that feels safe.
+**1️⃣ How much protection?** Enough that the worst case *at any depth* is the
+promised 10% — no more, and pointedly no less. Protection is a cost, and a
+dollar spent past the promise is a dollar taken from the client for nothing, so
+the agent solves for the strike rather than rounding up to something that feels
+safe.
 
 **2️⃣ What closes it?** Options. The portfolio stays exactly where it is:
 
@@ -206,49 +281,59 @@ grind walks straight past it, and slow grinds are how most real drawdowns
 happen. The client's promise is not about one terrible day; it is about not
 losing 10% of their money, *however slowly it goes*.
 
-So the agent buys protection that outlives the promise, and then leaves it
-alone. 🧘 Long-dated positions held for months — the opposite of churn. An agent
-that reshuffles its hedge every week pays the spread every week, and that bill
-arrives whether or not the crash ever does.
+So the agent buys protection dated **past the end of the promise** — the window
+is the horizon itself out to a year beyond it — and then leaves it alone. 🧘 An
+agent that reshuffles its hedge every week pays the spread every week, and that
+bill arrives whether or not the crash ever does.
 
-**5️⃣ Never let it all expire at once.** 🪜 Protection is bought in a ladder of
-expiries rather than in one lump. If everything matured on the same Friday, the
-agent would be *forced* to buy a year of coverage at whatever price the market
-happened to offer that morning — possibly in the middle of the panic the client
-is paying to be protected from. A ladder means every roll is a small one, and
-no single day can hold the promise hostage.
-
-**6️⃣ Then the agent gives the protection back.** ♻️ When the book returns
+**5️⃣ Then the agent gives the protection back.** ♻️ When the book returns
 inside its budget *with room to spare*, the hedge is released — on a margin,
 not on the line itself, so ordinary daily wobble cannot walk a position across
 the boundary and back while paying the spread each time.
 
+Protection is released in the two senses that differ:
+
+| | What it means | Does the margin apply? |
+|---|---|---|
+| 🪦 **Spent** | The strike no longer reaches. A 440 put behind a stock that rallied to 550 pays nothing at the promised shock — it is not holding the promise up. | No. Removing something worth nothing cannot widen the risk. |
+| 📦 **Redundant** | The protection still pays, but the promise holds without it and with headroom to spare. | Yes — 15% of the budget on the balanced mandate. |
+
 This is the half that most hedging stops at. Protection is easy to buy and
 nobody remembers to sell it, so the client ends up paying for a wall around a
-risk that went away months ago. The gap closing is as much a signal as the gap
-opening.
+risk that went away months ago. **Risk becoming covered is as much a signal as
+risk opening up.**
 
 ### When the agent steps in 🚦
 
 Never on a hunch, and never because it thinks it knows what the market will do
-next. There are exactly three triggers, all of them mechanical, all of them
-slow enough to act on calmly:
+next. The trigger is one line of arithmetic, recomputed every morning:
 
-| | Trigger | Why it opens a gap |
+```
+uncovered_risk = worst_loss(what is held today) − budget      > 0  →  act
+```
+
+Because the budget is fixed and the book is not, there are exactly four ways
+that line can turn positive — all of them mechanical, none of them a market
+call:
+
+| | Trigger | Why it uncovers risk |
 |---|---|---|
-| 📈 | **The portfolio grew** | More equity behind the same promise. The floor has to be re-struck higher. |
-| ⏳ | **The hedge aged** | Time passed, the market moved, and the strike that used to hold the floor no longer does. |
+| 📈 | **The portfolio grew** | More exposure behind the same fixed budget. The floor has to be re-struck. |
+| 🛒 | **The client bought** | New holdings arrive unhedged. Adding protection when a client invests is the unglamorous half of the job. |
+| ⏳ | **The hedge aged** | The market moved and the strike that used to hold the floor no longer reaches it. |
 | 📅 | **Something expired** | Coverage silently ended. Nothing but recomputation notices. |
 
-Not one of these is a market call. They are all arithmetic on what the account
-already holds — which is why the agent trades rarely, deliberately, and can
+And one way it turns negative — the client sold, or the book fell back inside
+its budget — which is the release above.
+
+Not one of these is a forecast. They are all arithmetic on what the account
+already holds, which is why the agent trades rarely, deliberately, and can
 explain every trade it makes without ever claiming to know the future.
 
 ### What the client actually gets 🎁
 
-Eighty contracts — one for every hundred shares — struck 9.96% below the
-market, dated past the client's twelve months, bought on a quiet morning for
-**2.03% of the account**. Here is the same portfolio before and after:
+Contracts matched one for every hundred shares, struck below the market, dated
+past the client's twelve months. Here is the same portfolio before and after:
 
 | If the market falls | Without the agent | With the agent | |
 |---|---:|---:|---|
@@ -260,17 +345,16 @@ market, dated past the client's twelve months, bought on a quiet morning for
 
 **The floor does not care how far the market falls.** Below the strike, every
 dollar the shares lose is a dollar the puts gain, so the line simply stops
-going down — at −20%, at −50%, at whatever comes. No scenario had to be
-guessed, and nothing here depends on anyone being right about the future.
+going down — at −20%, at −50%, at whatever comes.
 
 And read the first row, because it is the honest one. 📏 In a mild dip the
 client is **worse off by the premium** — 6% instead of 4%. That is not a flaw
-to be explained away; that is what insurance is. You pay every year to be
-whole in the year that matters.
+to be explained away; that is what insurance is. You pay every year to be whole
+in the year that matters.
 
 **Name the promise and its window → check the book against it → solve for the
-protection that floors the loss → buy it long, in a ladder → hand it back when
-it is no longer needed.** Every weekday, in writing. 📓
+protection that floors the loss → buy it long → hand it back when it is no
+longer needed.** Every weekday, in writing. 📓
 
 ---
 
@@ -304,21 +388,20 @@ Built directly against the four agent types this track names:
 | 🛡️ **Protective put agents** | Sizes long puts against the exact dollar shortfall, not a fixed percentage of the book |
 | 🎯 **Collar agents** | Prices the financing call every cycle and takes the collar only when the live chain actually favours it |
 | 📉 **Drawdown-defense agents** | The entire product: a client-stated loss budget, checked against the real book daily |
-| ♻️ **Hedge rebalancers for equity portfolios** | Adds protection when the gap opens and *releases it* when the gap closes, on a margin band |
+| ♻️ **Hedge rebalancers for equity portfolios** | Adds protection when risk is uncovered and *releases it* when it no longer is, on a margin band |
 
 ## 🧰 Technologies
 
 | | |
 |---|---|
-| 🦙 **Alpaca Trading API** | Live paper account - equities and options, level 3 |
+| 🦙 **Alpaca Trading API** | Live paper account — equities and options, level 3 |
 | 🔌 **Alpaca MCP Server** | Every broker call goes through MCP. Read-only toolsets for the AI. Order tools reachable only on the deterministic path |
-| 🧠 **Google Gemini** | Writes the plain-language explanation of the drawdown strategy the agent choses today |
-| 🕸️ **LangGraph** | The seven-node cycle, including the conditional halt edge |
+| 🧠 **Google Gemini** | Writes the plain-language explanation of the decision the arithmetic already made |
+| 🕸️ **LangGraph** | The five-node cycle, including the conditional halt edge |
 | 🔗 **LangChain** | Model plumbing and structured output for the analyst |
-| 📐 **CVXPY + HiGHS** | Convex program sizing positions under tail-risk and exposure constraints |
-| 🔢 **NumPy · SciPy · pandas** | Black-Scholes, the stress ladder, the backtest engine |
-| ✅ **Pydantic** | Mandates and limits are validated types - an impossible promise fails at load time, not at runtime |
-| ⚙️ **GitHub Actions** | The agent's heartbeat - one autonomous cycle every weekday at 14:00 UTC |
+| 🔢 **NumPy · SciPy · pandas** | Black-Scholes, the stress ladder, the payoff maths |
+| ✅ **Pydantic** | Mandates and limits are validated types — an impossible promise fails at load time, not at runtime |
+| ⚙️ **GitHub Actions** | The agent's heartbeat — one autonomous cycle every weekday |
 | 🌐 **GitHub Pages** | The live status page, rebuilt from the journal after every cycle |
 | 🐍 **Python 3.11** | The language everything runs on |
 
@@ -329,8 +412,8 @@ uv sync
 cp .env.example .env                          # your Alpaca paper keys
 uv run python3 scripts/healthcheck.py         # says why it won't trade, if it won't
 uv run python3 scripts/run_cycle.py --dry-run # decides, journals, submits nothing
-uv run python3 scripts/run_backtest.py --symbol SPY
-uv run pytest                                 # 378 tests
+uv run python3 scripts/build_site.py          # rebuilds the status page
+uv run pytest
 ```
 
 🔐 `ALPACA_PAPER_TRADE=true` is a **hard interlock** — the program refuses to
@@ -340,17 +423,19 @@ start without it. This has never traded real money and cannot.
 
 ```
 src/drawdownguard/
-  risk/        mandate, stress ladder, remedies, and the gate that enforces them
-  agent/       the cycle, its nodes, the analyst, the guards
-  market/      Alpaca adapters: account, chain, snapshot
-  optimizer/   candidate filtering, Black-Scholes, the convex program
+  risk/        mandate, period, stress ladder, remedies, and the gate
+  agent/       the cycle, its nodes, the roles, the guards
+  market/      Alpaca adapters: account, chain, snapshot, history
+  options/     Black-Scholes pricing and payoff
   execution/   order submission and broker reconciliation
-  backtest/    the same modules, driven by history
+  mcp/         the Alpaca MCP client and its toolsets
   journal/     append-only record, and the status page built from it
 config/        risk.yaml, the permanent limits; mandates.yaml, the promises
-docs/notes/    what we measured, and what turned out not to be true
+               scenario.yaml, the client's week, committed before it runs
+scripts/       run_cycle, healthcheck, build_portfolio, build_site, client_action
+docs/          the published status page
 ```
 
-The backtest imports the live optimizer and the live risk gate instead of
-reimplementing them. That is the whole reason to trust it: a backtest running
-different code from the agent measures a strategy nobody is going to trade.
+The risk gate is imported by the execution path rather than reimplemented
+beside it. That is the whole reason to trust it: a second copy of a limit is a
+limit that will disagree with itself the first time one copy is edited.

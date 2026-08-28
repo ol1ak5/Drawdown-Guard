@@ -321,3 +321,108 @@ def test_every_rejection_carries_a_non_empty_reason(kwargs):
     verdict = veto(order(**kwargs), portfolio(), LIMITS)
     assert verdict.approved is False
     assert verdict.reason.strip() != ""
+
+
+def long_put(contracts: int = 3) -> Position:
+    """Protection the account already owns, at the strike `order()` proposes."""
+    return Position(
+        symbol="SPY",
+        contracts=[
+            OpenContract(
+                occ_symbol="SPY260828P00560000",
+                right="P",
+                strike=Decimal("560"),
+                expiry=date(2026, 8, 28),
+                contracts=contracts,
+                premium=Decimal("2.35"),
+            )
+        ],
+    )
+
+
+def test_handing_back_a_long_put_is_not_an_uncovered_short():
+    """The release path, which this check used to veto for the opposite reason.
+
+    `remedy.closing_orders` prices a handback as a sale, and a sale of a put
+    read as an opening short asks for the whole strike in cash: 560 x 3 x 100
+    is 168,000, which a client holding their money in shares does not have.
+    Nothing is being opened -- the contracts leave the account -- so there is
+    no obligation to secure.
+    """
+    poor = portfolio(cash=Decimal("1000"), positions={"SPY": long_put(3)})
+    assert veto(order(contracts=-3), poor, LIMITS).approved is True
+
+
+def test_selling_more_than_is_held_is_still_collateralised_on_the_surplus():
+    """Only the surplus opens a short, and only the surplus is charged for.
+
+    Holding two and selling five gives back two and writes three. Three at 560
+    is 168,000 of collateral; approving the whole order because part of it
+    closes something would let a naked position through a check written to
+    allow a handback.
+    """
+    holds_two = portfolio(cash=Decimal("1000"), positions={"SPY": long_put(2)})
+    refused = veto(order(contracts=-5), holds_two, LIMITS)
+    assert refused.approved is False
+    assert "cash-secured" in refused.reason
+
+    # Holding two and selling three writes one, and one at 560 is 56,000 --
+    # inside both the cash on hand and the concentration cap, so it passes on
+    # the surplus rather than on the whole order.
+    funded = portfolio(cash=Decimal("200000"), positions={"SPY": long_put(2)})
+    assert veto(order(contracts=-3), funded, LIMITS).approved is True
+
+
+def test_a_written_put_against_nothing_held_is_unchanged():
+    """The rule this check exists for still binds when nothing is being closed."""
+    poor = portfolio(cash=Decimal("1000"))
+    refused = veto(order(contracts=-1), poor, LIMITS)
+    assert refused.approved is False
+    assert "cash-secured" in refused.reason
+
+
+def test_a_covered_call_is_not_charged_the_strike_in_cash():
+    """The collar's financing leg, which the concentration limit used to refuse.
+
+    `collateral` says it plainly -- "calls are collateralised by shares" -- and
+    `_must_not_be_naked` has already refused any call the shares do not cover.
+    A call that reaches the concentration check is therefore backed by stock the
+    book already holds and the ladder already counts. Charging it the strike as
+    well counts that position twice and calls the second copy new risk.
+
+    Twelve contracts at 540 is 648,000, which is 64.8% of this account against a
+    25% cap. The put leg of the collar passed and this one did not, so the cycle
+    bought the expensive half and was denied the half that pays for it.
+    """
+    holder = portfolio(
+        equity=Decimal("1000000"),
+        cash=Decimal("1000000"),
+        peak_equity=Decimal("1000000"),
+        positions={"SPY": Position(symbol="SPY", leg="SHARES", shares=1200)},
+    )
+    covered = order(right="C", strike=Decimal("540"), contracts=-12, delta=0.25)
+    assert veto(covered, holder, LIMITS).approved is True
+
+
+def test_a_call_the_shares_do_not_cover_is_still_refused():
+    """The check above is safe only because this one runs first."""
+    thin = portfolio(
+        equity=Decimal("1000000"),
+        cash=Decimal("1000000"),
+        peak_equity=Decimal("1000000"),
+        positions={"SPY": Position(symbol="SPY", leg="SHARES", shares=300)},
+    )
+    naked = order(right="C", strike=Decimal("540"), contracts=-12, delta=0.25)
+    verdict = veto(naked, thin, LIMITS)
+    assert verdict.approved is False
+    assert "naked call" in verdict.reason
+
+
+def test_a_written_put_is_still_charged_the_whole_strike():
+    """Unchanged, and the reason the call case had to be named rather than the
+    whole sale side loosened: an assigned put has to buy the shares in cash."""
+    poor = portfolio(equity=Decimal("300000"), cash=Decimal("300000"))
+    written = order(right="P", strike=Decimal("560"), contracts=-2)
+    verdict = veto(written, poor, LIMITS)
+    assert verdict.approved is False
+    assert "position size" in verdict.reason

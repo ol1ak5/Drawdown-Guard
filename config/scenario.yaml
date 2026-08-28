@@ -29,7 +29,7 @@
 # alone and letting the journal record the silence.
 
 recorded: 2026-08-27
-account: PA3BER5PHGFO
+account: PA3JMHDY9BSC
 mandate: balanced
 
 days:
@@ -37,9 +37,11 @@ days:
     date: 2026-08-28
     client_action: none
     expect: >
-      The book is equity only and the promise is broken by roughly 20,000. The
-      agent should solve for a strike, buy protection dated past the twelve
-      month horizon, and journal what it cost. This is "when to step in".
+      The book is equity only. Measured down the whole descent the promise is
+      broken by roughly 72,000, and at the published -20% rung by 6,400. The
+      agent should solve for a strike on each sleeve, buy protection dated past
+      the twelve month horizon, and journal what it cost. This is "when to step
+      in".
 
   - day: 2
     date: 2026-08-31
@@ -53,14 +55,19 @@ days:
     date: 2026-09-01
     client_action: sell_equity
     detail:
-      symbol: IWM
-      shares: 250
+      symbol: XLF
+      shares: 900
     expect: >
-      Exposure falls by roughly 75,000, so the protection bought on day one is
-      now larger than the book it stands behind. The agent should hand some of
-      it back. This is "when to release a hedge that is no longer needed", and
-      the trigger is the client's own decision rather than anything the market
-      did.
+      The client leaves the sector entirely. Exposure falls by roughly 52,000,
+      and the nine puts bought on day one now stand behind nothing at all, so
+      every one of them goes back. This is "when to release a hedge that is no
+      longer needed", and the trigger is the client's own decision rather than
+      anything the market did.
+
+      The whole position rather than part of it, deliberately. A partial sale
+      would release some contracts and keep others, which is the same act in a
+      quieter form; selling out makes the handback the entire hedge on that
+      symbol and there is no ambiguity about what the journal should say.
 
   - day: 4
     date: 2026-09-02
@@ -74,13 +81,13 @@ days:
     client_action: buy_equity
     detail:
       symbol: AAPL
-      shares: 200
+      shares: 100
     expect: >
       The client puts part of the cash raised on day three back into the
-      market, in a single stock rather than an index: 200 shares of AAPL at
-      roughly 295, about 59,000. Exposure rises, the same promise now stands
+      market, in a single stock rather than an index: 100 shares of AAPL at
+      roughly 315, about 31,000. Exposure rises, the same promise now stands
       behind a larger book, and the floor has to be re-struck -- the agent
-      should buy more protection.
+      should buy protection on the new holding.
 
       This is "hedge rebalancing", and it is the half most overlays never do.
       Adding protection when a client invests is unglamorous and it is the
@@ -89,13 +96,18 @@ days:
 
       A single stock rather than a fourth index, deliberately. AAPL carries its
       own risk and its own price for insuring it -- around 29% implied
-      volatility against roughly 22% on SPY -- so protecting it costs visibly
-      more per dollar protected, and the journal will say so.
+      volatility against roughly 22% on an index -- so protecting it costs
+      visibly more per dollar protected, and the journal will say so.
 
       It is also the clearest case for hedging each holding on its own
-      underlying. A SPY put pays on SPY; nothing about it responds to an
+      underlying. An IWM put pays on IWM; nothing about it responds to an
       earnings miss at one company. The agent buys AAPL puts against AAPL
       shares, which needs no correlation assumption at all.
+
+      A hundred shares exactly, because a contract covers a hundred and nothing
+      smaller. Ten shares of AAPL could only be hedged by a contract standing
+      behind ten times the position, which is not protection but a bet on the
+      price falling.
 
   - day: 6
     date: 2026-09-04

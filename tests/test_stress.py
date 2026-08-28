@@ -16,8 +16,8 @@ from drawdownguard.risk.stress import (
     gap_within,
     ladder,
     unhedged_limit,
-    worst_gap,
     worst_loss,
+    worst_shortfall,
 )
 
 # 600,000 of equity: 392 SPY at 765, 211 QQQ at 711, 501 IWM at 299.
@@ -60,7 +60,7 @@ def test_a_twenty_percent_shock_breaches_and_the_gap_is_the_overshoot():
     twenty = next(r for r in rungs if r.shock == -0.20)
     expected_loss = -equity_value() * 0.20
     assert twenty.portfolio_loss == pytest.approx(expected_loss)
-    assert twenty.gap == pytest.approx(-expected_loss - BUDGET)
+    assert twenty.shortfall == pytest.approx(-expected_loss - BUDGET)
     assert twenty.breached
 
 
@@ -96,7 +96,7 @@ def test_a_long_put_pays_in_the_shock_and_shrinks_the_gap():
     hedged = ladder(BOOK, [long_put(700, 8.0, contracts=3)], BUDGET)
     bare_20 = next(r for r in bare if r.shock == -0.20)
     hedged_20 = next(r for r in hedged if r.shock == -0.20)
-    assert hedged_20.gap < bare_20.gap
+    assert hedged_20.shortfall < bare_20.shortfall
     assert hedged_20.protected_by_options > 0
 
 
@@ -130,8 +130,8 @@ def test_a_short_put_makes_the_gap_worse_which_is_the_whole_tension():
         BUDGET,
     )
     assert (
-        next(r for r in with_csp if r.shock == -0.20).gap
-        > next(r for r in bare if r.shock == -0.20).gap
+        next(r for r in with_csp if r.shock == -0.20).shortfall
+        > next(r for r in bare if r.shock == -0.20).shortfall
     )
 
 
@@ -140,7 +140,7 @@ def test_a_short_put_makes_the_gap_worse_which_is_the_whole_tension():
 
 def test_the_worst_breach_is_the_one_reported():
     rungs = ladder(BOOK, [], BUDGET)
-    worst = worst_gap(rungs)
+    worst = worst_shortfall(rungs)
     assert worst is not None
     assert worst.shock == -0.35  # the deepest shock breaches by the most
 
@@ -149,7 +149,7 @@ def test_no_breach_returns_nothing_rather_than_a_zero_rung():
     """A portfolio inside its mandate has no gap, and saying so with None
     rather than a zero keeps 'nothing to do' distinct from 'a gap of zero'."""
     tiny = [Holding("SPY", 10, 765.0)]
-    assert worst_gap(ladder(tiny, [], BUDGET)) is None
+    assert worst_shortfall(ladder(tiny, [], BUDGET)) is None
 
 
 def test_the_ladder_is_fixed_and_does_not_follow_the_market():
@@ -175,7 +175,7 @@ def test_shares_alone_cannot_hide_a_breach_between_the_rungs():
     unnoticed until the agent started buying options."""
     worst = gap_within(BOOK, [], BUDGET, -0.20)
     assert worst.shock == pytest.approx(-0.20)
-    assert worst.gap == pytest.approx(19_940)
+    assert worst.shortfall == pytest.approx(19_940)
 
 
 def test_a_hedge_can_pass_at_the_promise_and_break_just_above_it():
@@ -194,11 +194,11 @@ def test_a_hedge_can_pass_at_the_promise_and_break_just_above_it():
     hedge = [long_put(632.0, 8.0, contracts=10)]
 
     at_the_promise = next(r for r in ladder(BOOK, hedge, BUDGET, (-0.20,)))
-    assert at_the_promise.gap == pytest.approx(0.0)
+    assert at_the_promise.shortfall == pytest.approx(0.0)
     assert not at_the_promise.breached
 
     beside_it = next(r for r in ladder(BOOK, hedge, BUDGET, (-0.18,)))
-    assert beside_it.gap == pytest.approx(3_246)
+    assert beside_it.shortfall == pytest.approx(3_246)
     assert beside_it.breached
 
 
@@ -215,7 +215,7 @@ def test_the_interval_check_finds_the_breach_and_lands_on_the_bend():
     worst = gap_within(BOOK, hedge, BUDGET, -0.20)
 
     assert worst.shock == pytest.approx(632.0 / 765.0 - 1.0)
-    assert worst.gap == pytest.approx(4_261.57, abs=0.01)
+    assert worst.shortfall == pytest.approx(4_261.57, abs=0.01)
     assert worst.breached
 
 
@@ -285,13 +285,13 @@ def test_a_hedge_can_pass_the_chosen_depth_and_still_be_the_wrong_hedge():
 
     at_twenty = next(r for r in ladder(ROUND, [thin], 100_000.0, (-0.20,)))
     assert not at_twenty.breached
-    assert at_twenty.gap == pytest.approx(0.0)
+    assert at_twenty.shortfall == pytest.approx(0.0)
 
     assert worst_loss(ROUND, [thin], 2.5 * 6000) == pytest.approx(275_000)
 
 
 def test_a_book_that_holds_still_reports_where_it_is_tightest():
-    """Returned as a rung rather than None, unlike `worst_gap`.
+    """Returned as a rung rather than None, unlike `worst_shortfall`.
 
     'The promise holds, and here is the least room it has' is what tells the
     agent a hedge can be released without the gap reopening the moment it goes.
@@ -299,5 +299,5 @@ def test_a_book_that_holds_still_reports_where_it_is_tightest():
     small = [Holding("SPY", 100, 765.0)]
     worst = gap_within(small, [], BUDGET, -0.20)
     assert not worst.breached
-    assert worst.gap == 0.0
+    assert worst.shortfall == 0.0
     assert worst.shock == pytest.approx(-0.20)

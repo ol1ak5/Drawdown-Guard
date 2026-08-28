@@ -38,7 +38,7 @@ import yaml
 from drawdownguard.agent.middleware.guards import HALT_FILE, halt_file_present
 from drawdownguard.agent.roles.explainer import explain
 from drawdownguard.agent.state import GuardState
-from drawdownguard.execution.orders import submit_order
+from drawdownguard.execution.orders import confirm, submit_order
 from drawdownguard.journal import writer
 from drawdownguard.market.client import get_account, get_positions
 from drawdownguard.risk import period
@@ -59,8 +59,8 @@ from drawdownguard.risk.stress import (
     gap_at,
     ladder,
     unhedged_limit,
-    worst_gap,
     worst_loss,
+    worst_shortfall,
 )
 
 STRATEGY_PATH = Path("config/strategy.yaml")
@@ -181,7 +181,7 @@ async def mandate_node(state: GuardState) -> GuardState:
     try:
         positions = await get_positions()
     except Exception as exc:  # noqa: BLE001 — a missing ladder is not a dead cycle
-        # Halting, not returning empty. An empty state left `protection_gap` at
+        # Halting, not returning empty. An empty state left `uncovered_risk` at
         # its initial 0.0 and `book_complete` at True, so a cycle that could not
         # read a single position came out byte-identical to a healthy one --
         # `halted=False, gap=0.0, complete=True` -- and the status page went on
@@ -228,7 +228,7 @@ async def mandate_node(state: GuardState) -> GuardState:
     rungs = ladder(book.holdings, book.legs, budget)
     # What the agent is obliged to close, and what it merely has to disclose.
     binding = gap_at(rungs, mandate.binding_shock)
-    worst = worst_gap(rungs)
+    worst = worst_shortfall(rungs)
 
     # What the agent acts on is the worst outcome anywhere on the way down,
     # not the outcome at a depth somebody chose. The two differ by more than
@@ -240,7 +240,7 @@ async def mandate_node(state: GuardState) -> GuardState:
     # Shares have no floor, so an unhedged equity book always breaches. That
     # is not the check being too strict; it is the fact the ladder was hiding.
     exposure = worst_loss(book.holdings, book.legs)
-    gap = max(exposure - budget, 0.0)
+    uncovered = max(exposure - budget, 0.0)
 
     writer.write(
         "mandate.stress",
@@ -250,12 +250,12 @@ async def mandate_node(state: GuardState) -> GuardState:
             "budget": round(budget, 2),
             "equity_exposure": round(book.equity_exposure, 2),
             "binding_shock": mandate.binding_shock,
-            "gap": round(gap, 2),
+            "uncovered_risk": round(uncovered, 2),
             # The worst the book can do anywhere, and the gap is what of
-            # that the budget does not cover. `gap_at_binding_shock` is
+            # that the budget does not cover. `shortfall_at_shock` is
             # kept beside it because the ladder is what a person reads.
             "worst_case": round(exposure, 2),
-            "gap_at_binding_shock": round(binding.gap if binding else 0.0, 2),
+            "shortfall_at_shock": round(binding.shortfall if binding else 0.0, 2),
             "period_started": promise.started.isoformat(),
             "period_ends": promise.ends().isoformat(),
             "reference": round(promise.reference, 2),
@@ -269,21 +269,21 @@ async def mandate_node(state: GuardState) -> GuardState:
                     "shock": r.shock,
                     "loss": round(r.portfolio_loss, 2),
                     "from_options": round(r.protected_by_options, 2),
-                    "gap": round(r.gap, 2),
+                    "shortfall": round(r.shortfall, 2),
                 }
                 for r in rungs
             ],
             # Disclosed, not promised. The deepest rung nearly always breaches
             # and closing it costs more than it insures; the client is still
             # owed the number.
-            "worst_gap": round(worst.gap, 2) if worst else 0.0,
+            "worst_shortfall": round(worst.shortfall, 2) if worst else 0.0,
             "worst_shock": worst.shock if worst else None,
         },
-        severity="breach" if gap > 0 else "info",
+        severity="breach" if uncovered > 0 else "info",
     )
     return GuardState(
         ladder=rungs,
-        protection_gap=gap,
+        uncovered_risk=uncovered,
         book_complete=book.complete,
         book=book,
     )
@@ -442,10 +442,45 @@ async def protect_node(state: GuardState) -> GuardState:
     # question `mandate` asked, so the two nodes cannot disagree about whether
     # the promise is broken. Measured on `legs`, which is the book after any
     # release that could actually be sent and the book as held otherwise.
-    gap = max(worst_loss(book.holdings, legs) - budget, 0.0)
-    if gap <= 0:
+    uncovered = max(worst_loss(book.holdings, legs) - budget, 0.0)
+
+    # A sleeve can breach its own share of the promise while the book as a
+    # whole reads clean, and the number above cannot see it. `ladder` moves
+    # every holding by the same shock, so protection bought for one symbol
+    # appears to pay for a loss on another -- which is a correlation
+    # assumption, and this system does not make one. A SPY put pays on SPY;
+    # nothing about it responds to an earnings miss at one company.
+    #
+    # It is not hypothetical. A hedge is matched in whole contracts, so a
+    # sleeve holding 64 shares carries a put covering 100. The 36 shares of
+    # surplus gain as the market falls, and at book level that gain silently
+    # covered a freshly bought position on a different underlying that had no
+    # protection at all. The client owned an unhedged holding and the cycle
+    # reported the promise as holding.
+    #
+    # Checked per sleeve, this can only ever ask for more protection than the
+    # book-level number did: the sleeve budgets sum to the whole, so a book
+    # inside every sleeve's share is inside the budget too.
+    exposed = [
+        symbol
+        for symbol, sleeve, sleeve_budget in sleeves(book.holdings, budget)
+        if worst_loss(sleeve, [leg for leg in legs if leg.symbol == symbol])
+        > sleeve_budget
+    ]
+
+    # `release_orders` rides on every return below, including the ones that
+    # buy nothing. A redundant release keeps `_slack` at or above the margin,
+    # which is to say it leaves `worst_loss` inside the budget -- so `gap <= 0`
+    # is not the rare path after a handback, it is the ordinary one. Omitting
+    # the orders here left the state's own default in place, `execute` read an
+    # empty list, and the journal above had already said "executed": True.
+    if uncovered <= 0 and not exposed:
         return GuardState(
-            released=given, protection=[], protection_gap=gap, results=[]
+            released=given,
+            release_orders=release_orders,
+            protection=[],
+            uncovered_risk=uncovered,
+            results=[],
         )
 
     if not sleeves(book.holdings, budget):
@@ -453,10 +488,12 @@ async def protect_node(state: GuardState) -> GuardState:
         # to that is to stop selling rather than to buy a hedge for it.
         writer.write(
             "protection.no_underlying",
-            {"gap": round(gap, 2)},
+            {"uncovered_risk": round(uncovered, 2)},
             severity="breach",
         )
-        return GuardState(released=given, protection_gap=gap)
+        return GuardState(
+            released=given, release_orders=release_orders, uncovered_risk=uncovered
+        )
 
     chosen_all: list = []
     planned: list[dict] = []
@@ -526,8 +563,8 @@ async def protect_node(state: GuardState) -> GuardState:
                         "protection_iv": remedy.protection_iv,
                         "financing_iv": remedy.financing_iv,
                         "financed_fairly": remedy.financed_fairly,
-                        "gap_after": round(remedy.gap_after, 2),
-                        "closes_the_gap": remedy.closes_the_gap,
+                        "uncovered_after": round(remedy.uncovered_after, 2),
+                        "covers_the_risk": remedy.covers_the_risk,
                     }
                     for remedy in offers
                 ],
@@ -540,7 +577,7 @@ async def protect_node(state: GuardState) -> GuardState:
         "protection.plan",
         {
             "mandate": mandate.name,
-            "gap": round(gap, 2),
+            "uncovered_risk": round(uncovered, 2),
             "book_complete": book.complete,
             "excluded": [] if mandate.allow_reduce_exposure else ["reduce_exposure"],
             "sleeves": planned,
@@ -556,38 +593,44 @@ async def protect_node(state: GuardState) -> GuardState:
     # allowed anywhere else: it cannot change a strike, a size, or whether an
     # order goes. It can only be unclear, and it says so in the journal next to
     # the numbers it describes, where a reader can catch it.
-    if chosen_all:
-        note = await explain(
-            {
-                "mandate": mandate.name,
-                "budget": budget,
-                "exposure": book.equity_exposure,
-                "gap": gap,
-                "describe": "; ".join(r.describe for r in chosen_all),
-                "premium_cost": sum(r.premium_cost for r in chosen_all),
-                "forgone_upside": sum(r.forgone_upside for r in chosen_all),
-                "gap_after": sum(r.gap_after for r in chosen_all),
-                "rejected": [],
-                "because": "; ".join(
-                    p["because"] for p in planned if p.get("because")
-                ),
-            }
-        )
-        # Written only when there is something to write. No placeholder and no
-        # apology: a reader cannot tell generated filler from an explanation,
-        # and an empty field is honest about what happened.
-        if note:
-            writer.write(
-                "protection.explained",
-                {"chosen": [r.kind for r in chosen_all], "note": note},
-                severity="info",
-            )
+    # ...and it is written *after* the orders go, in `journal`. The facts are
+    # assembled here, where they exist; the model is called there, where it can
+    # cost nothing.
+    #
+    # It used to be called right here, between choosing the strike and sending
+    # the order, and that placement was expensive in a way no one had measured.
+    # `limit_price` is the ask at the moment the chain was read, with no
+    # tolerance. On 2026-08-28 the model took 41 seconds to write two
+    # sentences, the ask moved a few cents in that window, and both protective
+    # puts landed below the market and sat unfilled until the close. The model
+    # never touched the decision -- it delayed it, which turned out to be
+    # enough.
+    #
+    # Nothing about prose describing a settled decision needs to precede the
+    # trade it describes.
+    narration = (
+        {
+            "mandate": mandate.name,
+            "budget": budget,
+            "exposure": book.equity_exposure,
+            "uncovered_risk": uncovered,
+            "describe": "; ".join(r.describe for r in chosen_all),
+            "premium_cost": sum(r.premium_cost for r in chosen_all),
+            "forgone_upside": sum(r.forgone_upside for r in chosen_all),
+            "uncovered_after": sum(r.uncovered_after for r in chosen_all),
+            "rejected": [],
+            "because": "; ".join(p["because"] for p in planned if p.get("because")),
+        }
+        if chosen_all
+        else {}
+    )
 
     return GuardState(
         released=given,
         release_orders=release_orders,
         protection=chosen_all,
-        protection_gap=gap,
+        uncovered_risk=uncovered,
+        narration=narration,
     )
 
 
@@ -631,21 +674,57 @@ async def execute_node(state: GuardState) -> GuardState:
             {
                 "kind": remedy.kind,
                 "detail": remedy.describe,
-                "gap": round(state.get("protection_gap") or 0.0, 2),
+                "uncovered_risk": round(state.get("uncovered_risk") or 0.0, 2),
                 "reason": "the remedy carries no order; the chain row was thin",
             },
             severity="breach",
         )
 
     limits = load_limits()
+    dry_run = state.get("dry_run", False)
     results = []
     for order in orders:
-        result = await submit_order(
-            order, portfolio, limits, dry_run=state.get("dry_run", False)
-        )
+        result = await submit_order(order, portfolio, limits, dry_run=dry_run)
+        # What the broker did with it, not merely that it took it. An option
+        # order is a day limit priced at the ask the decision was made on; the
+        # ask moves, and the order sits. Reported as sent, that is a cycle
+        # claiming the client is protected when the account holds nothing.
+        result = await confirm(result)
         results.append(result)
+
+        # A dry run is not a refusal, and it used to be journalled as one. The
+        # gate runs before `dry_run` is even looked at, so an order that gets
+        # this far was *approved* and then deliberately not sent -- but it was
+        # written as `order.refused` at severity `veto`, which is the same
+        # record a genuine rejection leaves. The status page reads that
+        # severity as "rejected" and painted two approved orders red.
+        #
+        # Read from the verdict the gate actually returned and not from
+        # `dry_run`, because a dry run still puts every order through the gate
+        # -- so a refusal during one is a real refusal and has to keep saying
+        # so.
+        wanted = abs(order.contracts)
+        if not result.submitted:
+            if not result.approved:
+                event, severity = "order.refused", "veto"
+            else:
+                event, severity = "order.simulated", "info"
+        elif result.filled_qty >= wanted:
+            event, severity = "order.filled", "info"
+        elif result.filled_qty > 0:
+            # Part of the promise is standing behind nothing. Loud, because a
+            # half-filled hedge reads as a hedge in every summary that counts
+            # orders rather than contracts.
+            event, severity = "order.partial", "breach"
+        else:
+            # Accepted and working. Not a fault and not a fill: the limit is
+            # where the decision put it and the market has not come back to it.
+            # A breach because the book is still over its budget, which is what
+            # that severity is for.
+            event, severity = "order.working", "breach"
+
         writer.write(
-            "order.submitted" if result.submitted else "order.refused",
+            event,
             {
                 "symbol": order.symbol,
                 "occ_symbol": result.occ_symbol,
@@ -655,8 +734,18 @@ async def execute_node(state: GuardState) -> GuardState:
                 "assignment_prob": order.assignment_prob,
                 "reason": result.reason,
                 "broker_order_id": result.broker_order_id,
+                # Contracts, not orders. A summary that counts orders calls a
+                # nine-contract fill and a one-contract fill the same thing.
+                "filled": result.filled_qty,
+                "of": wanted,
+                "fill_price": (
+                    str(result.filled_avg_price)
+                    if result.filled_avg_price is not None
+                    else None
+                ),
+                "broker_status": result.broker_status,
             },
-            severity="info" if result.submitted else "veto",
+            severity=severity,
         )
     return GuardState(results=results)
 
@@ -670,8 +759,34 @@ async def journal_node(state: GuardState) -> GuardState:
     A cycle that skipped is the most common outcome and the most informative
     one. Journalling only the cycles that traded would make the record look
     like a strategy that trades constantly and never explains itself.
+
+    The language model is called here, and this is the only node it runs in.
+    Everything it describes is already done -- the strike is chosen, the gate
+    has ruled, the orders are at the broker and their fills have been read
+    back. It cannot change a decision because there is no decision left, and it
+    cannot delay one because there is nothing after it. That second property is
+    not theoretical: called from `protect` it sat between pricing an order and
+    sending it, and forty-one seconds of narration was enough for the ask to
+    move past a limit that had no tolerance.
     """
     portfolio = state.get("portfolio")
+
+    narration = state.get("narration") or {}
+    if narration:
+        note = await explain(narration)
+        # Written only when there is something to write. No placeholder and no
+        # apology: a reader cannot tell generated filler from an explanation,
+        # and an empty field is honest about what happened.
+        if note:
+            writer.write(
+                "protection.explained",
+                {
+                    "chosen": [r.kind for r in state.get("protection") or []],
+                    "note": note,
+                },
+                severity="info",
+            )
+
     writer.write(
         "cycle.complete",
         {
@@ -685,7 +800,7 @@ async def journal_node(state: GuardState) -> GuardState:
             "vega": portfolio.vega if portfolio else None,
             "submitted": sum(1 for r in state.get("results", []) if r.submitted),
             "refused": sum(1 for r in state.get("results", []) if not r.submitted),
-            "protection_gap": state.get("protection_gap", 0.0),
+            "uncovered_risk": state.get("uncovered_risk", 0.0),
             "book_complete": state.get("book_complete", True),
             # What the agent would do about the gap, and what it gave back.
             # An empty list against a non-zero gap is the case worth spotting

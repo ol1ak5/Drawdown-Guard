@@ -1,7 +1,7 @@
 """Three remedies, priced in three currencies, none of them ranked.
 
 The load-bearing tests are the ones that keep the comparison honest: every
-remedy's `gap_after` is the real ladder rather than an estimate, the collar
+remedy's `uncovered_after` is the real ladder rather than an estimate, the collar
 cannot sell a call it has no shares for, and selling stock is reported as
 costing upside rather than as costing nothing.
 """
@@ -12,7 +12,7 @@ from decimal import Decimal
 import pytest
 
 from drawdownguard.risk.remedy import (
-    _gap,
+    _uncovered,
     choose,
     collar,
     protective_put,
@@ -58,7 +58,7 @@ CALLS = [call_row(520, 9.00), call_row(540, 5.00), call_row(560, 2.00)]
 
 def test_the_book_starts_with_the_gap_the_remedies_are_for():
     rung = gap_at(ladder(BOOK, [], BUDGET), SHOCK)
-    assert rung.gap == pytest.approx(20_000)
+    assert rung.shortfall == pytest.approx(20_000)
 
 
 # --- protective put ---------------------------------------------------------
@@ -67,7 +67,7 @@ def test_the_book_starts_with_the_gap_the_remedies_are_for():
 def test_a_protective_put_closes_the_gap_and_says_what_it_cost():
     remedy = protective_put(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS)
     assert remedy is not None
-    assert remedy.closes_the_gap
+    assert remedy.covers_the_risk
     assert remedy.premium_cost > 0
     # It costs premium and nothing else. That is the whole appeal.
     assert remedy.forgone_upside == 0.0
@@ -129,7 +129,7 @@ def test_the_gap_after_is_the_real_ladder_not_an_estimate():
     """Recomputed with the leg in the book, using the mandate's own arithmetic."""
     remedy = protective_put(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS)
     independently = gap_at(ladder(BOOK, remedy.legs, BUDGET), SHOCK)
-    assert remedy.gap_after == pytest.approx(independently.gap)
+    assert remedy.uncovered_after == pytest.approx(independently.shortfall)
 
 
 def test_a_book_inside_its_budget_is_offered_nothing():
@@ -221,7 +221,7 @@ def test_selling_shares_closes_the_gap_with_no_premium():
     remedy = reduce_exposure(BOOK, [], BUDGET, SHOCK, "SPY")
     assert remedy is not None
     assert remedy.premium_cost == 0.0
-    assert remedy.closes_the_gap
+    assert remedy.covers_the_risk
     # Every share sold is a share that can no longer lose anything, and the
     # measure is the whole descent -- so bounding a 1,200-share book inside a
     # 100,000 budget means selling until what is left cannot exceed it. There
@@ -251,8 +251,8 @@ def test_the_proceeds_stay_in_the_book_as_cash_that_does_not_move():
     portfolio rather than a less exposed one.
     """
     remedy = reduce_exposure(BOOK, [], BUDGET, SHOCK, "SPY")
-    assert remedy.gap_after <= 500.0
-    assert remedy.gap_before == pytest.approx(500_000)
+    assert remedy.uncovered_after <= 500.0
+    assert remedy.uncovered_before == pytest.approx(500_000)
 
 
 # --- the comparison itself --------------------------------------------------
@@ -277,7 +277,7 @@ def test_the_three_are_priced_in_three_currencies_and_never_summed():
 
     # All three close the same gap. Nothing about that makes them equivalent.
     for remedy in (put_only, ringed, sold):
-        assert remedy.closes_the_gap
+        assert remedy.covers_the_risk
         assert "premium" in remedy.line() or "credit" in remedy.line()
 
 
@@ -331,7 +331,7 @@ def test_the_one_comparison_that_is_arithmetic_is_made():
     put_only = protective_put(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS)
     ringed = collar(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS, THIN_CALLS)
 
-    assert put_only.gap_closed == pytest.approx(500_000)
+    assert put_only.risk_covered == pytest.approx(500_000)
     assert put_only.cash_per_1k == pytest.approx(6.0)
     assert ringed.cash_per_1k == pytest.approx(1.2)
 
@@ -360,7 +360,7 @@ def test_a_partial_remedy_is_not_reported_as_closing_the_gap():
     far = [put_row(410, 1.00)]
     remedy = protective_put(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, far)
     if remedy is not None:
-        assert remedy.closes_the_gap
+        assert remedy.covers_the_risk
 
 
 def test_a_collar_that_collects_more_than_it_spends_reports_a_credit():
@@ -557,7 +557,7 @@ def test_protection_that_is_exactly_holding_the_promise_is_not_released():
     round trip to end where it started.
     """
     held = [long_put(440, 12)]  # one contract per hundred shares, exactly
-    assert _gap(BOOK, held, BUDGET, SHOCK) == 0.0
+    assert _uncovered(BOOK, held, BUDGET, SHOCK) == 0.0
     assert release(BOOK, held, BUDGET, SHOCK, margin_pct=15.0) is None
 
 
@@ -624,7 +624,7 @@ def test_spent_protection_goes_back_even_though_the_gap_is_open():
     corpses of the old ones forever.
     """
     held = [long_put(380, 2)]
-    before = _gap(BOOK, held, BUDGET, SHOCK)
+    before = _uncovered(BOOK, held, BUDGET, SHOCK)
     given = release(BOOK, held, BUDGET, SHOCK, margin_pct=15.0)
 
     assert given is not None
@@ -638,7 +638,7 @@ def test_spent_protection_goes_back_even_though_the_gap_is_open():
     assert given.slack_after < given.slack_before
     # The gap on the bare book is the whole unbounded downside, which is what
     # the legs were failing to bound in the first place.
-    assert _gap(BOOK, [], BUDGET, SHOCK) >= before
+    assert _uncovered(BOOK, [], BUDGET, SHOCK) >= before
 
 
 def test_a_spent_leg_still_worth_something_in_the_tail_says_so():
@@ -946,3 +946,43 @@ def test_a_contract_missing_from_today_s_chain_stops_the_whole_handback():
 
     chains = {"SPY": {"P": [closable_row(999.0, 6.00)], "C": []}}
     assert closing_orders([held_leg(), held_leg(strike=460.0)], chains) == []
+
+
+def test_one_sleeve_being_over_hedged_does_not_release_another_sleeve():
+    """The cross-subsidy `protect` refuses when buying, refused when releasing.
+
+    `ladder` moves every holding by the same shock, so a sleeve carrying more
+    protection than its shares -- ordinary, since contracts come in hundreds --
+    shows a gain on the way down that offsets a different symbol's loss. Read
+    at book level that is headroom, and the headroom was spent handing back the
+    second symbol's puts.
+
+    The two sides then disagreed inside one cycle: the release gave back a
+    sleeve's protection because a different sleeve was over-hedged, and the
+    per-sleeve check bought the identical strike back immediately. Two spreads
+    paid to end exactly where the cycle started.
+    """
+    holdings = [
+        Holding("IWM", 100, 300.0),
+        Holding("XLF", 400, 58.0),
+        Holding("CASH", 40_000, 1.0, shocked=False),
+    ]
+    budget = 10_000.0
+    # IWM is over-hedged: 100 shares, two contracts covering 200. XLF is
+    # matched exactly, and its puts are the only thing standing behind it.
+    legs = [
+        OptionLeg("IWM", "P", Decimal("280"), 2, Decimal("15.58"), 300.0),
+        OptionLeg("XLF", "P", Decimal("54"), 4, Decimal("2.94"), 58.0),
+    ]
+
+    given = release(holdings, legs, budget, SHOCK, margin_pct=15.0)
+
+    assert given is not None, "the surplus IWM contract is genuinely redundant"
+    released = {leg.symbol for leg in given.legs}
+    assert released == {"IWM"}, (
+        "the release has to come out of the sleeve that is over-hedged, not out "
+        f"of the one that is exactly matched; got {released}"
+    )
+    # And what stands behind XLF is untouched.
+    kept_xlf = [leg for leg in given.kept if leg.symbol == "XLF"]
+    assert sum(leg.contracts for leg in kept_xlf) == 4

@@ -27,16 +27,43 @@ def main() -> int:
         print(f"cycle failed: {exc}", file=sys.stderr)
         return 1
 
-    submitted = sum(1 for r in state.get("results", []) if r.submitted)
-    refused = sum(1 for r in state.get("results", []) if not r.submitted)
-    print(f"gap         : {state.get('protection_gap') or 0:,.0f}")
+    results = state.get("results", [])
+    submitted = sum(1 for r in results if r.submitted)
+    refused = sum(1 for r in results if not r.approved)
+    # Approved and deliberately not sent: a dry run, or a broker call that
+    # failed after the gate had already said yes. Counted apart from `refused`
+    # because the gate refusing an order and the operator holding it back are
+    # different outcomes, and reporting both as "refused" made a clean dry run
+    # read as though the risk checks had rejected everything.
+    held = sum(1 for r in results if r.approved and not r.submitted)
+    # Accepted is not bought. An option order is a day limit priced at the ask
+    # the decision was made on, and a limit the market has walked away from
+    # sits until the close. Reporting the send as the outcome is how a cycle
+    # claims the client is protected while the account holds nothing.
+    filled = sum(1 for r in results if r.submitted and r.filled_qty >= 1)
+    working = sum(1 for r in results if r.submitted and r.filled_qty == 0)
+
     kinds = [r.kind for r in state.get("protection") or []]
-    print(f"protection  : {', '.join(kinds) or 'none'}")
-    print(f"halted      : {state.get('halted')} {state.get('halt_reason', '')}".strip())
-    print(f"submitted   : {submitted}")
-    print(f"refused     : {refused}")
-    for result in state.get("results", []):
-        print(f"  {result.occ_symbol}: {result.reason}")
+    print(f"uncovered risk : {state.get('uncovered_risk') or 0:,.0f}")
+    print(f"protection     : {', '.join(kinds) or 'none'}")
+    print(
+        f"halted         : {state.get('halted')} "
+        f"{state.get('halt_reason', '')}".strip()
+    )
+    print(f"submitted      : {submitted}")
+    print(f"  filled       : {filled}")
+    if working:
+        print(f"  still working: {working}  ← accepted, not bought")
+    print(f"refused        : {refused}")
+    if held:
+        print(f"not sent       : {held} (approved by the gate)")
+    for result in results:
+        note = result.reason
+        if result.submitted:
+            note = f"{result.broker_status or 'unknown'}, filled {result.filled_qty}"
+            if result.filled_avg_price is not None:
+                note += f" @ {result.filled_avg_price}"
+        print(f"  {result.occ_symbol}: {note}")
     return 0
 
 

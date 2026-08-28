@@ -23,11 +23,11 @@ DECISION = {
     "mandate": "balanced",
     "budget": 100_693.0,
     "exposure": 605_422.0,
-    "gap": 20_391.0,
+    "uncovered_risk": 20_391.0,
     "describe": "buy 8x SPY 670 put at 20.96",
     "premium_cost": 16_455.0,
     "forgone_upside": 0.0,
-    "gap_after": 0.0,
+    "uncovered_after": 0.0,
     "rejected": [
         {
             "kind": "collar",

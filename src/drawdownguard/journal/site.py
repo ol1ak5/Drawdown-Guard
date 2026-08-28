@@ -35,7 +35,13 @@ DEFAULT_SNAPSHOT = Path("data/state/positions.json")
 # Vetoes are the system working as designed; a defect means the risk-gate
 # middleware fired, which can only happen if something reached it that never
 # should have. The page keeps them apart for the same reason the journal does.
-_VERDICT_BY_SEVERITY = {"veto": "rejected", "defect": "defect"}
+#
+# `breach` is listed explicitly, and the omission it replaces was the worst one
+# this page could make. Every severity the dict did not name fell through to
+# the default below, so the stress ladder reporting that the client's book had
+# broken the promise -- the single event this page exists to surface -- was
+# rendered "approved", in the same badge as a routine fill.
+_VERDICT_BY_SEVERITY = {"veto": "rejected", "defect": "defect", "breach": "breach"}
 
 _STYLE = """
 /* Ethereal Glass. Committed to one look rather than tracking the reader's
@@ -132,6 +138,12 @@ tr.rejected .badge { color: var(--no); border-color: rgba(251,113,133,.35);
 tr.defect .badge { color: var(--alarm); border-color: rgba(251,191,36,.4);
                    background: rgba(251,191,36,.1); }
 tr.defect td { font-weight: 500; }
+/* A breach is not a malfunction, so it does not borrow the defect's colour.
+   It is the promise not holding, which is work to do rather than something to
+   inspect -- and it has to be findable at a glance. */
+tr.breach .badge { color: var(--no); border-color: rgba(251,113,133,.5);
+                   background: rgba(251,113,133,.14); }
+tr.breach td { font-weight: 500; }
 
 .controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap;
             margin: 0 0 1.2rem; font-size: .82rem; color: var(--dim); }
@@ -213,7 +225,16 @@ _SCRIPT = """
 
   function lossAt(shock) {
     if (!rungs.length) return 0;
-    if (shock >= rungs[0].shock) return rungs[0].loss;
+    // Milder than the shallowest rung measured, including a market that has
+    // not moved at all. The ladder starts at -5%, and returning its loss for
+    // everything above it told a reader dragging the slider to zero that a
+    // still market costs them thirty thousand dollars. A book that has not
+    // fallen has not lost, so the segment from flat to the first rung is
+    // interpolated from zero like every other segment is from its neighbour.
+    if (shock >= 0) return 0;
+    if (shock >= rungs[0].shock) {
+      return rungs[0].loss * (shock / rungs[0].shock);
+    }
     for (var i = 0; i < rungs.length - 1; i++) {
       var a = rungs[i], b = rungs[i + 1];
       if (shock <= a.shock && shock >= b.shock) {
@@ -319,11 +340,11 @@ def _promise(stress: dict, note: str) -> str:
 
     budget = float(stress.get("budget") or 0)
     exposure = float(stress.get("equity_exposure") or 0)
-    gap = float(stress.get("gap") or 0)
+    uncovered = float(stress.get("uncovered_risk") or 0)
     pct = stress.get("downside_budget_pct")
     verdict = (
-        f'<span class="bad">short by ${gap:,.0f}</span>'
-        if gap > 0
+        f'<span class="bad">${uncovered:,.0f} of risk not covered</span>'
+        if uncovered > 0
         else '<span class="good">the promise holds</span>'
     )
     prose = (
@@ -526,7 +547,7 @@ def _journal_rows(entries: list[dict]) -> str:
     rows = []
     for entry in ordered:
         verdict = str(entry.get("verdict", ""))
-        css_class = verdict if verdict in ("rejected", "defect") else ""
+        css_class = verdict if verdict in ("rejected", "defect", "breach") else ""
         symbol = str(entry.get("symbol", ""))
         rows.append(
             f'<tr class="{css_class}" data-symbol="{_cell(symbol)}" '
@@ -563,6 +584,7 @@ def _controls(entries: list[dict]) -> str:
         '<option value="all">all</option>'
         '<option value="approved">approved</option>'
         '<option value="rejected">rejected</option>'
+        '<option value="breach">breach</option>'
         '<option value="defect">defect</option>'
         "</select>"
         '<span class="count">showing <span id="f-count"></span></span>'
