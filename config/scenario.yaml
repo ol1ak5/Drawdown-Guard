@@ -47,19 +47,40 @@ days:
     date: 2026-08-31
     client_action: none
     expect: >
-      Nothing. The promise is held, the book has not changed, and prices moving
-      over a weekend is not a reason to trade. A cycle that finds something to
-      do here would be an agent looking for a reason.
+      The client does nothing, and the agent finishes what day one started.
+
+      Day one's orders were limits at the ask and the ask moved while the cycle
+      was still running, so they expired unfilled over the weekend -- recorded
+      as `order.working`, not as a purchase. Nothing was lost and nothing was
+      bought. Monday's cycle measures the same uncovered risk, prices it on
+      Monday's chain, and sends again with a limit that reaches a quarter of
+      the spread past the offer.
+
+      That is the honest shape of the thing: the promise is not held by one
+      order landing, it is held by the same question being asked every morning
+      until the answer is yes.
 
   - day: 3
     date: 2026-09-01
+    client_action: none
+    expect: >
+      Nothing. The promise is held, the book has not changed, and prices moving
+      is not a reason to trade. A cycle that finds something to do here would be
+      an agent looking for a reason.
+
+      This day is the claim being tested. An agent that traded on a quiet
+      Tuesday would be an agent that trades because it is running, and every
+      number it reported afterwards would have to be read in that light.
+
+  - day: 4
+    date: 2026-09-02
     client_action: sell_equity
     detail:
       symbol: XLF
       shares: 900
     expect: >
       The client leaves the sector entirely. Exposure falls by roughly 52,000,
-      and the nine puts bought on day one now stand behind nothing at all, so
+      and the nine puts standing behind it now stand behind nothing at all, so
       every one of them goes back. This is "when to release a hedge that is no
       longer needed", and the trigger is the client's own decision rather than
       anything the market did.
@@ -69,12 +90,11 @@ days:
       quieter form; selling out makes the handback the entire hedge on that
       symbol and there is no ambiguity about what the journal should say.
 
-  - day: 4
-    date: 2026-09-02
-    client_action: none
-    expect: >
-      Nothing again. Two quiet days in one week is the honest shape of this
-      strategy and the journal should say so rather than hide it.
+      Moved here from day three so that the quiet day sits between the purchase
+      and the release. Buying protection on Monday and handing part of it back
+      on Tuesday is defensible -- the client moved, not the agent -- but it
+      reads as churn, and the day of deliberate silence is the more honest
+      demonstration.
 
   - day: 5
     date: 2026-09-03

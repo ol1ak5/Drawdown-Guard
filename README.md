@@ -68,17 +68,28 @@ The client's mandate is simple:
 ### Activity during the hackathon
 
 The client changes the portfolio mid-flight:
-- Sells the whole XLF position — 900 shares — on September 1st
+- Sells the whole XLF position — 900 shares — on September 2nd
 - Buys 100 shares of AAPL on September 3rd
 
 | Day | Date | Client does | Agent does |
 |---|---|---|---|
-| Day 1 | Aug 28 | - | Buys the protection — steps in |
-| Day 2 | Aug 31 | - | Checks the portfolio. Still within limit — holds |
-| Day 3 | Sep 1 | Sells 900 XLF | Risk drops — hands back all nine XLF puts |
-| Day 4 | Sep 2 | - | Checks the portfolio. Still within limit — holds |
+| Day 1 | Aug 28 | - | Steps in — sends the protection |
+| Day 2 | Aug 31 | - | Day one's limits expired unfilled; prices and sends again |
+| Day 3 | Sep 1 | - | **Nothing.** The promise holds and the book has not moved |
+| Day 4 | Sep 2 | Sells 900 XLF | Risk drops — hands back all nine XLF puts |
 | Day 5 | Sep 3 | Buys 100 AAPL | Risk rises again — hedges the new holding on its own underlying |
-| Day 6 | Sep 4 | - | Checks the portfolio. Confirms the mandate still holds |
+| Day 6 | Sep 4 | - | Confirms the mandate still holds |
+
+**Day 2 is not in the original script.** Day one's orders were limits at the
+ask, the ask moved while the cycle was still running, and they expired unfilled
+over the weekend — journalled as `order.working`, never as a purchase. The
+promise is not held by one order landing; it is held by the same question being
+asked every morning until the answer is yes. That is the version of this the
+week actually produced, and it is left in rather than tidied away.
+
+**Day 3 is the claim being tested.** An agent that traded on a quiet Tuesday
+would be an agent that trades because it is running, and every number it
+reported afterwards would have to be read in that light.
 
 The portfolio is intentionally not static. A client who never touches their allocation isn't the point. That gives Drawdown Guard a real job: it keep the changing portfolio aligned with a fixed risk mandate.
 
