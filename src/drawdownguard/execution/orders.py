@@ -23,7 +23,7 @@ exception at ten in the morning is a silently dead agent, and a dead agent that
 holds short options is worse than one that never opened them.
 """
 
-import uuid
+from datetime import date
 
 from pydantic import BaseModel
 
@@ -44,6 +44,32 @@ class OrderResult(BaseModel):
     occ_symbol: str
     broker_order_id: str | None = None
     client_order_id: str | None = None
+
+
+def idempotency_key(order: ProposedOrder, today: date | None = None) -> str:
+    """A key derived from the order, so the same order twice is the same key.
+
+    The broker rejects a duplicate `client_order_id`, which is the whole
+    mechanism: a request that times out after the order landed can be retried
+    and refused rather than filled twice.
+
+    This used to be a fresh `uuid4` minted inside `submit_order`, which made
+    the comment above it false -- the key was new on every attempt, so nothing
+    could retry with the same one. The sequence that bites: `call_tool` times
+    out after the order reaches Alpaca, the result is journalled as a failure,
+    and because options are day orders an unfilled limit shows up in no
+    position listing. A re-run the same morning measures the same gap and sends
+    the same hedge under a new key. Two fills, double premium, and a position
+    twice the size the sleeve was solved for.
+
+    Scoped to the day because the agent runs daily and a genuinely new hedge
+    tomorrow must not collide with today's.
+    """
+    today = today or date.today()
+    return (
+        f"dg-{today:%Y%m%d}-{order.symbol}-{order.right}"
+        f"-{order.strike}-{order.expiry:%y%m%d}-{order.contracts}"
+    )
 
 
 def _occ_symbol(order: ProposedOrder) -> str:
@@ -139,11 +165,7 @@ async def submit_order(
             submitted=False, reason="dry run: not submitted", occ_symbol=occ
         )
 
-    # A fresh idempotency key per attempt. The broker rejects duplicates, so a
-    # request that times out after the order landed can be retried with the
-    # same key without opening a second position — which is the one question a
-    # reconciling agent must never have to guess at.
-    client_order_id = f"drawdownguard-{uuid.uuid4()}"
+    client_order_id = idempotency_key(order)
 
     try:
         payload = await call_tool(

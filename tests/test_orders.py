@@ -86,16 +86,35 @@ async def test_a_failed_submission_still_reports_its_idempotency_key():
     ):
         result = await submit_order(make_order(), portfolio(), LIMITS)
     assert result.client_order_id
-    assert result.client_order_id.startswith("drawdownguard-")
+    assert result.client_order_id.startswith("dg-")
 
 
-async def test_every_submission_carries_a_distinct_idempotency_key():
+async def test_the_same_order_twice_carries_the_same_key():
+    """The retry is the point, and a random key made it impossible.
+
+    The broker refuses a duplicate `client_order_id`, which is what stops a
+    timed-out request from filling twice. A `uuid4` minted inside `submit_order`
+    was new on every attempt, so the second send was a different order as far
+    as Alpaca was concerned -- and because options are day orders, an unfilled
+    limit appears in no position listing, so a re-run the same morning measures
+    the same gap and sends the same hedge again.
+    """
     with patch(
         "drawdownguard.execution.orders.call_tool", new=AsyncMock(return_value=WRAPPED)
     ):
         first = await submit_order(make_order(), portfolio(), LIMITS)
         second = await submit_order(make_order(), portfolio(), LIMITS)
-    assert first.client_order_id != second.client_order_id
+    assert first.client_order_id == second.client_order_id
+
+
+async def test_a_different_order_carries_a_different_key():
+    """Same day, same symbol, different size is a different trade."""
+    with patch(
+        "drawdownguard.execution.orders.call_tool", new=AsyncMock(return_value=WRAPPED)
+    ):
+        one = await submit_order(make_order(contracts=-1), portfolio(), LIMITS)
+        two = await submit_order(make_order(contracts=-2), portfolio(), LIMITS)
+    assert one.client_order_id != two.client_order_id
 
 
 # --- the payload ------------------------------------------------------------

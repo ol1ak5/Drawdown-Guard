@@ -47,6 +47,29 @@ def _decimal(value: object, default: str = "0") -> Decimal:
         return Decimal(default)
 
 
+def _quantity(position: dict) -> int | None:
+    """The share or contract count, or None if the broker did not give one.
+
+    None rather than zero, because the two mean opposite things. A missing
+    *price* already fails loudly into `unpriced`; a missing *quantity* used to
+    fail silently -- 340 shares of QQQ absent from the response became a
+    holding of zero, 600,000 of exposure vanished from the ladder, and the book
+    still reported `complete` with nothing in `unpriced`. The agent would have
+    sized protection for a portfolio two thirds the size of the real one.
+
+    A fraction truncates, as it always has: Alpaca reports fractional shares
+    and an option contract cannot be fractional, so the remainder is under one
+    share and worth less than the spread on the order that would hedge it.
+    """
+    raw = position.get("qty")
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        return int(Decimal(str(raw)))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
 @dataclass
 class Book:
     """The portfolio in the shape the ladder wants, plus what could not be read."""
@@ -97,7 +120,12 @@ def to_book(
             options.append(position)
             continue
 
-        qty = int(_decimal(position.get("qty")))
+        qty = _quantity(position)
+        if qty is None:
+            book.unpriced.append(
+                f"{symbol}: no readable quantity, holding left out of the ladder"
+            )
+            continue
         price = float(_decimal(position.get("current_price")))
         if price <= 0:
             book.unpriced.append(f"{symbol}: no price reported")
@@ -122,13 +150,19 @@ def to_book(
                 f"{symbol}: no spot for {occ['underlying']}, leg left out of the ladder"
             )
             continue
+        contracts = _quantity(position)
+        if contracts is None:
+            book.unpriced.append(
+                f"{symbol}: no readable quantity, leg left out of the ladder"
+            )
+            continue
         book.legs.append(
             OptionLeg(
                 symbol=occ["underlying"],
                 right=occ["right"],
                 strike=occ["strike"],
                 expiry=occ["expiry"],
-                contracts=int(_decimal(position.get("qty"))),
+                contracts=contracts,
                 premium=_decimal(position.get("avg_entry_price")),
                 spot=spot,
             )

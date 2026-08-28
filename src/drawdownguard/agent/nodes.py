@@ -29,11 +29,13 @@ Nothing read its answer, so it was a billed call that could not reach a
 decision. Explaining is the opposite arrangement and the safe one.
 """
 
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from drawdownguard.agent.middleware.guards import HALT_FILE, halt_file_present
 from drawdownguard.agent.roles.explainer import explain
 from drawdownguard.agent.state import GuardState
 from drawdownguard.execution.orders import submit_order
@@ -78,9 +80,42 @@ async def reconcile_node(state: GuardState) -> GuardState:
     agent has decided what it wants to trade is a kill-switch that has already
     lost the argument.
     """
+    # The kill switch, before the account is read and before anything else.
+    #
+    # It was enforced only by `healthcheck.py`, which the scheduled workflow
+    # runs first -- so the deployed path was covered and `run_cycle.py`, the
+    # entry point a human types, was not. Someone stopping the agent by hand
+    # and then running a cycle by hand got a cycle.
+    #
+    # Checked here rather than in the runner so there is one answer to "is this
+    # agent stopped", and so a halt writes a journal entry like every other
+    # outcome. A HALT day that recorded nothing is indistinguishable from a day
+    # the agent was dead.
+    if halt_file_present():
+        return GuardState(
+            halted=True,
+            halt_reason=f"{HALT_FILE} is present; stopped by hand",
+            discrepancies=[],
+        )
+
     limits = load_limits()
+
+    # The high-water mark the kill-switch measures against is the account value
+    # the promise was written on. `get_account` has always accepted one and
+    # nothing ever passed it, so `peak_equity` collapsed to today's equity,
+    # `drawdown_pct` was 0.0 on every cycle, and both the halt below and
+    # `gate._drawdown` were unreachable -- a 15% limit guarding nothing.
+    #
+    # The promise reference rather than a separate high-water file: "the
+    # account is 15% below what we undertook to protect" is the sentence the
+    # limit is for, and it needs no state the agent is not already keeping.
+    # None on the first cycle, which correctly reports no drawdown.
+    promise = period.load()
     try:
-        portfolio, discrepancies = await get_account(state.get("positions") or {})
+        portfolio, discrepancies = await get_account(
+            state.get("positions") or {},
+            peak_equity=Decimal(str(promise.reference)) if promise else None,
+        )
     except Exception as exc:  # noqa: BLE001 — a dead cycle must still journal
         return GuardState(
             halted=True,
@@ -146,8 +181,23 @@ async def mandate_node(state: GuardState) -> GuardState:
     try:
         positions = await get_positions()
     except Exception as exc:  # noqa: BLE001 — a missing ladder is not a dead cycle
-        writer.write("mandate.unreadable", {"detail": str(exc)}, severity="info")
-        return GuardState()
+        # Halting, not returning empty. An empty state left `protection_gap` at
+        # its initial 0.0 and `book_complete` at True, so a cycle that could not
+        # read a single position came out byte-identical to a healthy one --
+        # `halted=False, gap=0.0, complete=True` -- and the status page went on
+        # republishing yesterday's numbers as today's.
+        #
+        # The account read already fails closed one node above. This one failing
+        # open was the asymmetry, and it was on the side that matters: not
+        # knowing what is held is not evidence that the promise is kept.
+        writer.write(
+            "mandate.unreadable",
+            {"detail": str(exc), "consequence": "the book is unknown; the cycle stops"},
+            severity="breach",
+        )
+        return GuardState(
+            halted=True, halt_reason=f"could not read the positions: {exc}"
+        )
 
     book = to_book(positions, portfolio.cash)
 

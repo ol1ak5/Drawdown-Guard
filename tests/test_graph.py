@@ -280,12 +280,18 @@ async def test_a_book_inside_its_budget_reports_no_gap(journal_dir):
     assert stress["payload"]["worst_case"] == pytest.approx(80_000, abs=1)
 
 
-async def test_a_broker_that_cannot_list_positions_does_not_kill_the_cycle(journal_dir):
-    """A missing ladder is a missing measurement, not a reason to stop.
+async def test_a_broker_that_cannot_list_positions_stops_the_cycle(journal_dir):
+    """Not knowing what is held is not evidence that the promise is kept.
 
-    The drawdown kill-switch has already passed by this point; the risk limits
-    downstream are unaffected. Halting here would mean one flaky read stops an
-    agent whose other protections are all intact.
+    This used to continue on the reasoning that the risk limits downstream were
+    unaffected -- true of a strategy that sells, false of one that measures a
+    book. Returning an empty state left `protection_gap` at its initial 0.0 and
+    `book_complete` at True, so a cycle that read nothing came out
+    byte-identical to a healthy one and the status page republished yesterday's
+    numbers as today's.
+
+    The account read one node above already fails closed. This one failing open
+    was the asymmetry, and it was on the side that matters.
     """
     final, _ = await run(
         healthy_portfolio(),
@@ -293,9 +299,11 @@ async def test_a_broker_that_cannot_list_positions_does_not_kill_the_cycle(journ
         positions_error=RuntimeError("positions endpoint down"),
     )
 
-    assert final["halted"] is False
+    assert final["halted"] is True
     written = entries(journal_dir)
-    assert any(e["event"] == "mandate.unreadable" for e in written)
+    unreadable = [e for e in written if e["event"] == "mandate.unreadable"]
+    assert unreadable and unreadable[-1]["severity"] == "breach"
+    # And it still journals, which is the whole reason the halt routes here.
     assert any(e["event"] == "cycle.complete" for e in written)
 
 
@@ -605,3 +613,29 @@ def test_no_model_is_called_for_an_answer_nothing_reads():
     from drawdownguard.agent.graph import NODES
 
     assert "regime" not in [name for name, _ in NODES]
+
+
+async def test_the_halt_file_stops_the_cycle_and_still_journals(journal_dir, tmp_path):
+    """The kill switch was enforced outside the graph, and only on one path.
+
+    `halt_file_present` was called from `healthcheck.py` alone. The scheduled
+    workflow runs that first, so the deployed path was covered -- and
+    `run_cycle.py`, the entry point a human types, was not. Somebody stopping
+    the agent by hand and then running a cycle by hand got a cycle.
+
+    Checked inside `reconcile` now, so there is one answer to "is this agent
+    stopped" and so a halt writes an entry like every other outcome. A HALT day
+    that recorded nothing would be indistinguishable from a day it was dead.
+    """
+    from drawdownguard.agent.middleware import guards
+
+    halt = tmp_path / "HALT"
+    halt.touch()
+    with patch.object(guards, "HALT_FILE", halt):
+        final, broker = await run(healthy_portfolio(), journal_dir=journal_dir)
+
+    assert final["halted"] is True
+    assert "stopped by hand" in final["halt_reason"]
+    broker.assert_not_awaited()
+    complete = [e for e in entries(journal_dir) if e["event"] == "cycle.complete"]
+    assert complete and complete[-1]["payload"]["halted"] is True
