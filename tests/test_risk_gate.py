@@ -281,7 +281,11 @@ def test_protection_may_reach_flat_but_not_pass_through_it():
     """
     overshoot = veto(order(contracts=20, delta=-0.90), holding(), LIMITS)
     assert overshoot.approved is False
-    assert "exposure" in overshoot.reason.lower()
+    # Refused on the share count now, which is the earlier and better reason:
+    # 1,000 shares can stand behind ten contracts and no more. The directional
+    # band would have caught it too, and a rule that only holds because a
+    # different rule is watching stops holding when the other one is loosened.
+    assert "stand behind" in overshoot.reason.lower()
 
     # Ten of the same contracts land at +60,000, short of flat, and are fine.
     assert veto(order(contracts=10, delta=-0.90), holding(), LIMITS).approved is True

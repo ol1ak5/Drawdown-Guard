@@ -36,7 +36,7 @@ For this hackathon, we turn the problem into a concrete situation.
 
 Our simulated client has a c. $1,000,000 portfolio that includes: 
 - 80% equity: SPY, QQQ, IWM
-- 15% T-bills: BIL
+- 15% fixed income: BIL
 - 5% cash
 
 | Ticker | Shares | Entrance price | Total Amount | Exposure | 
@@ -81,7 +81,7 @@ Seven steps, once every weekday, fully autonomous.
 
 | # | Step | The agent does|
 |---|---|---|
-| 1️⃣ | **Reconcile** | Asks the broker what is actually held - never assumes |
+| 1️⃣ | **Reconcile** | Asks the broker what is actually held in the portfolio - never assumes |
 | 2️⃣ | **Mandate** | Turns the client's tolerance into a live dollar budget |
 | 3️⃣ | **Stresso** | Runs the book through a range of market drops, finds the gap |
 | 4️⃣ | **Protects** | Solves for the cheapest hedge that closes the gap, sleeve by sleeve |

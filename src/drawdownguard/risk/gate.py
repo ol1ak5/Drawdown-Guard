@@ -27,18 +27,24 @@ def veto(order: ProposedOrder, portfolio: Portfolio, limits: Limits) -> Verdict:
     return Verdict.approve()
 
 
-def closes_a_short(order: ProposedOrder, portfolio: Portfolio) -> bool:
-    """Whether this purchase buys back a short the account already carries."""
+def short_quantity(order: ProposedOrder, portfolio: Portfolio) -> int:
+    """How many of this exact contract the account is short. Zero if none."""
     position = portfolio.positions.get(order.symbol)
     if position is None:
-        return False
-    return any(
-        leg.is_short
+        return 0
+    return sum(
+        abs(leg.contracts)
+        for leg in position.contracts
+        if leg.is_short
         and leg.right == order.right
         and leg.strike == order.strike
         and leg.expiry == order.expiry
-        for leg in position.contracts
     )
+
+
+def closes_a_short(order: ProposedOrder, portfolio: Portfolio) -> bool:
+    """Whether this purchase buys back a short the account already carries."""
+    return short_quantity(order, portfolio) > 0
 
 
 def _permitted_purpose(
@@ -64,8 +70,23 @@ def _permitted_purpose(
     if not order.is_purchase:
         return Verdict.approve()
 
-    if closes_a_short(order, portfolio):
-        return Verdict.approve()
+    # Buying back a short closes at most what is open. Matching on symbol,
+    # right, strike and expiry alone let one short contract wave through a
+    # purchase of any size -- the rest of which opens a long position at the
+    # same strike, past the "buying a call is leverage" refusal below.
+    #
+    # The directional band happens to catch that today. This check should not
+    # need it to: a rule that only holds because a different rule is watching
+    # is a rule that stops holding the day the other one is loosened.
+    open_short = short_quantity(order, portfolio)
+    if open_short:
+        if order.contracts <= open_short:
+            return Verdict.approve()
+        return Verdict.reject(
+            f"closing {open_short} short {order.symbol} {order.strike} "
+            f"{order.right} but buying {order.contracts}; the surplus opens a "
+            "position rather than closing one"
+        )
 
     if order.right == "C":
         return Verdict.reject(
@@ -78,6 +99,22 @@ def _permitted_purpose(
         return Verdict.reject(
             f"the portfolio does not hold {order.symbol}, so a put on it is a "
             "directional bet rather than protection"
+        )
+
+    # Protection stands behind shares; it does not exceed them. Holding one
+    # share authorised any number of puts, and everything past the shares held
+    # is a position that pays only if prices fall -- the bet the paragraph
+    # above says cannot come from here.
+    #
+    # Rounded up, because `contracts_to_match` rounds up: a hundred shares are
+    # covered by one contract and 101 by two, and refusing the second would
+    # refuse a correctly sized hedge over a share.
+    covered = -(-position.shares // SHARES_PER_CONTRACT)
+    if order.contracts > covered:
+        return Verdict.reject(
+            f"{order.contracts} puts against {position.shares} shares of "
+            f"{order.symbol}; {covered} is all the protection those shares can "
+            "stand behind, and the rest is a directional bet"
         )
     return Verdict.approve()
 

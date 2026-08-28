@@ -1,4 +1,3 @@
-import json
 from datetime import datetime
 
 from drawdownguard.journal import writer
@@ -51,6 +50,47 @@ def _stress(**overrides):
     }
 
 
+def _plan(**overrides):
+    """A `protection.plan` line: one sleeve, hedged on its own underlying."""
+    payload = {
+        "mandate": "balanced",
+        "gap": 20287.0,
+        "total_premium": 8272.0,
+        "sleeves": [
+            {
+                "symbol": "SPY",
+                "spot": 770.13,
+                "exposure": 301891.0,
+                "budget": 50252.0,
+                "chosen": "protective_put",
+                "because": "bought outright",
+                "offers": [
+                    {
+                        "kind": "protective_put",
+                        "detail": "buy 4x SPY 670 put at 20.68",
+                        "premium_cost": 8272.0,
+                        "forgone_upside": 0.0,
+                        "protection_iv": 0.228,
+                        "gap_after": 0.0,
+                        "closes_the_gap": True,
+                    }
+                ],
+            }
+        ],
+    }
+    payload.update(overrides)
+    return {
+        "ts": "2026-08-25T14:02:00Z",
+        "symbol": "",
+        "action": "protection.plan",
+        "regime": "",
+        "verdict": "rejected",
+        "detail": "",
+        "event": "protection.plan",
+        "payload": payload,
+    }
+
+
 def test_the_page_is_a_complete_html_document():
     html = render_site([_entry()], [], datetime(2026, 8, 25, 14, 5))
     assert html.startswith("<!doctype html>")
@@ -78,11 +118,19 @@ def test_rejections_are_shown_not_hidden():
     assert "0.41" in html
 
 
-def test_open_wheels_render_their_basis():
-    positions = [{"symbol": "SPY", "leg": "SHARES", "basis": "472.70", "cycles": 3}]
-    html = render_site([], positions, datetime(2026, 8, 25, 14, 5))
-    assert "472.70" in html
-    assert "SHARES" in html
+def test_the_book_is_read_from_the_journal_not_from_a_snapshot():
+    """The page believes the record the agent actually writes.
+
+    It used to render a state snapshot exported by the strategy this project
+    no longer runs. Nothing has written that file since, so the published page
+    reported "no position has opened yet" for an account holding 800,000 of
+    equity -- wrong, and confident about it, which a reader cannot detect.
+    """
+    html = render_site([_plan(), _stress()], [], datetime(2026, 8, 25, 14, 5))
+    assert "SPY" in html
+    assert "buy 4x SPY 670 put" in html
+    assert "$301,891" in html   # the sleeve's exposure
+    assert "$50,252" in html    # its share of the budget
 
 
 def test_html_is_escaped():
@@ -98,12 +146,13 @@ def test_an_empty_journal_still_renders():
     assert "No cycles recorded yet" in html
 
 
-def test_a_wheel_with_no_basis_yet_renders_without_inventing_one():
-    """A position in CASH has no basis. The cell must be blank, not 0.00."""
-    positions = [{"symbol": "IWM", "leg": "CASH", "basis": None, "cycles": 0}]
-    html = render_site([], positions, datetime(2026, 8, 25, 14, 5))
-    assert "IWM" in html
-    assert "0.00" not in html
+def test_a_sleeve_that_needed_nothing_says_so_rather_than_showing_a_blank():
+    """Needing no protection is an outcome, not missing data. A blank cell
+    reads as a number the page failed to fetch."""
+    quiet = _plan()
+    quiet["payload"]["sleeves"][0]["chosen"] = None
+    html = render_site([quiet, _stress()], [], datetime(2026, 8, 25, 14, 5))
+    assert "nothing needed" in html
 
 
 def test_the_page_fetches_nothing_from_anywhere():
@@ -202,17 +251,12 @@ def test_build_site_writes_a_page_from_the_journal_and_the_snapshot(tmp_path):
         directory=tmp_path / "journal",
     )
     snapshot = tmp_path / "positions.json"
-    snapshot.write_text(
-        json.dumps({"SPY": {"leg": "PUT_OPEN", "basis": "615.80", "cycle_count": 2}})
-    )
 
     out = build_site(tmp_path / "index.html", tmp_path / "journal", snapshot)
 
     assert out.exists()
     page = out.read_text()
     assert "SPY260918P00620000 x1" in page
-    assert "615.80" in page
-    assert "PUT_OPEN" in page
 
 
 def test_build_site_runs_on_a_cycle_that_traded_nothing(tmp_path):

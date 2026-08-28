@@ -193,26 +193,32 @@ async def load_chain(
     return rows
 
 
-async def get_spot(symbol: str) -> float:
-    """Mid of the latest quote on the underlying, or the side that exists.
+def mid_of(quote: dict) -> float:
+    """A quote's price, and never an average with a side that is not there.
 
-    A mid averaged with a missing side is half the price, and it arrives
-    looking like a price. Measured after the close on 2026-08-27: AAPL bid
-    294.98, ask 0, mid 147.49 -- exactly half, no error raised, and every
-    number computed from it wrong in the same direction. Contracts sized
-    against it would have doubled, and strikes would have been read against a
-    price the stock has not traded at.
+    A mid built from a missing side is half the price, and it arrives looking
+    like a price. Measured after the close on 2026-08-27: AAPL bid 294.98, ask
+    0, mid 147.49 -- exactly half, no error raised, and every number computed
+    from it wrong in the same direction.
 
-    One-sided quotes are ordinary. They happen after the close, during a halt,
-    and on anything thin. So a missing side falls back to the side that is
-    there, which is a real price somebody was willing to trade at, and only a
-    quote with neither raises.
+    One-sided quotes are ordinary: after the close, during a halt, on anything
+    thin. So a missing side falls back to the side that is there, which is a
+    real price somebody was willing to trade at, and only a quote with neither
+    raises.
+
+    Lives here as one function because it did not, once. The guard was written
+    against this file while the live path read its own copy in `market/client`
+    -- the fix was real and reached nothing.
     """
-    payload = await call_tool("get_stock_latest_quote", {"symbols": symbol})
-    quote = payload["data"]["quotes"][symbol]
     bid, ask = float(quote.get("bp") or 0), float(quote.get("ap") or 0)
     if bid > 0 and ask > 0:
         return (bid + ask) / 2
     if bid > 0 or ask > 0:
         return bid or ask
-    raise ValueError(f"no usable quote for {symbol}: bid {bid}, ask {ask}")
+    raise ValueError(f"no usable quote: bid {bid}, ask {ask}")
+
+
+async def get_spot(symbol: str) -> float:
+    """Mid of the latest quote on the underlying."""
+    payload = await call_tool("get_stock_latest_quote", {"symbols": symbol})
+    return mid_of(payload["data"]["quotes"][symbol])

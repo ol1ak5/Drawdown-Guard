@@ -493,13 +493,29 @@ async def test_spent_protection_is_handed_back_before_anything_is_bought(journal
         healthy_portfolio(), chain_rows=CHAIN, journal_dir=journal_dir, positions=held
     )
 
-    given = [e for e in entries(journal_dir) if e["event"] == "protection.released"]
-    assert given, "a spent leg has to be released even while the gap is open"
+    given = [
+        e
+        for e in entries(journal_dir)
+        if e["event"] == "protection.recommended_release"
+    ]
+    assert given, "a spent leg has to be identified even while the gap is open"
+    # Recommended, not done, and the journal says which. An `OptionLeg` carries
+    # no expiry, so no closing order can be built from it -- and this used to
+    # be reported as a completed handback while the puts stayed in the account,
+    # so the next cycle found them, called them spent again, and bought fresh
+    # protection on top. 20,130 of premium over five cycles on the demo book.
+    assert given[-1]["payload"]["executed"] is False
+    assert given[-1]["severity"] == "breach"
     assert given[-1]["payload"]["reason"] == "spent"
     assert given[-1]["payload"]["contracts"] == 2
-    # Releasing it cost no headroom, which is what makes it safe to do first.
-    assert given[-1]["payload"]["headroom_after"] == pytest.approx(
-        given[-1]["payload"]["headroom_before"]
+    # A leg worth nothing at the promised shock can still be the floor deeper
+    # down, so the whole-descent measure prices the handback rather than
+    # calling it free. The trade is still right -- the client pays to carry a
+    # leg that is not holding the promise up -- but the journal reports what it
+    # costs instead of asserting it costs nothing.
+    assert (
+        given[-1]["payload"]["headroom_after"]
+        < given[-1]["payload"]["headroom_before"]
     )
     # And the cycle still closed the gap afterwards.
     assert final["protection"] is not None

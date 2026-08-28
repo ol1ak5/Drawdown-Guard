@@ -426,57 +426,80 @@ def _cell(value) -> str:
     return html.escape("" if value is None else str(value))
 
 
-def _position_rows(positions: list[dict]) -> str:
-    if not positions:
-        return '<tr><td colspan="4" class="empty">No positions open.</td></tr>'
+def _sleeve_rows(plan: dict) -> str:
+    """What the agent is holding up, one row per holding.
+
+    Read from the last `protection.plan` in the journal rather than from a
+    state snapshot. The snapshot was written by the strategy this project no
+    longer runs -- nothing has exported it since, so the page confidently
+    reported "no position has opened yet" for an account holding 800,000 of
+    equity. A page that is wrong and certain is worse than one that is empty,
+    because a reader cannot tell which they are looking at.
+
+    The journal is the record the agent actually writes, every cycle, and it
+    is the only thing the page should ever believe.
+    """
+    sleeves = plan.get("sleeves") or []
+    if not sleeves:
+        return (
+            '<tr><td colspan="5" class="empty">'
+            "No cycle has measured the book yet.</td></tr>"
+        )
     rows = []
-    for position in positions:
-        basis = position.get("basis")
-        # A position in CASH has no basis. Showing a zero would read as a number
-        # the agent knows, when in fact it is a number that does not exist yet.
-        basis_cell = _cell(basis) if basis is not None else "&mdash;"
+    for sleeve in sleeves:
+        chosen = sleeve.get("chosen")
+        taken = next(
+            (o for o in sleeve.get("offers") or [] if o.get("kind") == chosen), None
+        )
+        # No remedy chosen is a real outcome, not a gap in the data: the sleeve
+        # is inside its share of the promise and needs nothing bought for it.
+        detail = _cell(taken["detail"]) if taken else "&mdash; nothing needed"
+        cost = f"${float(taken['premium_cost']):,.0f}" if taken else "&mdash;"
+        iv = (
+            f"{float(taken['protection_iv']):.1%}"
+            if taken and taken.get("protection_iv") is not None
+            else "&mdash;"
+        )
         rows.append(
             "<tr>"
-            f"<td>{_cell(position.get('symbol'))}</td>"
-            f"<td>{_cell(position.get('leg'))}</td>"
-            f"<td>{basis_cell}</td>"
-            f"<td>{_cell(position.get('cycles'))}</td>"
+            f"<td>{_cell(sleeve.get('symbol'))}</td>"
+            f"<td>${float(sleeve.get('exposure') or 0):,.0f}</td>"
+            f"<td>${float(sleeve.get('budget') or 0):,.0f}</td>"
+            f"<td>{detail}</td>"
+            f"<td>{cost} <small>{iv}</small></td>"
             "</tr>"
         )
     return "\n".join(rows)
 
 
-def _position_cards(positions: list[dict]) -> str:
-    """The state of the book, as headline figures.
+def _book_cards(stress: dict, plan: dict) -> str:
+    """The book as headline figures, all of them from the journal.
 
-    Rendered from the same snapshot the table below uses, so the two cannot
-    disagree. When nothing is held the card says so in words rather than
-    printing a zero: a zero here reads as a measurement, and "nothing yet" is
-    the honest claim on a first run.
+    `worst_case` is the number the agent acts on -- the most this book can lose
+    anywhere on the way down, which for unhedged shares is all of it. It is
+    shown beside the budget rather than instead of it, because the pair is the
+    whole claim: this is what could happen, and this is what was promised.
     """
-    if not positions:
+    if not stress:
         return (
             '<div class="wide shell"><div class="core">'
             '<div class="k">Book</div>'
-            '<div class="v">Flat<small>no position has opened yet</small></div>'
+            '<div class="v">Not yet measured<small>no cycle has run</small></div>'
             "</div></div>"
         )
-    open_legs = [w for w in positions if str(w.get("leg", "CASH")) != "CASH"]
-    cycles = sum(int(w.get("cycles") or 0) for w in positions)
-    shares = [w for w in positions if str(w.get("leg")) == "SHARES"]
+    worst = float(stress.get("worst_case") or 0)
+    budget = float(stress.get("budget") or 0)
+    spent = float((plan or {}).get("total_premium") or 0)
     cards = [
-        ("Symbols tracked", str(len(positions)), ""),
-        ("Options held", str(len(open_legs)), f"of {len(positions)} symbols"),
-        ("Cycles completed", str(cycles), ""),
+        ("Equity at risk", f"${float(stress.get('equity_exposure') or 0):,.0f}", ""),
+        ("Worst case", f"${worst:,.0f}", "anywhere on the way down"),
+        ("The promise", f"${budget:,.0f}", "what the client agreed to"),
+        ("Spent on protection", f"${spent:,.0f}", "this cycle"),
     ]
-    if shares:
-        cards.append(
-            ("Holding shares", ", ".join(str(w["symbol"]) for w in shares), "")
-        )
     return "\n".join(
         '<div class="shell"><div class="core">'
         f'<div class="k">{_cell(label)}</div>'
-        f'<div class="v">{_cell(value)}'
+        f'<div class="v">{value}'
         + (f"<small>{_cell(note)}</small>" if note else "")
         + "</div></div></div>"
         for label, value, note in cards
@@ -571,6 +594,9 @@ def render_site(
         stress, latest(entries, "protection.explained").get("note", "")
     )
     floor_block = _floor(stress)
+    plan = latest(entries, "protection.plan")
+    book_cards = _book_cards(stress, plan)
+    sleeve_rows = _sleeve_rows(plan)
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -608,19 +634,24 @@ a fall; it answers what this book would be worth if one happened.</p>
 </section>
 
 <section class="reveal">
-<h2>Position</h2>
+<h2>The book</h2>
 <div class="bento">
-{_position_cards(positions)}
+{book_cards}
 </div>
 </section>
 
 <section class="reveal">
-<h2>Open positions</h2>
+<h2>What is holding the promise up</h2>
+<p class="lede">One row per holding. Each is hedged on its own underlying with
+its own share of the budget &mdash; a put on one index pays nothing for a fall
+in another, and the three implied volatilities are why a single hedge could
+never have been right.</p>
 <div class="shell"><div class="core"><div class="scroll">
 <table>
-<thead><tr><th>Symbol</th><th>Leg</th><th>Basis</th><th>Cycles</th></tr></thead>
+<thead><tr><th>Holding</th><th>Exposure</th><th>Its budget</th>
+<th>Protection</th><th>Cost</th></tr></thead>
 <tbody>
-{_position_rows(positions)}
+{sleeve_rows}
 </tbody>
 </table>
 </div></div></div>

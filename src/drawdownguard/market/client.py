@@ -35,6 +35,7 @@ from typing import Any
 
 from drawdownguard.domain import SHARES_PER_CONTRACT, Portfolio, Position
 from drawdownguard.execution.reconcile import reconcile
+from drawdownguard.market.chain import mid_of
 from drawdownguard.mcp.alpaca_client import FULL_TOOLSETS, alpaca_session
 from drawdownguard.options.payoff import bs_delta, contract_vega
 
@@ -102,11 +103,15 @@ async def get_positions() -> list[dict[str, Any]]:
 
 
 async def get_spot(symbol: str) -> float:
-    """Mid of the latest quote on the underlying."""
-    async with alpaca_session(FULL_TOOLSETS) as session:
-        data = await _read(session, "get_stock_latest_quote", {"symbols": symbol})
-    quote = data["quotes"][symbol]
-    return (float(quote["bp"]) + float(quote["ap"])) / 2
+    """Mid of the latest quote on the underlying.
+
+    Re-exported from `market.chain` rather than reimplemented. This file used
+    to carry its own copy, which is how a fix for a missing-ask quote halving
+    the price got applied to one of them and not to the one on the live path.
+    """
+    from drawdownguard.market.chain import get_spot as _get_spot
+
+    return await _get_spot(symbol)
 
 
 async def get_account(
@@ -147,7 +152,7 @@ async def get_account(
                             session, "get_stock_latest_quote", {"symbols": symbol}
                         )
                     )["quotes"][symbol]
-                    spots[symbol] = (float(quote["bp"]) + float(quote["ap"])) / 2
+                    spots[symbol] = mid_of(quote)
 
             snaps = (
                 await _read(session, "get_option_snapshot", {"symbols": ",".join(held)})

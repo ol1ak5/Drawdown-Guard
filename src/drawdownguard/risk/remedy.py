@@ -110,8 +110,6 @@ from drawdownguard.risk.stress import (
     DEFAULT_SHOCKS,
     Holding,
     OptionLeg,
-    gap_at,
-    ladder,
     worst_loss,
 )
 
@@ -257,23 +255,48 @@ class Remedy:
         )
 
 
-def _gap(holdings, legs, budget, shock) -> float:
-    rung = gap_at(ladder(holdings, legs, budget), shock)
-    return rung.gap if rung else 0.0
+def _gap(holdings, legs, budget, shock=None) -> float:
+    """What the budget does not cover, anywhere on the way down.
+
+    `shock` is accepted and ignored. It is kept so callers reporting a rung
+    read the same way, and because removing it would touch every remedy
+    signature for no behavioural gain.
+
+    THE TWO MEASURES HAD DRIFTED APART AND ONLY ONE MOVED
+    -----------------------------------------------------
+    `agent/nodes.py` switched to `worst_loss` -- the worst outcome at any
+    depth -- while every decision in this module still asked `gap_at`, the
+    outcome at one chosen shock. They disagree over a wide band: whenever
+    exposure times the shock is inside the budget but exposure itself is not.
+
+    On the shipped `balanced` mandate that band is 10% to 50% of the account.
+    A book of 400,000 against a 100,000 budget produced a journalled breach of
+    300,000 and, from here, `None` from all three remedies -- so the cycle
+    wrote "nothing on today's chain closes the gap" without having read the
+    chain, and did it again every morning. Up to 400,000 of a 100,000 promise,
+    uncovered indefinitely, reported as unfixable.
+
+    Asking the same question as the node is the whole fix.
+    """
+    return max(worst_loss(holdings, legs) - budget, 0.0)
 
 
-def _slack(holdings, legs, budget, shock) -> float:
-    """Dollars of headroom under the budget at the promised shock.
+def _slack(holdings, legs, budget, shock=None) -> float:
+    """Dollars of headroom under the budget, at the worst depth.
 
     The same number as `gap`, read from the other side and allowed to be
     positive. `gap` clamps at zero because a portfolio inside its budget has no
     shortfall to close; releasing protection needs to know *how far* inside,
     which is the part `gap` throws away.
+
+    Measured against the whole descent for the same reason `_gap` is. Read at
+    one shock it would hand back protection the real measure still needs: a
+    book holding 800 shares and eight 460 puts has 68,000 of headroom by the
+    point measure and 32,000 of true worst case, and releasing on the first
+    number took the worst case to 400,000 with no path back -- the rebuy landed
+    in the dead band above and returned None.
     """
-    rung = gap_at(ladder(holdings, legs, budget), shock)
-    if rung is None:
-        return 0.0
-    return rung.budget + rung.portfolio_loss  # loss is negative
+    return budget - worst_loss(holdings, legs)
 
 
 def _is_protection(leg: OptionLeg) -> bool:
@@ -655,6 +678,18 @@ def collar(
         upside_measured_at=up_move,
         gap_before=protection.gap_before,
         gap_after=after,
+        # Both legs, or neither. A collar that carried only its put would be
+        # sent as an unfinanced purchase at a price the client never agreed
+        # to; one that carried nothing at all was the bug this replaced --
+        # `execute` found no orders, journalled "the chain row was thin", and
+        # the client got no protection on every day the chain favoured
+        # financing. The plan said otherwise, and so did the note the model
+        # wrote for them.
+        orders=(
+            (*protection.orders, order_for(symbol, row, -count, spot))
+            if protection.orders and _tradable(row)
+            else ()
+        ),
         protection_iv=protection.protection_iv,
         financing_iv=row.get("implied_vol"),
         financing_credit=received,

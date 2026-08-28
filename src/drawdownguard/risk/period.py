@@ -65,13 +65,19 @@ class Period(BaseModel):
         return (today or date.today()) >= self.ends()
 
 
-def load(path: Path = DEFAULT_PATH) -> Period | None:
+def load(path: Path | None = None) -> Period | None:
+    # Resolved at call time, not bound as a default. A default argument is
+    # evaluated once when the module is imported, so a test that redirects
+    # `DEFAULT_PATH` afterwards changes nothing -- which is how the suite came
+    # to be asserting against the promise on the live account.
+    path = path or DEFAULT_PATH
     if not path.exists():
         return None
     return Period.model_validate_json(path.read_text())
 
 
-def save(period: Period, path: Path = DEFAULT_PATH) -> None:
+def save(period: Period, path: Path | None = None) -> None:
+    path = path or DEFAULT_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(period.model_dump_json(indent=2) + "\n")
 
@@ -80,7 +86,7 @@ def current(
     equity: float,
     horizon_months: int = 12,
     today: date | None = None,
-    path: Path = DEFAULT_PATH,
+    path: Path | None = None,
 ) -> tuple[Period, bool]:
     """The promise in force, and whether it was just written.
 
@@ -89,7 +95,7 @@ def current(
     year protecting the larger number. Renewal is the only thing that moves the
     reference, and it happens on a date rather than on a price.
     """
-    today = today or date.today()
+    today, path = today or date.today(), path or DEFAULT_PATH
     existing = load(path)
     if existing is not None and not existing.expired(today):
         return existing, False
@@ -99,9 +105,9 @@ def current(
     return fresh, True
 
 
-def snapshot(path: Path = DEFAULT_PATH) -> dict:
+def snapshot(path: Path | None = None) -> dict:
     """The period as plain data, for the journal and the status page."""
-    period = load(path)
+    period = load(path or DEFAULT_PATH)
     if period is None:
         return {}
     return {

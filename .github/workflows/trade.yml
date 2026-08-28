@@ -80,10 +80,23 @@ jobs:
             uv run python3 scripts/run_cycle.py
           fi
 
+      # The published page is generated from the journal, and this step was
+      # missing: `docs/index.html` only ever changed when somebody rebuilt it
+      # by hand. The live URL would have frozen on whatever was last committed
+      # while the agent went on trading behind it -- a status page that is
+      # confidently out of date is worse than no status page, because a reader
+      # cannot tell.
+      #
+      # `always()` for the same reason the commit below has it: a cycle that
+      # died still journalled why, and the page should say so.
+      - name: Rebuild the status page
+        if: always()
+        run: uv run python3 scripts/build_site.py
+
       # `always()` so a failed cycle still commits whatever it journalled
       # before it died. The record of a crash is the most valuable record
       # there is, and it is the one a conditional step would throw away.
-      - name: Commit the journal
+      - name: Commit the journal and the page
         if: always()
         run: |
           git config user.name "drawdown-guard-agent"
@@ -93,6 +106,6 @@ jobs:
           # first: a missing journal is not a reason to report the cycle
           # as broken.
           mkdir -p journal data/state data/iv_history
-          git add journal data/state data/iv_history
+          git add journal data/state data/iv_history docs/index.html
           git diff --staged --quiet || git commit -m "journal: cycle $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           git push

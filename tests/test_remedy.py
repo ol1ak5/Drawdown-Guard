@@ -134,8 +134,13 @@ def test_the_gap_after_is_the_real_ladder_not_an_estimate():
 
 def test_a_book_inside_its_budget_is_offered_nothing():
     """No gap, no remedy. An agent that always had something to sell would be
-    an agent with a reason to find a gap."""
-    inside = [Holding("SPY", 1000, SPOT)]
+    an agent with a reason to find a gap.
+
+    Inside the budget means the whole book can be lost and still not exceed
+    it: 160 shares at 500 is 80,000 against 100,000. 1,000 shares would have
+    passed the old point check at -20% and can lose half a million.
+    """
+    inside = [Holding("SPY", 160, SPOT)]
     assert protective_put(inside, [], BUDGET, SHOCK, "SPY", SPOT, PUTS) is None
     assert reduce_exposure(inside, [], BUDGET, SHOCK, "SPY") is None
 
@@ -217,9 +222,12 @@ def test_selling_shares_closes_the_gap_with_no_premium():
     assert remedy is not None
     assert remedy.premium_cost == 0.0
     assert remedy.closes_the_gap
-    # 20,000 of gap at a 20% shock on 500 shares: 100 a share of loss removed,
-    # so 200 shares.
-    assert remedy.shares_sold["SPY"] == 200
+    # Every share sold is a share that can no longer lose anything, and the
+    # measure is the whole descent -- so bounding a 1,200-share book inside a
+    # 100,000 budget means selling until what is left cannot exceed it. There
+    # is no partial answer here: shares have no floor, and 200 of them would
+    # leave 100,000 of unbounded downside rather than a smaller one.
+    assert remedy.shares_sold["SPY"] == 1200
 
 
 def test_selling_shares_is_not_reported_as_costing_nothing():
@@ -232,7 +240,7 @@ def test_selling_shares_is_not_reported_as_costing_nothing():
     """
     remedy = reduce_exposure(BOOK, [], BUDGET, SHOCK, "SPY")
     assert remedy.forgone_upside > 0
-    assert remedy.forgone_upside == pytest.approx(200 * SPOT * 0.10)
+    assert remedy.forgone_upside == pytest.approx(1200 * SPOT * 0.10)
 
 
 def test_the_proceeds_stay_in_the_book_as_cash_that_does_not_move():
@@ -244,7 +252,7 @@ def test_the_proceeds_stay_in_the_book_as_cash_that_does_not_move():
     """
     remedy = reduce_exposure(BOOK, [], BUDGET, SHOCK, "SPY")
     assert remedy.gap_after <= 500.0
-    assert remedy.gap_before == pytest.approx(20_000)
+    assert remedy.gap_before == pytest.approx(500_000)
 
 
 # --- the comparison itself --------------------------------------------------
@@ -313,15 +321,19 @@ def test_the_one_comparison_that_is_arithmetic_is_made():
     dollars per thousand of gap closed ranks them without any view on the
     market. The put here buys 20,000 of gap closed for 3,000 of premium: 150
     per thousand. The collar is part-funded by the call it sells, so it closes
-    the same gap for less cash and reports a smaller number: the 560 call
-    brings in 2,400 of the 3,000, leaving 600, which is 30 per thousand.
+    the same gap for less cash and reports a smaller number.
+
+    The gap is the whole unbounded downside now -- 500,000 of shares with no
+    floor under them -- so the per-thousand figures are small. What the number
+    is for is unchanged: it ranks two cash-priced remedies against each other,
+    and it is a fact rather than a view.
     """
     put_only = protective_put(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS)
     ringed = collar(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS, THIN_CALLS)
 
-    assert put_only.gap_closed == pytest.approx(20_000)
-    assert put_only.cash_per_1k == pytest.approx(150.0)
-    assert ringed.cash_per_1k == pytest.approx(30.0)
+    assert put_only.gap_closed == pytest.approx(500_000)
+    assert put_only.cash_per_1k == pytest.approx(6.0)
+    assert ringed.cash_per_1k == pytest.approx(1.2)
 
 
 def test_a_remedy_that_costs_no_cash_does_not_score_zero_on_the_cash_axis():
@@ -544,26 +556,34 @@ def test_protection_that_is_exactly_holding_the_promise_is_not_released():
     immediately, reopen the gap, and buy it again — paying the spread twice per
     round trip to end where it started.
     """
-    held = [long_put(440, 5)]
+    held = [long_put(440, 12)]  # one contract per hundred shares, exactly
     assert _gap(BOOK, held, BUDGET, SHOCK) == 0.0
     assert release(BOOK, held, BUDGET, SHOCK, margin_pct=15.0) is None
 
 
 def test_redundant_protection_is_released_only_down_to_the_margin():
-    """Partial, because the margin is a quantity and not a switch.
+    """Partial, and the part that comes back is the surplus.
 
-    Four contracts of the five pay 16,000 at the shock, which is 1,000 more
-    headroom than the 15,000 the margin demands. Releasing a second contract
-    would drop it to 12,000 and break the band, so exactly one goes back.
+    Twelve contracts stand behind 1,200 shares. Fifteen is three more than the
+    book has shares for, and those three protect nothing -- below the strike
+    the matched twelve already flatten the loss, so the extra pay out on a
+    position that is not there.
+
+    Releasing a *matched* contract is a different act and this refuses it: the
+    hundred shares it uncovered would fall with no floor at all, which is not
+    a smaller promise but no promise. That is why the whole-descent measure
+    changed what this function can do -- at one shock the difference is
+    invisible.
     """
-    held = [long_put(440, 5)]
-    given = release(INSIDE, held, BUDGET, SHOCK, margin_pct=15.0)
+    held = [long_put(440, 15)]
+    given = release(BOOK, held, BUDGET, SHOCK, margin_pct=15.0)
 
     assert given is not None
-    assert given.reason == "redundant"
-    assert given.contracts == 1
+    assert given.contracts == 3
     assert given.margin_required == pytest.approx(15_000)
-    assert given.slack_after == pytest.approx(16_000)
+    # The surplus contracts protected nothing, so handing them back moves the
+    # headroom not at all. That is the point of calling them surplus.
+    assert given.slack_after == pytest.approx(given.slack_before)
     assert given.slack_after >= given.margin_required
 
 
@@ -575,15 +595,23 @@ def test_a_wider_margin_releases_less_and_a_narrower_one_releases_more():
     `is None` branch and never reached the comparison. Both margins here release
     something, which is the only way the ordering is actually exercised.
     """
-    held = [long_put(440, 5)]
-    cautious = release(INSIDE, held, BUDGET, SHOCK, margin_pct=15.0)
-    eager = release(INSIDE, held, BUDGET, SHOCK, margin_pct=5.0)
+    # Twelve stand behind the shares; the rest is surplus, and the margin
+    # decides how much of the surplus stays.
+    held = [long_put(440, 18)]
+    cautious = release(BOOK, held, BUDGET, SHOCK, margin_pct=15.0)
+    eager = release(BOOK, held, BUDGET, SHOCK, margin_pct=5.0)
 
-    assert cautious.contracts == 1
-    assert eager.contracts == 3
-    # And the conservative mandate's 25% band cannot let go of any of it: five
-    # contracts buy 20,000 of headroom and the band demands 25,000.
-    assert release(INSIDE, held, BUDGET, SHOCK, margin_pct=25.0) is None
+    # Both hand back all six surplus contracts: they protect nothing, so no
+    # margin can be a reason to keep them. The margin governs how much *live*
+    # protection may go, and there is none to give here.
+    assert cautious.contracts == 6
+    assert eager.contracts == 6
+    assert eager.margin_required < cautious.margin_required
+    # Surplus goes back under any band, because keeping it buys nothing. What
+    # the band still governs is protection that is doing work: twelve matched
+    # contracts leave 28,000 of headroom, and no margin short of that can
+    # justify handing one of them away.
+    assert release(BOOK, [long_put(440, 12)], BUDGET, SHOCK, margin_pct=25.0) is None
 
 
 def test_spent_protection_goes_back_even_though_the_gap_is_open():
@@ -603,8 +631,14 @@ def test_spent_protection_goes_back_even_though_the_gap_is_open():
     assert given.reason == "spent"
     assert given.contracts == 2
     assert before > 0, "the gap is still open, and the release happens anyway"
-    assert given.slack_after == pytest.approx(given.slack_before)
-    assert _gap(BOOK, [], BUDGET, SHOCK) == pytest.approx(before)
+    # A leg worth nothing at the promised shock can still be the floor deeper
+    # down, so handing it back is not free on the whole-descent measure. It is
+    # still the right trade -- the client is paying to carry it -- but the
+    # journal must not claim the headroom was unchanged.
+    assert given.slack_after < given.slack_before
+    # The gap on the bare book is the whole unbounded downside, which is what
+    # the legs were failing to bound in the first place.
+    assert _gap(BOOK, [], BUDGET, SHOCK) >= before
 
 
 def test_a_spent_leg_still_worth_something_in_the_tail_says_so():
@@ -677,8 +711,8 @@ def test_what_the_protection_cost_cannot_change_whether_it_is_released():
     worst to give up — and the ladder measures protection against its own
     zero-shock baseline precisely so the premium cancels.
     """
-    cheap = release(INSIDE, [long_put(440, 5, premium=1.0)], BUDGET, SHOCK, 15.0)
-    dear = release(INSIDE, [long_put(440, 5, premium=99.0)], BUDGET, SHOCK, 15.0)
+    cheap = release(BOOK, [long_put(440, 15, premium=1.0)], BUDGET, SHOCK, 15.0)
+    dear = release(BOOK, [long_put(440, 15, premium=99.0)], BUDGET, SHOCK, 15.0)
 
     assert cheap.contracts == dear.contracts
     assert cheap.slack_after == pytest.approx(dear.slack_after)

@@ -305,10 +305,27 @@ async def protect_node(state: GuardState) -> GuardState:
     given = release(
         book.holdings, book.legs, budget, shock, mandate.release_margin_pct
     )
-    legs = given.kept if given else list(book.legs)
+
+    # RECOMMENDED, NOT DONE -- and the rest of the cycle is measured on the
+    # book the broker actually holds.
+    #
+    # `release` returns the legs that could be handed back. Nothing closes
+    # them: an `OptionLeg` carries a strike and a premium and no expiry, so it
+    # cannot be turned into an order, and the chains are not loaded until
+    # further down. This used to read `legs = given.kept`, which sized
+    # everything below against a book the release had only imagined while the
+    # puts stayed in the account -- so the next cycle found them, called them
+    # redundant again, and bought fresh protection on top of them. Measured on
+    # the demo book: 20,130 of premium over five cycles closing a gap that was
+    # never open, and a position twice the size the agent believed it held.
+    #
+    # Reported at `breach` rather than `info` for the same reason a plan is:
+    # the client is paying for protection the agent has said they do not need,
+    # and that is a standing charge, not a routine event.
+    legs = list(book.legs)
     if given:
         writer.write(
-            "protection.released",
+            "protection.recommended_release",
             {
                 "reason": given.reason,
                 "contracts": given.contracts,
@@ -319,8 +336,13 @@ async def protect_node(state: GuardState) -> GuardState:
                 "tail_given_up": round(given.tail_given_up, 2),
                 "tail_shock": given.tail_shock,
                 "leaves_ceiling": given.leaves_ceiling,
+                "executed": False,
+                "why_not": (
+                    "an option leg carries no expiry, so no closing order can "
+                    "be built from it; the book below is measured as held"
+                ),
             },
-            severity="info",
+            severity="breach",
         )
 
     # The worst outcome anywhere, not the outcome at a chosen depth -- the
