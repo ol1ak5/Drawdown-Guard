@@ -102,7 +102,7 @@ easy to get wrong:
 import math
 from dataclasses import dataclass, field, replace
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_DOWN, ROUND_UP, Decimal
 
 from drawdownguard.domain import SHARES_PER_CONTRACT, ProposedOrder
 from drawdownguard.options.payoff import assignment_prob, bs_delta, contract_vega
@@ -395,6 +395,47 @@ def _tradable(row: dict) -> bool:
     return bool(row.get("expiry")) and bool(row.get("implied_vol"))
 
 
+# How far past the offer an order may reach, as a fraction of the spread.
+#
+# A limit set exactly at the offer fills only if nobody moves. On 2026-08-28
+# two protective puts were priced at the ask, the ask rose a few cents while
+# the cycle was still running, and both sat unfilled until the close -- leaving
+# 71,985 of risk uncovered overnight to avoid paying 20 dollars.
+#
+# A fraction of the spread rather than a fixed number of cents, because two
+# cents is 0.8% of a 2.64 contract and 6.7% of a 0.30 one. The gate already
+# refuses anything wider than `max_spread_pct`, so this is bounded by that:
+# a quarter of a 5% spread is 1.25% past the offer, in the worst case the gate
+# admits at all.
+#
+# This is a cost, and it is charged where the promise is sized rather than
+# discovered at the fill -- see `crossing_price`, used by `solve_for_strike`.
+CROSS_FRACTION = 0.25
+
+
+def crossing_price(row: dict, buying: bool) -> Decimal:
+    """The limit to send: the side being crossed to, plus room to reach it.
+
+    Never the mid, which is a price nobody is offering. A buy pays the ask and
+    a little of the spread; a sale takes the bid and gives up a little of it.
+    Both move toward the fill, and both stay inside a quote that exists.
+
+    Rounded to the cent in the direction of crossing, so rounding never undoes
+    the tolerance it was applied to.
+    """
+    bid, ask = float(row.get("bid") or 0), float(row.get("ask") or 0)
+    spread = max(ask - bid, 0.0)
+    room = Decimal(str(spread * CROSS_FRACTION))
+    if buying:
+        return (Decimal(str(ask)) + room).quantize(Decimal("0.01"), rounding=ROUND_UP)
+    # A sale cannot be talked below a penny, and a bid that is already there
+    # is a contract nobody will pay for -- the order is priced, not free.
+    return max(
+        (Decimal(str(bid)) - room).quantize(Decimal("0.01"), rounding=ROUND_DOWN),
+        Decimal("0.01"),
+    )
+
+
 def order_for(symbol: str, row: dict, contracts: int, spot: float) -> ProposedOrder:
     """One chain row as an order the gate can rule on and the broker can fill.
 
@@ -412,8 +453,11 @@ def order_for(symbol: str, row: dict, contracts: int, spot: float) -> ProposedOr
     tau = max((row["expiry"] - date.today()).days, 0) / 365.0
     strike, vol = float(row["strike"]), float(row["implied_vol"])
     buying = contracts > 0
-    price = row["ask"] if buying else row["bid"]
+    price = crossing_price(row, buying)
     bid, ask = float(row["bid"]), float(row["ask"])
+    # Measured on the quote, not on the limit. `spread_pct` is the gate's
+    # liquidity test and has to describe the market; charging it the tolerance
+    # would make the order look less liquid for the act of reaching for a fill.
     mid = (bid + ask) / 2
     return ProposedOrder(
         symbol=symbol,
@@ -578,14 +622,19 @@ def solve_for_strike(
 
     best: tuple[Decimal, int, float] | None = None
     for row in sorted(puts, key=lambda r: float(r["strike"])):
-        ask = float(row.get("ask") or 0)
-        if ask <= 0:
+        if float(row.get("ask") or 0) <= 0:
             continue
+        # What the order will actually be sent at, tolerance included, rather
+        # than the quote it was derived from. The premium comes out of the same
+        # account the promise is written against, so a strike admitted on a
+        # price the agent will not pay is a strike sized against the wrong
+        # number -- by the exact amount it reaches past the offer.
+        price = float(crossing_price(row, buying=True))
         strike = Decimal(str(row["strike"]))
-        candidate = OptionLeg(symbol, "P", strike, contracts, Decimal(str(ask)), spot)
-        cost = ask * contracts * SHARES_PER_CONTRACT
+        candidate = OptionLeg(symbol, "P", strike, contracts, Decimal(str(price)), spot)
+        cost = price * contracts * SHARES_PER_CONTRACT
         if worst_loss(holdings, [*legs, candidate], cost) <= budget:
-            best = (strike, contracts, ask)
+            best = (strike, contracts, price)
             break  # sorted ascending, so the first that fits is the cheapest
     return best
 
