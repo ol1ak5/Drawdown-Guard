@@ -22,7 +22,6 @@ means something is wrong with the system rather than with a trade.
 """
 
 import asyncio
-from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -229,5 +228,3 @@ def default_stack(max_drawdown_pct: float, root: Path | str = ".") -> list:
     ]
 
 
-def today_is(day: date) -> str:
-    return day.isoformat()

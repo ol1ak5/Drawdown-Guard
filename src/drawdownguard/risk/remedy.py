@@ -324,31 +324,6 @@ def _without(legs: list[OptionLeg], plan: dict[int, int]) -> list[OptionLeg]:
     return remaining
 
 
-def _contracts_needed(strike: Decimal, spot: float, shock: float, gap: float) -> int:
-    """How many puts it takes to cover `gap` dollars at the promised shock.
-
-    Sized on intrinsic value at the shock, ignoring the premium, because the
-    premium reduces the payout at every price equally and is reported
-    separately as the cost. Rounded up: a remedy that closes most of a gap has
-    not closed it.
-
-    Superseded by `contracts_to_match`, and kept only for the collar path until
-    that is converted too. Two things are wrong with sizing this way, and both
-    are load-bearing:
-
-    - it answers about one price. A hedge adequate at exactly the shock being
-      tested can be worthless a few percent above it, and this picks the
-      cheapest structure that passes whichever test is being run.
-    - it excludes the premium it is about to spend. That money comes out of the
-      same account the promise is written against, so the hedge comes up short
-      by exactly what it cost.
-    """
-    terminal = spot * (1 + shock)
-    intrinsic = max(float(strike) - terminal, 0.0)
-    if intrinsic <= 0:
-        return 0
-    return math.ceil(gap / (intrinsic * SHARES_PER_CONTRACT))
-
 
 def liquid(rows: list[dict], limits) -> list[dict]:
     """The rows that are choices at all, by the gate's own two liquidity rules.
@@ -427,6 +402,46 @@ def order_for(symbol: str, row: dict, contracts: int, spot: float) -> ProposedOr
         spread_pct=((ask - bid) / mid * 100) if mid > 0 else 100.0,
         spot=spot,
     )
+
+
+def closing_orders(
+    legs: list[OptionLeg], chains: dict[str, dict[str, list[dict]]]
+) -> list[ProposedOrder]:
+    """Orders that close `legs`, or an empty list if any of them cannot be.
+
+    All or nothing on purpose. A partial handback would leave the caller
+    holding a book that matches neither what it released nor what it kept, and
+    the whole reason this function exists is that `release` used to return an
+    answer nothing could act on -- the journal reported a handback, the puts
+    stayed in the account, and the next cycle bought protection on top of them.
+
+    A long leg is closed by selling it, at the bid: the side being crossed to,
+    never the mid, which is a price nobody is offering. The contract is found
+    in the chain already loaded for the cycle rather than re-read, so the order
+    is priced off the same quote the plan was.
+
+    A leg whose expiry is unknown, or whose contract is not on today's tradable
+    chain, cannot be closed here. That is reported rather than approximated:
+    an order sent at a guessed price is worse than one not sent.
+    """
+    out: list[ProposedOrder] = []
+    for leg in legs:
+        if leg.expiry is None:
+            return []
+        rows = (chains.get(leg.symbol) or {}).get(leg.right) or []
+        row = next(
+            (
+                r
+                for r in rows
+                if Decimal(str(r["strike"])) == leg.strike and r["expiry"] == leg.expiry
+            ),
+            None,
+        )
+        if row is None or not _tradable(row):
+            return []
+        # Negative: closing a long position is a sale.
+        out.append(order_for(leg.symbol, row, -abs(leg.contracts), leg.spot))
+    return out
 
 
 def sleeves(

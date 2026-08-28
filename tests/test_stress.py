@@ -13,7 +13,6 @@ from drawdownguard.risk.stress import (
     Holding,
     OptionLeg,
     bends,
-    describe,
     gap_within,
     ladder,
     unhedged_limit,
@@ -156,19 +155,6 @@ def test_no_breach_returns_nothing_rather_than_a_zero_rung():
 def test_the_ladder_is_fixed_and_does_not_follow_the_market():
     """A ladder that moved with prices would let a bad day redefine safe."""
     assert DEFAULT_SHOCKS == (-0.05, -0.10, -0.20, -0.35)
-
-
-def test_the_table_names_the_breaches():
-    text = describe(ladder(BOOK, [], BUDGET))
-    assert "BREACH" in text
-    assert "-20%" in text or "-20" in text
-
-
-# --- the promise is an interval ---------------------------------------------
-#
-# BOOK holds 599,700 of equity against a 100,000 budget, so an unprotected 20%
-# shock loses 119,940 and leaves a gap of 19,940. Every number below is that
-# arithmetic and nothing else.
 
 
 def test_only_strikes_bend_the_payoff():

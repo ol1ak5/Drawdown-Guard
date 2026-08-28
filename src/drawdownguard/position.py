@@ -1,4 +1,14 @@
-"""How a symbol's position moves between states, as pure functions.
+"""How a symbol's position moves when the broker reports something new.
+
+Assignment and expiry happen to the account whether or not anybody asked, so
+the transitions here are the ones the reconciler needs to explain a leg that
+changed overnight.
+
+`next_action` used to live here and returned SELL_CALL for any book holding
+shares. The nodes that called it were removed when the options wheel was, and
+the function outlived them by a week -- unreachable, still readable as a
+description of the agent, and one import away from writing calls against a
+client's equity again.
 
 Every transition returns a new state.
 
@@ -8,67 +18,16 @@ SHARES --sell call--> CALL_OPEN --expired--> SHARES
                                 \\--assigned--> CASH
 """
 
-from decimal import Decimal
-from typing import Literal
 
-from drawdownguard.domain import SHARES_PER_CONTRACT, Leg, OpenContract, Position
-
-Action = Literal["SELL_PUT", "SELL_CALL", "HOLD"]
+from drawdownguard.domain import SHARES_PER_CONTRACT, Leg, Position
 
 
 class IllegalTransition(Exception):
     """Raised when a transition would produce an unrepresentable position."""
 
 
-def next_action(state: Position) -> Action:
-    if state.leg == "CASH":
-        return "SELL_PUT"
-    if state.leg == "SHARES":
-        return "SELL_CALL"
-    return "HOLD"
 
 
-def _premium_cash(contract: OpenContract) -> Decimal:
-    return contract.premium * abs(contract.contracts) * SHARES_PER_CONTRACT
-
-
-def on_sold_put(state: Position, contract: OpenContract) -> Position:
-    if state.leg != "CASH":
-        raise IllegalTransition(f"cannot sell a put from leg {state.leg}")
-    if contract.right != "P" or contract.contracts >= 0:
-        raise IllegalTransition("expected a short put")
-    return state.model_copy(
-        update={
-            "leg": "PUT_OPEN",
-            "contracts": [contract],
-            "premium_collected": state.premium_collected + _premium_cash(contract),
-        }
-    )
-
-
-def on_sold_call(state: Position, contract: OpenContract) -> Position:
-    if state.leg != "SHARES":
-        raise IllegalTransition(
-            f"cannot sell a call from leg {state.leg}: that would be naked"
-        )
-    if contract.right != "C" or contract.contracts >= 0:
-        raise IllegalTransition("expected a short call")
-    required = abs(contract.contracts) * SHARES_PER_CONTRACT
-    if state.shares < required:
-        raise IllegalTransition(
-            f"naked call: {state.shares} shares held, {required} required"
-        )
-    new_basis = None
-    if state.basis is not None:
-        new_basis = state.basis - contract.premium
-    return state.model_copy(
-        update={
-            "leg": "CALL_OPEN",
-            "contracts": [contract],
-            "premium_collected": state.premium_collected + _premium_cash(contract),
-            "basis": new_basis,
-        }
-    )
 
 
 def on_expired_worthless(state: Position) -> Position:

@@ -105,14 +105,3 @@ def current(
     return fresh, True
 
 
-def snapshot(path: Path | None = None) -> dict:
-    """The period as plain data, for the journal and the status page."""
-    period = load(path or DEFAULT_PATH)
-    if period is None:
-        return {}
-    return {
-        "started": period.started.isoformat(),
-        "ends": period.ends().isoformat(),
-        "reference": round(period.reference, 2),
-        "horizon_months": period.horizon_months,
-    }

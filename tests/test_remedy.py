@@ -867,3 +867,82 @@ def test_each_sleeve_is_hedged_on_its_own_underlying():
         # Contracts follow the sleeve's own shares, not the book's total.
         assert contracts_to_match(sleeve, 500.0) == sum(h.shares for h in sleeve) // 100
         assert budget < 100_000.0
+
+
+# --- closing what was released ----------------------------------------------
+
+
+def closable_row(strike: float, bid: float) -> dict:
+    from datetime import date, timedelta
+
+    return {
+        "strike": strike,
+        "expiry": date.today() + timedelta(days=400),
+        "right": "P",
+        "bid": bid,
+        "ask": bid + 0.10,
+        "open_interest": 5_000,
+        "implied_vol": 0.22,
+    }
+
+
+_UNSET = object()
+
+
+def held_leg(strike=440.0, contracts=3, expiry=_UNSET) -> OptionLeg:
+    """A leg as the reconciler builds it, with the expiry the broker reported.
+
+    `expiry` takes a sentinel rather than defaulting on None, because None is
+    the case under test: a leg built for arithmetic alone carries no date, and
+    conflating "not supplied" with "genuinely absent" would make that test pass
+    against the wrong object.
+    """
+    from datetime import date, timedelta
+
+    return OptionLeg(
+        "SPY",
+        "P",
+        Decimal(str(strike)),
+        contracts,
+        Decimal("5.0"),
+        SPOT,
+        expiry=(date.today() + timedelta(days=400)) if expiry is _UNSET else expiry,
+    )
+
+
+def test_a_released_leg_becomes_an_order_that_sells_it():
+    """`release` returned an answer nothing could act on.
+
+    The journal reported a handback, the puts stayed in the account, and the
+    next cycle found them, called them redundant again and bought protection on
+    top -- 20,130 of premium over five cycles closing a gap that was never
+    open. A release has to become an order or it is not a release.
+    """
+    from drawdownguard.risk.remedy import closing_orders
+
+    chains = {"SPY": {"P": [closable_row(440.0, 6.00)], "C": []}}
+    orders = closing_orders([held_leg()], chains)
+
+    assert len(orders) == 1
+    assert orders[0].contracts == -3  # closing a long position is a sale
+    assert orders[0].limit_price == Decimal("6.0")  # the bid, not the mid
+    assert orders[0].strike == Decimal("440")
+
+
+def test_a_leg_with_no_expiry_closes_nothing_rather_than_guessing():
+    """An `OptionLeg` built for arithmetic carries no date, and an order needs
+    one. Sending it at a guessed expiry would close a contract nobody holds."""
+    from drawdownguard.risk.remedy import closing_orders
+
+    chains = {"SPY": {"P": [closable_row(440.0, 6.00)], "C": []}}
+    assert closing_orders([held_leg(expiry=None)], chains) == []
+
+
+def test_a_contract_missing_from_today_s_chain_stops_the_whole_handback():
+    """All or nothing. A partial release leaves the caller holding a book that
+    matches neither what it released nor what it kept, and every number
+    computed after that describes a portfolio that does not exist."""
+    from drawdownguard.risk.remedy import closing_orders
+
+    chains = {"SPY": {"P": [closable_row(999.0, 6.00)], "C": []}}
+    assert closing_orders([held_leg(), held_leg(strike=460.0)], chains) == []

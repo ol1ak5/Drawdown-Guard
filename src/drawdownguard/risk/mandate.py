@@ -39,20 +39,6 @@ from drawdownguard.risk.stress import DEFAULT_SHOCKS
 MANDATES_PATH = Path("config/mandates.yaml")
 
 
-class MandateViolation(BaseModel):
-    """One promise, and whether it was kept.
-
-    `passed` is about risk, not about exact obedience. `cautious` marks a
-    deviation that went the safe way: the agent did less than the mandate
-    permitted. An audit that scored those the same as a breach would report a
-    failure every time the agent was careful, and nobody would read it twice.
-    """
-
-    check: str
-    passed: bool
-    detail: str
-    cautious: bool = False
-
 
 class Mandate(BaseModel):
     """What this client's portfolio is allowed to want."""
@@ -123,9 +109,6 @@ class Mandate(BaseModel):
     # constraint, not an observation.
     allow_reduce_exposure: bool = False
 
-    def release_headroom(self, equity: float | Decimal) -> float:
-        """The dollars of slack required before protection may be released."""
-        return self.budget(equity) * self.release_margin_pct / 100
 
     def budget(self, equity: float | Decimal) -> float:
         """The downside budget in dollars."""
@@ -227,131 +210,4 @@ def load_mandate(
     return mandate.validate_against(limits or load_limits())
 
 
-def load_all(
-    path: Path | str = MANDATES_PATH, limits: Limits | None = None
-) -> dict[str, Mandate]:
-    """Every mandate. Used by the side-by-side view: one market, three answers."""
-    profiles = yaml.safe_load(Path(path).read_text())
-    return {name: load_mandate(name, path, limits) for name in profiles}
 
-
-def audit(
-    mandate: Mandate,
-    deployed_pct: float,
-    concentration_pct: float,
-    traded_symbols: list[str],
-    deltas: list[float],
-) -> list[MandateViolation]:
-    """Did the agent keep the promise? One verdict per clause.
-
-    Deliberately has no power to fix anything. The auditor reports; it does not
-    intervene. An auditor that could correct the thing it audits is not an
-    auditor, and the separation is what makes the verdict worth reading.
-
-    An empty cycle passes every check. Trading nothing cannot breach a cap, and
-    reporting a violation for a cycle that did nothing would make the audit
-    noise rather than signal.
-    """
-    low, high = mandate.delta_band
-    # Above the band is more risk than promised. Below it is less. Only the
-    # first is a breach.
-    #
-    # This distinction was not in the first version and the real cycle of
-    # 2026-08-25 exposed it: the analyst called stress, tightened delta to
-    # 0.145, and the audit reported a mandate violation for an agent that had
-    # been more careful than required. The delta floor exists to keep the
-    # premium worth collecting, not to stop the agent from being safe.
-    over = [d for d in deltas if abs(d) > high]
-    under = [d for d in deltas if abs(d) < low]
-    off_universe = [s for s in traded_symbols if s not in mandate.universe]
-
-    return [
-        MandateViolation(
-            check="deployment",
-            passed=deployed_pct <= mandate.max_deployed_pct + 1e-9,
-            detail=(
-                f"{deployed_pct:.1f}% of capital deployed against a "
-                f"{mandate.max_deployed_pct:.0f}% cap"
-            ),
-        ),
-        MandateViolation(
-            check="universe",
-            passed=not off_universe,
-            detail=(
-                f"traded outside the mandate: {', '.join(off_universe)}"
-                if off_universe
-                else f"all trades within {', '.join(mandate.universe)}"
-            ),
-        ),
-        MandateViolation(
-            check="delta",
-            passed=not over,
-            cautious=bool(under and not over),
-            detail=(
-                f"{len(over)} contract(s) above the {high:.2f} delta ceiling"
-                if over
-                else (
-                    f"{len(under)} contract(s) below the {low:.2f} floor — safer "
-                    f"than the mandate requires, not a breach"
-                    if under
-                    else f"every contract inside the {low:.2f}-{high:.2f} band"
-                )
-            ),
-        ),
-        MandateViolation(
-            check="concentration",
-            passed=concentration_pct <= mandate.max_concentration_pct + 1e-9,
-            detail=(
-                f"{concentration_pct:.1f}% of variance in the dominant risk "
-                f"bucket against a {mandate.max_concentration_pct:.0f}% cap"
-            ),
-        ),
-    ]
-
-
-def compliance_pct(violations: list[MandateViolation]) -> float:
-    if not violations:
-        return 100.0
-    return 100.0 * sum(1 for v in violations if v.passed) / len(violations)
-
-
-def verdict(violations: list[MandateViolation]) -> str:
-    """A sentence a human reads first, before the table."""
-    failed = [v for v in violations if not v.passed]
-    if not failed:
-        cautious = [v for v in violations if v.cautious]
-        if cautious:
-            names = ", ".join(v.check for v in cautious)
-            return f"MANDATE KEPT, more cautiously than required: {names}"
-        return "MANDATE KEPT"
-    names = ", ".join(v.check for v in failed)
-    return f"MANDATE BREACHED: {names}"
-
-
-class Counterfactual(BaseModel):
-    """What the discipline cost, in dollars.
-
-    Without this a reader can fairly say: of course the constrained agent took
-    less risk, it simply traded less. The answer has to be a number — here is
-    the premium that was available, here is what we took, here is the
-    difference and the reason.
-    """
-
-    premium_taken: float
-    premium_available: float
-    concentration_taken: float
-    concentration_available: float
-    reason: str = ""
-
-    @property
-    def forgone(self) -> float:
-        return max(self.premium_available - self.premium_taken, 0.0)
-
-    def describe(self) -> str:
-        if self.forgone <= 0:
-            return "the constraint cost nothing this cycle"
-        return (
-            f"declined {self.forgone:,.0f} of premium to hold concentration at "
-            f"{self.concentration_taken:.1f}% instead of "
-            f"{self.concentration_available:.1f}%"
-        )

@@ -24,7 +24,6 @@ holds short options is worse than one that never opened them.
 """
 
 import uuid
-from decimal import Decimal
 
 from pydantic import BaseModel
 
@@ -167,6 +166,3 @@ async def submit_order(
     )
 
 
-def limit_price_of(order: ProposedOrder) -> Decimal:
-    """The price actually sent, rounded as the broker will see it."""
-    return Decimal(f"{order.limit_price:.2f}")

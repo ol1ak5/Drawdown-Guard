@@ -53,6 +53,12 @@ class GuardState(TypedDict, total=False):
     # higher-beta ones -- 11,700 of a 100,000 promise on the demonstration
     # book. See `remedy.sleeves`.
     protection: list[Remedy]
+    # Orders that close protection the client no longer needs. Separate from
+    # `protection` because they are the opposite act, and carried at all
+    # because for a while they did not exist: `release` returned an answer and
+    # nothing could send it, so the journal reported a handback while the puts
+    # stayed in the account.
+    release_orders: list
     results: list[OrderResult]
     discrepancies: list[str]
     halted: bool
@@ -76,6 +82,7 @@ def initial_state(dry_run: bool = False) -> GuardState:
         book=None,
         released=None,
         protection=[],
+        release_orders=[],
         results=[],
         discrepancies=[],
         halted=False,

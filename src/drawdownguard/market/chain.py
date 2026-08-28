@@ -41,21 +41,6 @@ from drawdownguard.execution.reconcile import parse_occ
 from drawdownguard.mcp.alpaca_client import FULL_TOOLSETS, alpaca_session, call_tool
 from drawdownguard.options.payoff import implied_vol
 
-# The chain endpoint's page size. Named so the pagination loop reads as
-# deliberate rather than as a magic number someone might tidy away.
-CHAIN_PAGE_SIZE = 100
-
-# Alpaca quotes greeks per share, and vega per share per point of volatility.
-# Measured on 2026-08-24 across 781 SPY contracts: our textbook `bs_vega`
-# divided by Alpaca's came to a median of 101.3, and our delta matched theirs
-# to within 0.0005. See docs/notes/greeks-crosscheck.md.
-#
-# Nothing here consumes Alpaca's greeks. They are recomputed from the implied
-# volatility instead, so that the same Black-Scholes code prices the backtest
-# and the live chain. The constant exists to document the comparison, not to
-# perform a conversion.
-ALPACA_VEGA_PER_POINT = True
-
 
 def _decimal(value: Any) -> Decimal:
     """Money as Decimal, via str so a float's binary error is not inherited."""

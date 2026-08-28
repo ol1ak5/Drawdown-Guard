@@ -8,9 +8,9 @@ Drawdown Guard is an autonomous AI trading agent that checks a portfolio every w
 
 **The market moves. The loss mandate doesn't. Drawdown Guard keeps the two in line.**
 
-🔴 Live decisions → **[status page](https://ol1ak5.github.io/Drawdown-Guard/)** ·
-📊 Backtest → **[report](docs/backtest-report.md)** ·
-📓 Every decision ever made → **[journal](journal/)**
+🔴 Live decisions: **[status page](https://ol1ak5.github.io/Drawdown-Guard/)**
+📊 Backtest: **[report](docs/backtest-report.md)**
+📓 Every decision ever made: **[journal](journal/)**
 
 ---
 
@@ -28,7 +28,7 @@ Drawdown Guard stands between the promise and the portfolio, turning a client's 
 
 Every weekday, it wakes up and asks one question: **if the market fell right now, would the portfolio still be inside the number it was given?** If yes, it says so, in writing, and continues to be on guard. If no, it measures the existing gap, and buys protection on today's actual option chain.
 
-## 👤 One client, one promise, two numbers
+## 👤 One client, one promise
 
 For this hackathon, we turn the problem into a concrete situation.
 
@@ -133,7 +133,7 @@ Approved orders go out, fills get confirmed, and the portfolio's actual position
 Every number, every refusal, and every quiet morning goes into an append-only record. An LLM then writes one paragraph explaining the decision, in plain language.
 
 
-## 🔗 The chain of decision 
+## 🔗 The Chain of Decision 
 
 **1️⃣ How much protection?** Enough that the client's worst case *at any depth*
 is the promised 10% — no more, and pointedly no less.
@@ -304,15 +304,15 @@ Built directly against the four agent types this track names:
 |---|---|
 | 🦙 **Alpaca Trading API** | Live paper account - equities and options, level 3 |
 | 🔌 **Alpaca MCP Server** | Every broker call goes through MCP. Read-only toolsets for the AI. Order tools reachable only on the deterministic path |
-| 🧠 **Google Gemini** | LLM explains the protection strategy the agent chooses |
-| 🕸️ **LangGraph** | The ten-node cycle, including the conditional halt edge |
+| 🧠 **Google Gemini** | Writes the plain-language explanation of the drawdown strategy the agent choses today |
+| 🕸️ **LangGraph** | The seven-node cycle, including the conditional halt edge |
 | 🔗 **LangChain** | Model plumbing and structured output for the analyst |
 | 📐 **CVXPY + HiGHS** | Convex program sizing positions under tail-risk and exposure constraints |
 | 🔢 **NumPy · SciPy · pandas** | Black-Scholes, the stress ladder, the backtest engine |
-| ✅ **Pydantic** | Mandates and limits are validated types — an impossible promise fails at load time, not at runtime |
-| ⚙️ **GitHub Actions** | The agent's heartbeat: one autonomous cycle every weekday at 14:00 UTC |
+| ✅ **Pydantic** | Mandates and limits are validated types - an impossible promise fails at load time, not at runtime |
+| ⚙️ **GitHub Actions** | The agent's heartbeat - one autonomous cycle every weekday at 14:00 UTC |
 | 🌐 **GitHub Pages** | The live status page, rebuilt from the journal after every cycle |
-| 🐍 **Python 3.11 · uv · ruff · pytest** | 378 tests, zero lint errors |
+| 🐍 **Python 3.11** | The language everything runs on |
 
 ## ▶️ Try it
 

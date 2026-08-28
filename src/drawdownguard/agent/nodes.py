@@ -45,6 +45,7 @@ from drawdownguard.risk.limits import load_limits
 from drawdownguard.risk.mandate import load_mandate
 from drawdownguard.risk.remedy import (
     choose,
+    closing_orders,
     collar,
     liquid,
     protective_put,
@@ -61,12 +62,6 @@ from drawdownguard.risk.stress import (
 )
 
 STRATEGY_PATH = Path("config/strategy.yaml")
-
-# The CVaR ceiling handed to the optimizer, as a share of equity. Expressed
-# relative to equity for the same reason the delta band is: an absolute dollar
-# tail limit means something different at every account size.
-CVAR_PCT = 2.0
-
 
 def strategy(path: str | Path = STRATEGY_PATH) -> dict[str, Any]:
     return yaml.safe_load(Path(path).read_text())
@@ -302,30 +297,78 @@ async def protect_node(state: GuardState) -> GuardState:
     budget = mandate.budget(promise.reference)
     shock = mandate.binding_shock
 
+    # Imported here rather than at module scope for the same reason the chain
+    # is: the name is resolved at call time, so a test patching `load_chain`
+    # reaches this node too.
+    from drawdownguard.market.chain import load_chain
+
+    min_dte, max_dte = mandate.protection_dte
+    gate_limits = load_limits()
+
+    # Every symbol the cycle could act on: the sleeves it may hedge, plus any
+    # symbol already carrying a leg, because a leg can be handed back on a
+    # symbol whose shares have since been sold. Loaded once -- two reads of the
+    # same chain a second apart can disagree, and a plan priced off one while
+    # its orders are priced off the other is a plan nobody can check.
+    wanted = {symbol for symbol, _, _ in sleeves(book.holdings, budget)}
+    wanted |= {leg.symbol for leg in book.legs}
+    chains: dict[str, dict[str, list[dict]]] = {}
+    for symbol in sorted(wanted):
+        try:
+            puts = await load_chain(symbol, "P", min_dte, max_dte)
+            calls = await load_chain(symbol, "C", min_dte, max_dte)
+        except Exception as exc:  # noqa: BLE001 — reported, symbol stays open
+            writer.write(
+                "protection.chain_unreadable",
+                {"symbol": symbol, "detail": str(exc)},
+                severity="breach",
+            )
+            continue
+        offered = (len(puts), len(calls))
+        # Narrowed to what can be traded before anything is priced. The gate
+        # applies the same two rules, but it applies them last, and a solver
+        # ranging over the whole chain finds the cheapest strike by finding the
+        # one nobody trades -- a real cycle chose a put with an open interest
+        # of 209, was refused, and left the promise broken.
+        chains[symbol] = {
+            "P": liquid(puts, gate_limits),
+            "C": liquid(calls, gate_limits),
+        }
+        writer.write(
+            "protection.chain_filtered",
+            {
+                "symbol": symbol,
+                "puts": {"offered": offered[0], "tradable": len(chains[symbol]["P"])},
+                "calls": {"offered": offered[1], "tradable": len(chains[symbol]["C"])},
+                "min_open_interest": gate_limits.min_open_interest,
+                "max_spread_pct": gate_limits.max_spread_pct,
+            },
+            severity="info",
+        )
+
     given = release(
         book.holdings, book.legs, budget, shock, mandate.release_margin_pct
     )
 
-    # RECOMMENDED, NOT DONE -- and the rest of the cycle is measured on the
-    # book the broker actually holds.
+    # Handing protection back is an order like any other, and for a while it
+    # was not one. `release` returned the legs and nothing closed them: the
+    # journal reported a handback, the puts stayed in the account, and the next
+    # cycle found them, called them redundant again and bought protection on
+    # top -- 20,130 of premium over five cycles closing a gap that was never
+    # open, and a position twice the size the agent believed it held.
     #
-    # `release` returns the legs that could be handed back. Nothing closes
-    # them: an `OptionLeg` carries a strike and a premium and no expiry, so it
-    # cannot be turned into an order, and the chains are not loaded until
-    # further down. This used to read `legs = given.kept`, which sized
-    # everything below against a book the release had only imagined while the
-    # puts stayed in the account -- so the next cycle found them, called them
-    # redundant again, and bought fresh protection on top of them. Measured on
-    # the demo book: 20,130 of premium over five cycles closing a gap that was
-    # never open, and a position twice the size the agent believed it held.
-    #
-    # Reported at `breach` rather than `info` for the same reason a plan is:
-    # the client is paying for protection the agent has said they do not need,
-    # and that is a standing charge, not a routine event.
+    # The book below is measured on `given.kept` only where the closing orders
+    # exist. A release that cannot be priced is reported and not applied, so
+    # the rest of the cycle sizes against what the broker actually holds.
     legs = list(book.legs)
+    release_orders: list = []
     if given:
+        release_orders = closing_orders(given.legs, chains)
+        applied = len(release_orders) == len({leg.symbol for leg in given.legs})
+        if applied:
+            legs = list(given.kept)
         writer.write(
-            "protection.recommended_release",
+            "protection.released" if applied else "protection.recommended_release",
             {
                 "reason": given.reason,
                 "contracts": given.contracts,
@@ -336,21 +379,24 @@ async def protect_node(state: GuardState) -> GuardState:
                 "tail_given_up": round(given.tail_given_up, 2),
                 "tail_shock": given.tail_shock,
                 "leaves_ceiling": given.leaves_ceiling,
-                "executed": False,
-                "why_not": (
-                    "an option leg carries no expiry, so no closing order can "
-                    "be built from it; the book below is measured as held"
-                ),
+                "executed": applied,
+                "orders": [o.symbol for o in release_orders],
             },
-            severity="breach",
+            # A handback that could not be priced is a standing charge the
+            # client keeps paying, which is a breach of the same kind as an
+            # open gap. One that goes out is ordinary work.
+            severity="info" if applied else "breach",
         )
 
-    # The worst outcome anywhere, not the outcome at a chosen depth -- the
-    # same question `mandate` asked, so the two nodes cannot disagree about
-    # whether the promise is broken.
+    # The worst outcome anywhere, not the outcome at a chosen depth -- the same
+    # question `mandate` asked, so the two nodes cannot disagree about whether
+    # the promise is broken. Measured on `legs`, which is the book after any
+    # release that could actually be sent and the book as held otherwise.
     gap = max(worst_loss(book.holdings, legs) - budget, 0.0)
     if gap <= 0:
-        return GuardState(released=given, protection_gap=gap)
+        return GuardState(
+            released=given, protection=[], protection_gap=gap, results=[]
+        )
 
     if not sleeves(book.holdings, budget):
         # A gap with no shares behind it is a short-option gap, and the answer
@@ -362,58 +408,22 @@ async def protect_node(state: GuardState) -> GuardState:
         )
         return GuardState(released=given, protection_gap=gap)
 
-    # Imported here rather than at module scope for the same reason
-    # `snapshot_node` does it: the name is resolved at call time, so a test
-    # patching `drawdownguard.market.chain.load_chain` reaches this node too. A
-    # top-level import would bind the real function before any patch was applied
-    # and the test would exercise the network it meant to replace.
-    from drawdownguard.market.chain import load_chain
-
-    min_dte, max_dte = mandate.protection_dte
-    gate_limits = load_limits()
     chosen_all: list = []
     planned: list[dict] = []
 
-    # One sleeve at a time, each hedged on its own underlying. The agent used
-    # to buy puts on the largest holding and size them to the whole book, which
-    # treats three indices as one thing falling by one number -- and they are
-    # not. On this project's own bars QQQ carries a beta of 1.17 to SPY and IWM
-    # 1.12, so a notional match left 11,700 of a 100,000 promise uncovered. A
-    # QQQ put pays on QQQ however far QQQ falls; no beta is estimated because
-    # none is needed.
     for symbol, sleeve, sleeve_budget in sleeves(book.holdings, budget):
         spot = sleeve[0].price
         sleeve_legs = [leg for leg in legs if leg.symbol == symbol]
-        try:
-            puts = await load_chain(symbol, "P", min_dte, max_dte)
-            calls = await load_chain(symbol, "C", min_dte, max_dte)
-        except Exception as exc:  # noqa: BLE001 — reported, sleeve stays open
-            writer.write(
-                "protection.chain_unreadable",
-                {"symbol": symbol, "budget": round(sleeve_budget, 2),
-                 "detail": str(exc)},
-                severity="breach",
-            )
-            continue
 
-        # Narrowed to what can be traded before anything is priced. The gate
-        # applies the same two rules, but it applies them last, and a solver
-        # ranging over the whole chain finds the cheapest strike by finding the
-        # one nobody trades -- a real cycle chose a put with an open interest
-        # of 209, was refused, and left the promise broken.
-        offered = (len(puts), len(calls))
-        puts, calls = liquid(puts, gate_limits), liquid(calls, gate_limits)
-        writer.write(
-            "protection.chain_filtered",
-            {
-                "symbol": symbol,
-                "puts": {"offered": offered[0], "tradable": len(puts)},
-                "calls": {"offered": offered[1], "tradable": len(calls)},
-                "min_open_interest": gate_limits.min_open_interest,
-                "max_spread_pct": gate_limits.max_spread_pct,
-            },
-            severity="info",
-        )
+        # Read from the chains loaded once at the top of this node. Fetching
+        # again here would price the orders off a different quote from the one
+        # the release was priced against, and a cycle whose two halves saw
+        # different markets is a cycle nobody can check afterwards.
+        chain = chains.get(symbol)
+        if chain is None:
+            # The failure was already journalled where the read happened.
+            continue
+        puts, calls = chain["P"], chain["C"]
 
         offers = [
             remedy
@@ -525,6 +535,7 @@ async def protect_node(state: GuardState) -> GuardState:
 
     return GuardState(
         released=given,
+        release_orders=release_orders,
         protection=chosen_all,
         protection_gap=gap,
     )
@@ -553,7 +564,12 @@ async def execute_node(state: GuardState) -> GuardState:
 
     # One remedy per sleeve, since each symbol is hedged on its own underlying.
     chosen = state.get("protection") or []
-    orders = [order for remedy in chosen for order in remedy.orders]
+    # Handing protection back goes out first, and through the same gate. It is
+    # a sale of something already owned, so nothing about it can breach a limit
+    # -- but running it through `submit_order` anyway means there is exactly one
+    # path to the broker in this program rather than one path and an exception.
+    orders = list(state.get("release_orders") or [])
+    orders += [order for remedy in chosen for order in remedy.orders]
 
     for remedy in chosen:
         if remedy.orders:

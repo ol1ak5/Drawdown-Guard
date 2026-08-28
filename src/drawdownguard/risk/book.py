@@ -127,6 +127,7 @@ def to_book(
                 symbol=occ["underlying"],
                 right=occ["right"],
                 strike=occ["strike"],
+                expiry=occ["expiry"],
                 contracts=int(_decimal(position.get("qty"))),
                 premium=_decimal(position.get("avg_entry_price")),
                 spot=spot,

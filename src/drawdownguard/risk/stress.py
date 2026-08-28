@@ -58,6 +58,7 @@ Every position is valued at the shocked price and compared to today, so a
 """
 
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
 
 from drawdownguard.domain import SHARES_PER_CONTRACT
@@ -102,6 +103,15 @@ class OptionLeg:
     contracts: int  # negative = sold
     premium: Decimal  # per share, paid if long, received if short
     spot: float
+    # The day the leg stops existing. None where a caller only needs the
+    # payoff -- most of the arithmetic here does, and the tests that check it
+    # should not have to invent a date to do so.
+    #
+    # It is carried because a leg without one cannot be closed. `release`
+    # decides which contracts to hand back, and for a while nothing could act
+    # on that answer: the journal reported a handback, the puts stayed in the
+    # account, and the next cycle bought protection on top of them.
+    expiry: date | None = None
 
     def pnl_at(self, shock: float) -> float:
         """Profit or loss at expiry if the underlying moved by `shock`.
@@ -334,17 +344,3 @@ def unhedged_limit(budget: float, shock: float) -> float:
     return budget / abs(shock)
 
 
-def describe(rungs: list[Rung]) -> str:
-    """The ladder as a table, for the journal and the status page."""
-    lines = [
-        f"{'shock':>7}{'portfolio':>14}{'from options':>15}{'budget':>12}{'gap':>12}",
-        "-" * 60,
-    ]
-    for rung in rungs:
-        flag = "  BREACH" if rung.breached else ""
-        lines.append(
-            f"{rung.shock * 100:>6.0f}%{rung.portfolio_loss:>14,.0f}"
-            f"{rung.protected_by_options:>15,.0f}{-rung.budget:>12,.0f}"
-            f"{rung.gap:>12,.0f}{flag}"
-        )
-    return "\n".join(lines)
