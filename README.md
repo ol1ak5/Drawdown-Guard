@@ -18,15 +18,23 @@ Drawdown Guard is an autonomous AI trading agent that checks a portfolio every w
 
 **Just knowing a loss tolerance limit is not a loss control.**
 
-An investor may have a clear idea of how much loss they can realistically tolerate. But the portfolio can't enforce that limit on its own. It holds what it holds and it falls when the market falls, quietly drifting away from the initial number.
+An investor can decide how much downside he can accept. But once the portfolio is built, that number does not enforce itself.
 
-Predicting the next crash is hard. Knowing whether today's portfolio still respects yesterday's promise is a different problem. Trillions of dollars of software do the first. Almost nothing does the second the second - that's what we're solving.
+Markets move. Positions change. Options expire. New exposure is added.
+
+The portfolio keeps evolving, while the client's risk limit stays the same. Over time, the two can drift apart, and the investor may not discover the gap until the market tests it.
+
+Predicting the next crash is hard. Knowing whether today's portfolio still respects the risk limit set for it is a different problem. That's exactly what Drawdown Guard is built to solve.
 
 ## 💡 The solution
 
-Drawdown Guard stands between the promise and the portfolio, turning a client's downside limit into a continuously monitored portfolio constraint the portfolio answers to every day.
+Drawdown Guard stands between the client's promise and the portfolio, turning a downside limit into a continuously monitored constraint the portfolio is checked against.
 
-Every weekday, it wakes up and asks one question: **if the market fell right now, would the portfolio still be inside the number it was given?** If yes, it says so, in writing, and continues to be on guard. If no, it measures the existing gap, and buys protection on today's actual option chain.
+Every weekday, the agent wakes up and asks one question: 
+> **If the market fell today, would the portfolio still be inside the number it was given?**
+
+If yes, the agent records the result and stays on guard.
+If no, it measures the existing gap, and evaluates the available options on today's actual option chain to bring the portfolio back within its mandate.
 
 ## 👤 One client, one promise
 

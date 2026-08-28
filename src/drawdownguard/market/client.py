@@ -37,7 +37,7 @@ from drawdownguard.domain import SHARES_PER_CONTRACT, Portfolio, Position
 from drawdownguard.execution.reconcile import reconcile
 from drawdownguard.market.chain import mid_of
 from drawdownguard.mcp.alpaca_client import FULL_TOOLSETS, alpaca_session
-from drawdownguard.options.payoff import bs_delta, contract_vega
+from drawdownguard.options.payoff import bs_delta, contract_vega, implied_vol
 
 
 def _money(value: Any) -> Decimal:
@@ -57,7 +57,7 @@ def position_greeks(
     vols: dict[str, float],
     as_of_tau: dict[str, float],
 ) -> tuple[float, float, float]:
-    """Net delta in shares, directional exposure in dollars, and vega.
+    """Net delta in shares, exposure in dollars, vega, and what was skipped.
 
     Sign conventions, both of which are easy to get backwards:
 
@@ -74,6 +74,7 @@ def position_greeks(
     net_delta = 0.0
     net_delta_value = 0.0
     vega = 0.0
+    unknown: list[str] = []
 
     for symbol, position in positions.items():
         net_delta += float(position.shares)
@@ -83,16 +84,38 @@ def position_greeks(
         for contract in position.contracts:
             key = contract.occ_symbol
             vol, tau = vols.get(key), as_of_tau.get(key)
-            if spot is None or not vol or not tau or tau <= 0:
+            if spot is None:
                 continue
             strike = float(contract.strike)
+
+            # A contract expiring today has no time value left and its delta is
+            # the limit: one if it finishes in the money, zero if it does not.
+            # Skipping it reported no exposure at all on the day the position
+            # is most likely to be assigned -- twenty short 700 puts against a
+            # 640 spot, a 120,000 obligation, counted as nothing.
+            if not tau or tau <= 0:
+                in_money = strike > spot if contract.right == "P" else spot > strike
+                if not in_money:
+                    continue
+                per_share = -1.0 if contract.right == "P" else 1.0
+                contribution = contract.contracts * per_share * SHARES_PER_CONTRACT
+                net_delta += contribution
+                net_delta_value += contribution * spot
+                continue
+
+            if not vol:
+                # No volatility and none solvable: the position is real and its
+                # greeks are unknown, so it is left out and the caller is told.
+                # Silence here is what made a third of the chain invisible.
+                unknown.append(key)
+                continue
             per_share = bs_delta(spot, strike, tau, vol, contract.right)
             contribution = contract.contracts * per_share * SHARES_PER_CONTRACT
             net_delta += contribution
             net_delta_value += contribution * spot
             vega -= contract.contracts * contract_vega(spot, strike, tau, vol)
 
-    return net_delta, net_delta_value, vega
+    return net_delta, net_delta_value, vega, unknown
 
 
 async def get_positions() -> list[dict[str, Any]]:
@@ -145,14 +168,18 @@ async def get_account(
         taus: dict[str, float] = {}
 
         if held:
+            # Every symbol held, not only the ones carrying an option. Priced
+            # for the contracts alone, a holding with no hedge on it counted
+            # zero dollars toward `net_delta_value` while still counting its
+            # shares -- so `max_net_delta_pct`, which is measured in dollars,
+            # was blind to exactly the positions with nothing standing behind
+            # them. On the demo book that reported 323,575 of exposure against
+            # a real 723,387, and admitted an order the true figure refuses.
             for symbol in positions:
-                if positions[symbol].contracts:
-                    quote = (
-                        await _read(
-                            session, "get_stock_latest_quote", {"symbols": symbol}
-                        )
-                    )["quotes"][symbol]
-                    spots[symbol] = mid_of(quote)
+                quote = (
+                    await _read(session, "get_stock_latest_quote", {"symbols": symbol})
+                )["quotes"][symbol]
+                spots[symbol] = mid_of(quote)
 
             snaps = (
                 await _read(session, "get_option_snapshot", {"symbols": ",".join(held)})
@@ -160,16 +187,46 @@ async def get_account(
             from datetime import date
 
             today = date.today()
-            for position in positions.values():
+            for symbol, position in positions.items():
                 for contract in position.contracts:
                     snap = snaps.get(contract.occ_symbol) or {}
+                    days = (contract.expiry - today).days
+                    tau = days / 365.0 if days > 0 else 0.0
+                    taus[contract.occ_symbol] = tau
+
                     iv = snap.get("impliedVolatility")
                     if iv:
                         vols[contract.occ_symbol] = float(iv)
-                    days = (contract.expiry - today).days
-                    taus[contract.occ_symbol] = days / 365.0 if days > 0 else 0.0
+                        continue
 
-    net_delta, net_delta_value, vega = position_greeks(positions, spots, vols, taus)
+                    # Alpaca publishes an implied volatility for about two
+                    # thirds of contracts. The other third used to contribute
+                    # nothing at all -- no delta, no vega -- so the limits were
+                    # checked against a book with a third of it deleted. Solve
+                    # it from the quote instead, the same way the chain adapter
+                    # does, rather than dropping the position.
+                    quote = snap.get("latestQuote") or {}
+                    bid, ask = float(quote.get("bp") or 0), float(quote.get("ap") or 0)
+                    spot = spots.get(symbol)
+                    if bid > 0 and ask > 0 and spot and tau > 0:
+                        solved = implied_vol(
+                            (bid + ask) / 2,
+                            spot,
+                            float(contract.strike),
+                            tau,
+                            contract.right,
+                        )
+                        if solved:
+                            vols[contract.occ_symbol] = solved
+
+    net_delta, net_delta_value, vega, unknown = position_greeks(
+        positions, spots, vols, taus
+    )
+    for key in unknown:
+        discrepancies.append(
+            f"{key}: no implied volatility and none solvable; "
+            "left out of the delta and vega limits"
+        )
 
     equity = _money(account["equity"])
     deployed = sum(

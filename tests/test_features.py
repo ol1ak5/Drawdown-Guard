@@ -93,7 +93,7 @@ def test_short_puts_are_long_the_underlying():
     is most neutral.
     """
     positions = {"SPY": wheel_with_short_puts(-4)}
-    net_delta, _value, _ = position_greeks(
+    net_delta, _value, _, _ = position_greeks(
         positions,
         {"SPY": 764.0},
         {"SPY260918P00700000": 0.20},
@@ -104,7 +104,9 @@ def test_short_puts_are_long_the_underlying():
 
 def test_shares_count_one_for_one():
     positions = {"SPY": Position(symbol="SPY", leg="SHARES", shares=400)}
-    net_delta, _value, vega = position_greeks(positions, {"SPY": 764.0}, {}, {})
+    net_delta, _value, vega, unknown = position_greeks(
+        positions, {"SPY": 764.0}, {}, {}
+    )
     assert net_delta == 400.0
     assert vega == 0.0
 
@@ -112,7 +114,7 @@ def test_shares_count_one_for_one():
 def test_writing_options_costs_money_when_volatility_rises():
     """Portfolio vega is dollars *lost* per point, so a short book is positive."""
     positions = {"SPY": wheel_with_short_puts(-4)}
-    _, _value, vega = position_greeks(
+    _, _value, vega, _ = position_greeks(
         positions,
         {"SPY": 764.0},
         {"SPY260918P00700000": 0.20},
@@ -124,7 +126,9 @@ def test_writing_options_costs_money_when_volatility_rises():
 def test_a_contract_with_no_implied_volatility_is_skipped_not_zeroed():
     """A missing input must not silently read as a position with no risk."""
     positions = {"SPY": wheel_with_short_puts(-4)}
-    net_delta, _value, vega = position_greeks(positions, {"SPY": 764.0}, {}, {})
+    net_delta, _value, vega, unknown = position_greeks(
+        positions, {"SPY": 764.0}, {}, {}
+    )
     assert net_delta == 0.0
     assert vega == 0.0
 
@@ -142,7 +146,7 @@ def test_an_assignment_leaves_an_exposure_the_band_can_actually_measure():
     same risk, a unit that describes it.
     """
     positions = {"SPY": Position(symbol="SPY", leg="SHARES", shares=400)}
-    net_delta, value, _ = position_greeks(positions, {"SPY": 764.0}, {}, {})
+    net_delta, value, _, _unknown = position_greeks(positions, {"SPY": 764.0}, {}, {})
 
     assert net_delta == 400.0  # the share count a trader reads
     assert value == pytest.approx(305_600.0)  # what the limit measures
@@ -161,6 +165,6 @@ def test_the_same_dollar_exposure_reads_the_same_on_a_cheap_instrument():
     """
     expensive = {"SPY": Position(symbol="SPY", leg="SHARES", shares=400)}
     cheap = {"IWM": Position(symbol="IWM", leg="SHARES", shares=1247)}
-    _, spy_value, _ = position_greeks(expensive, {"SPY": 764.0}, {}, {})
-    _, iwm_value, _ = position_greeks(cheap, {"IWM": 245.0}, {}, {})
+    _, spy_value, _, _unknown = position_greeks(expensive, {"SPY": 764.0}, {}, {})
+    _, iwm_value, _, _unknown = position_greeks(cheap, {"IWM": 245.0}, {}, {})
     assert spy_value == pytest.approx(iwm_value, rel=0.001)
