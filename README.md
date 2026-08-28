@@ -286,7 +286,36 @@ is the horizon itself out to a year beyond it — and then leaves it alone. 🧘
 agent that reshuffles its hedge every week pays the spread every week, and that
 bill arrives whether or not the crash ever does.
 
-**5️⃣ Then the agent gives the protection back.** ♻️ When the book returns
+**5️⃣ At what price does the order go?** 💵 Every order is a limit, never a
+market order — an options spread is wide and crossing it repeatedly is how a
+bot donates its premium one contract at a time.
+
+But a limit set *exactly* at the offer fills only if nobody moves, and this is
+the one rule here that was written by the market rather than by us. On the
+first live day two protective puts were sent at the ask, the ask rose a few
+cents while the cycle was still running, and both sat unfilled until the close:
+
+| | our limit | ask, minutes later | filled |
+|---|---:|---:|---|
+| XLF 54 put ×9 | 2.64 | 2.72 | ❌ |
+| IWM 275 put ×1 | 14.25 | 14.37 | ❌ |
+
+**$71,985 of risk left uncovered overnight to avoid paying $20.** So the limit
+now reaches a quarter of the spread past the side being crossed to — still
+never the mid, which is a price nobody is offering.
+
+A *fraction of the spread* rather than a number of cents, because two cents is
+0.8% of a $2.64 contract and 6.7% of a $0.30 one. It also adapts: an hour
+before the close those same two spreads had more than doubled, and the
+tolerance went from two cents to five and ten on its own. And it is bounded by
+a limit that already existed — the gate refuses anything wider than 5%, so a
+quarter of that is **1.25% past the offer in the worst case it admits at all**.
+
+The premium is charged where the promise is sized, not discovered at the fill:
+a strike admitted on a price the agent will not pay is a strike sized against
+the wrong number.
+
+**6️⃣ Then the agent gives the protection back.** ♻️ When the book returns
 inside its budget *with room to spare*, the hedge is released — on a margin,
 not on the line itself, so ordinary daily wobble cannot walk a position across
 the boundary and back while paying the spread each time.
