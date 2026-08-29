@@ -92,6 +92,46 @@ Seven steps presented as five nodes in the LangGraph cycle. Once every weekday. 
 | 6️⃣ | **Execute** | Sends the approved orders, then reads back what the broker actually did | `execute` |
 | 7️⃣ | **Journal** | Writes down what happened and why, in plain language, with an LLM | `journal` |
 
+### Where the AI is
+
+The system deliberately separates reasoning from risk calculation. The deterministic risk engine calculates the numbers. The LLM reasons over the decisions that require judgment.
+
+**LLM call #1 - Portfolio review**
+
+When the book changes, the LLM receives the portfolio diff and the relevant protection state annd answers the following question:
+
+> *What changed, what does it mean for the existing protection, and what should happen next?*
+
+For example:
+
+**PORTFOLIO CHANGE**
+
+XLF: 900 → 0 shares
+
+**LLM REVIEW**
+
+The XLF position was fully closed. The nine puts are now protecting an exposure that no longer exists. Recommend
+releasing the hedge.
+
+**RISK CHECK**
+
+XLF exposure = $0
+
+XLF hedge = redundant
+
+→ RELEASE 9 PUTS
+
+**LLM call #2 - Protection choice**
+
+When protection is required, the deterministic engine first builds eligible candidates, and the LLM chooses how to protect the portfolio. **Important.** If the LLM is unavailable, produces an invalid response, or cannot make a valid selection, the deterministic rule remains the fallback.
+
+Every LLM decision records:
+- `decided_by`
+- `rule_would_have`
+- `rule_because`
+
+So the AI decision can always be compared with the deterministic rule.
+
 ## 🔗 The Chain of Decision
 
 **1. How much loss can the client tolerate?** 
@@ -134,11 +174,17 @@ Drawdown Guard says: "With options".
 
 **3. Which option should we use today?**
 
-The agent compares both structures using the live option chain. The decision depends on the current cost and volatility of the options and the client's constraints.
+The agent compares both structures using the live option chain. The LLM chooses between candidates that have already passed the deterministic risk filters.
+
+The decision depends on:
+- the current option prices;
+- implied volatility;
+- the cost of protection;
+- the client's constraints.
 
 **4. How many option contracts do we need?**
 
-The number of contracts comes from **the number of shares**, not from the size of the dollar risk. The objective is to avoid leaving part of the portfolio exposed. A hedge over half a portfolio is not half a promise kept, it is a promise broken at half the price.
+The number of contracts comes from **the number of shares**. The objective is to avoid leaving part of the portfolio exposed. A hedge over half a portfolio is not half a promise kept, it's a promise broken at half the price.
 
 One standard equity-option contract covers 100 shares.
 
@@ -149,16 +195,7 @@ IWM:  100 shares → ceil(100/100) = 1 contract
 
 **5. Which strike fits the mandate?**
 
-Once the agent knows how many contracts are required, it has to decide which strike to buy. The strike **always** comes from the budget. 
-
-Every order is a **limit order**. Yet a limit set exactly at the offer fills only if nobody moves, as we saw on the first live day. Two protective puts were sent at the ask, and both sat unfilled until the close:
-
-| Options | Our limit | Ask, minutes later | Filled |
-|---|---|---|---|
-| XLF 54 put ×9 | 2.64 | 2.72 | ❌ |
-| IWM 275 put ×1 | 14.25 | 14.37 | ❌ |
-
-So we added a quarter-spread margin to the limit price. In our case, this  looked like:
+Once the agent knows how many contracts are required, it has to decide which strike to buy. The strike **always** comes from the budget.
 
 ```
 XLF   share of the budget $6,382
@@ -174,11 +211,27 @@ IWM   share of the budget $3,616
   worst case                                   $3,590   ≤  $3,616  ✅
 ```
 
+> **The premium is part of the risk budget.**
+> Protection is not free: the cost of buying the hedge is charged against the same loss allowance.
+
+### Execution price
+
+Every order is a limit order.
+
+On Day 1, the initial limits were exactly at the ask:
+
+| Options | Our limit | Ask, minutes later | Filled |
+|---|---|---|---|
+| XLF 54 put ×9 | 2.64 | 2.72 | ❌ |
+| IWM 275 put ×1 | 14.25 | 14.37 | ❌ |
+
+The ask moved before the orders could fill. That's why we changed the execution logic, so now it allows the limit to move by a quarter of the spread beyond the crossed price. This keeps the order bounded while reducing the chance that a small market move leaves the portfolio uncovered.
+
 **6. What does the protection actually do?** 
 
 The answer is below. Without protection, losses continue to grow as the market falls. With the options in place, the loss reaches a floor.
 
-Stress scenario for the protective put:
+### Protective put
 
 | Market falls | Without the agent | **With the agent** | Premium paid | **Floor + Premium** | Drawdown budget | Promise |
 |---|---|---|---|---|---|---|
@@ -189,7 +242,7 @@ Stress scenario for the protective put:
 | -90% | $73,820 | **$5,923** | $3,801 | **$9,724** |$9,998 | ✅ |
 | -100% | $82,022 | **$5,923** | $3,801 | **$9,724** |$9,998 | ✅ |
 
-Stress scenario for the collar:
+### Collar
 
 | Market falls | Without the agent | **With the agent** | Net premium | **Floor + Net premium** | Drawdown budget | Promise |
 |---|---|---|---|---|---|---|
@@ -208,12 +261,39 @@ $3,801 - $1,393 =  $2,408
 
 **7.  When the agent steps in**
 
+The trigger is mechanical:
+
+uncovered_risk = worst_loss(current_book) − budget
+
+uncovered_risk > 0
+        ↓
+    ACTION REQUIRED
+
+The portfolio can become uncovered for several reasons:
+
 | Trigger | Why it uncovers risk |
 |---|---|
-| 📈 **The portfolio grew** | More exposure behind the same fixed budget. The floor has to be re-struck. |
-| 🛒 **The client bought** | New holdings arrive unhedged. Adding protection when a client invests is the unglamorous half of the job. |
-| ⏳ **The hedge aged** | The market moved and the strike that used to hold the floor no longer reaches it. |
-| 📅 **Coverage expired** | Coverage silently ended. Nothing but recomputation notices. |
+| 📈 **Portfolio grew** | More exposure behind the same fixed budget. The floor has to be re-struck |
+| 🛒 **Client bought** | New holdings arrive unhedged. Adding protection when a client invests is the unglamorous half of the job |
+| 🛒 **Client sold** | XXX |
+| ⏳ **Hedge aged** | The market moved and the strike that used to hold the floor no longer reaches it |
+| 📅 **Coverage expired** | Coverage silently ended. Nothing but recomputation notices |
+
+## 🔌 Alpaca Trading API and MCP Server
+
+Drawdown Guard uses Alpaca Trading API and Alpaca MCP Server to read the account, positions, market data and option chain, submit orders, and reconcile their results.
+
+The process is the following:
+
+Drawdown Guard
+      ↓
+Alpaca MCP tools
+      ↓
+Alpaca Trading API
+      ↓
+Paper account
+
+The agent decides what should happen. MCP provides the controlled interface to the broker. The deterministic Gate remains the final trading boundary.
 
 ## 🛑 How to Stop the Agent
 
@@ -245,7 +325,7 @@ Built directly against the four agent types this track names:
 | **Alpaca MCP Server** | Every broker call goes through MCP |
 | **LangGraph** | The five-node cycle, including the conditional halt edge |
 | **LangChain** | The provider-agnostic chat interface behind the journal's explanation |
-| **Google Gemini** | Writes the plain-language explanation of the decision the arithmetic already made |
+| **Google Gemini** | Portfolio reasoning and hedge-structure selection |
 | **NumPy · SciPy · pandas** | Black-Scholes, the stress ladder, the payoff maths |
 | **Pydantic** | Mandates and limits are validated types |
 | **GitHub Actions** | The agent's heartbeat. One autonomous cycle every weekday |
