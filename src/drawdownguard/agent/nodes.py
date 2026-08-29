@@ -308,15 +308,16 @@ async def mandate_node(state: GuardState) -> GuardState:
     # write "nothing moved" is the exact arrangement that got the old regime
     # classifier deleted. The fact is recorded either way; the prose is what
     # the change buys.
-    verdict = None
+    findings = None
     if diff.moved or diff.first:
-        verdict = await review(
+        findings = await review(
+            book,
             diff,
+            rungs,
             {
-                "legs_held": len(book.legs),
-                "exposure": book.equity_exposure,
+                "mandate": mandate.name,
                 "budget": budget,
-                "uncovered_risk": uncovered,
+                "reference": promise.reference,
             },
         )
     writer.write(
@@ -325,7 +326,11 @@ async def mandate_node(state: GuardState) -> GuardState:
             "first": diff.first,
             "moved": diff.moved,
             "changes": [c.describe() for c in diff.changes],
-            "verdict": verdict,
+            # None means the model did not answer; an empty list means it
+            # looked and found nothing. Those are different mornings and the
+            # journal has to be able to tell them apart six days later.
+            "answered": findings is not None,
+            "findings": findings or [],
         },
         severity="info",
     )
@@ -344,7 +349,8 @@ async def mandate_node(state: GuardState) -> GuardState:
             "moved": diff.moved,
             "changes": [c.describe() for c in diff.changes],
             "summary": diff.describe(),
-            "verdict": verdict,
+            "answered": findings is not None,
+            "findings": findings or [],
         },
     )
 
@@ -873,6 +879,47 @@ async def execute_node(state: GuardState) -> GuardState:
 # --- 5. journal -------------------------------------------------------------
 
 
+def _record_disagreement(state: GuardState) -> None:
+    """Findings the cycle did nothing about.
+
+    The analyst in `mandate` names what it thinks needs attention; by the time
+    this runs, what the cycle actually did is settled. A symbol on one list and
+    not the other is worth writing down, and it is worth writing down in both
+    directions of being wrong: either the model flagged something that was not
+    a problem, or the checks have a blind spot on a symbol a reader was told to
+    look at. Neither is discoverable if the two are never compared.
+
+    Recorded, not acted on. A finding is a second opinion and this agent does
+    not let prose reach an order.
+    """
+    findings = (state.get("review") or {}).get("findings") or []
+    if not findings:
+        return
+    # A remedy carries no symbol of its own -- it is identified by the legs it
+    # would place and the shares it would sell, which is a fact about the
+    # position rather than a label somebody set. Read from those.
+    acted: set[str] = set()
+    for remedy in state.get("protection") or []:
+        acted |= {leg.symbol for leg in remedy.legs}
+        acted |= set(remedy.shares_sold)
+    acted |= {order.symbol for order in state.get("release_orders") or []}
+    unaddressed = [f for f in findings if f["symbol"] not in acted]
+    if not unaddressed:
+        return
+    writer.write(
+        "review.unaddressed",
+        {
+            "findings": unaddressed,
+            "acted_on": sorted(acted),
+            "meaning": (
+                "the analyst named these and the cycle took no action on them; "
+                "either the finding was wrong or the checks did not see it"
+            ),
+        },
+        severity="info",
+    )
+
+
 async def journal_node(state: GuardState) -> GuardState:
     """Write what this cycle decided, including deciding nothing.
 
@@ -890,6 +937,7 @@ async def journal_node(state: GuardState) -> GuardState:
     move past a limit that had no tolerance.
     """
     portfolio = state.get("portfolio")
+    _record_disagreement(state)
 
     narration = state.get("narration") or {}
     if narration:

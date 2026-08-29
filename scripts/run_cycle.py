@@ -79,8 +79,24 @@ def _changed(state: dict) -> None:
         _block("PORTFOLIO CHANGE", ["nothing moved"])
     else:
         _block("PORTFOLIO CHANGE", list(review.get("changes") or []))
-    if verdict := review.get("verdict"):
-        _block("LLM REVIEW", _wrap(verdict))
+    if not review.get("answered"):
+        return
+    findings = review.get("findings") or []
+    if not findings:
+        _block("LLM RISK ANALYSIS", ["no position needs attention"])
+        return
+    lines = []
+    for finding in findings:
+        lines.append(f"{finding['symbol']}")
+        lines += [f"  risk issue:     {x}" for x in _wrap(finding["issue"], 58)[:1]]
+        lines += [f"                  {x}" for x in _wrap(finding["issue"], 58)[1:]]
+        lines += [
+            f"  recommendation: {x}" for x in _wrap(finding["recommendation"], 58)[:1]
+        ]
+        lines += [
+            f"                  {x}" for x in _wrap(finding["recommendation"], 58)[1:]
+        ]
+    _block("LLM RISK ANALYSIS", lines)
 
 
 def _risk(state: dict) -> None:

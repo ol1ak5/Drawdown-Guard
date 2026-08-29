@@ -337,8 +337,9 @@ def _changed(review: dict) -> str:
     prose about it -- a reader has to be able to tell which is which without
     being told.
 
-    An absent verdict is shown as absent. The model is allowed to be
-    unreachable and the page is not allowed to cover for it.
+    An absent answer is shown as absent, and it is not the same as an answer of
+    "nothing needs attention". The model is allowed to be unreachable and the
+    page is not allowed to cover for it.
     """
     if not review:
         return '<p class="empty">No cycle has read the book yet.</p>'
@@ -353,13 +354,18 @@ def _changed(review: dict) -> str:
         )
         headline = f"<ul class=\"changes\">{rows}</ul>"
 
-    note = review.get("verdict")
-    prose = (
-        f'<p class="note">{_cell(note)}</p>'
-        if note
-        else '<p class="note empty">The model did not answer this cycle.</p>'
-    )
-    return f'<div class="changed">{headline}{prose}</div>'
+    if not review.get("answered"):
+        found = '<p class="note empty">The analyst did not answer this cycle.</p>'
+    elif not (findings := review.get("findings") or []):
+        found = '<p class="note">No position needs attention.</p>'
+    else:
+        found = "".join(
+            f'<p class="note"><strong>{_cell(f["symbol"])}</strong> &mdash; '
+            f'{_cell(f["issue"])}<br><em>Review:</em> '
+            f'{_cell(f["recommendation"])}</p>'
+            for f in findings
+        )
+    return f'<div class="changed">{headline}{found}</div>'
 
 
 def _promise(stress: dict, note: str) -> str:
@@ -682,10 +688,13 @@ is going.</p>
 
 <section class="reveal">
 <h2>What changed this morning</h2>
-<p class="lede">The agent compares the book against yesterday&rsquo;s snapshot
-before it measures anything. The list is arithmetic; the paragraph under it is
-the model&rsquo;s read of what the change does to the cover already in place.
-Neither decides anything &mdash; the hedge is sized from the ladder below.</p>
+<p class="lede">The list is arithmetic &mdash; the book against yesterday&rsquo;s
+snapshot. Below it, a language model is handed the holdings, the promise, the
+protection held and the four stress rungs, and asked which positions carry a
+risk issue. It is not given the answer; finding it is the question. Nothing it
+says reaches an order &mdash; the hedge is sized from the ladder below, and a
+finding the cycle did not act on is recorded as a disagreement rather than
+resolved.</p>
 {changed_block}
 </section>
 

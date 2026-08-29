@@ -50,7 +50,7 @@ def offline_reviewer(monkeypatch):
     """
 
     async def unreachable(*_args, **_kwargs):
-        return None
+        return None  # the model did not answer
 
     monkeypatch.setattr(nodes, "review", unreachable)
 
