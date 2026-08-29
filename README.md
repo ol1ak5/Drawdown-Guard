@@ -76,6 +76,7 @@ The portfolio is intentionally not static. A client who never touches their allo
 | Day 6 | Sep 4 | - | Confirms the mandate still holds |
 
 **What happened on Day 1?**
+
 The agent submitted limit orders at the ask, but the ask moved while the cycle was still running. The orders expired without filling, journalled as `order.working`. We changed the execution rule so the limit can move a quarter of the spread beyond the price being crossed. This keeps every order a limit order while giving it enough room to follow a moving market instead of expiring unfilled.
 
 ## ⚙️ How the agent actually works
@@ -85,9 +86,9 @@ Seven steps presented as five nodes in the LangGraph cycle. Once every weekday. 
 | # | Step | The agent does | Node |
 |---|---|---|---|
 | 1️⃣ | **Reconcile** | Asks the broker what is actually held. Never assumes | `reconcile` |
-| 2️⃣ | **Mandate** | Turns the client's tolerance into a live dollar budget | `mandate` |
+| 2️⃣ | **Mandate** | Turns the client's tolerance into a fixed dollar budget. When the book changes, the LLM evaluates the new risk state and determines what protection response is warranted | `mandate` |
 | 3️⃣ | **Stress** | Runs the book down the whole descent and measures the uncovered risk | `mandate` |
-| 4️⃣ | **Protect** | Solves for the cheapest hedge that covers it, sleeve by sleeve | `protect` |
+| 4️⃣ | **Protect** | Builds valid hedge candidates. The LLM chooses between eligible structures | `protect` |
 | 5️⃣ | **Gate** | Checks every order against hard limits before it can reach the broker | `execute` |
 | 6️⃣ | **Execute** | Sends the approved orders, then reads back what the broker actually did | `execute` |
 | 7️⃣ | **Journal** | Writes down what happened and why, in plain language, with an LLM | `journal` |
