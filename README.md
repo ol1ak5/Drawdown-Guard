@@ -62,8 +62,7 @@ The client's mandate is simple:
 
 **Just two numbers:**
 
-- 🔟 **10%** — the most the client can lose. Roughly $10,000 on this account;
-  the exact figure is fixed the day the promise opens and never moves after.
+- 🔟 **10%** — the most the client can lose in our case. Roughly $10,000 on this account. The exact figure is fixed the day the promise opens.
 - 📆 **12 months** — the window that promise has to hold.
 
 ### Activity during the hackathon
@@ -100,195 +99,129 @@ Seven steps, once every weekday, fully autonomous. Five of them are nodes in the
 | 6️⃣ | **Execute** | Sends the approved orders, then reads back what the broker actually did with each | `execute` node |
 | 7️⃣ | **Journal** | Writes down what happened and why, in plain language, with an LLM | `journal` node |
 
-### 1. Reconcile
+## 🔗 The Chain of Decision
 
-The cycle starts by reading the client's account, not by trusting what the agent thought it owned yesterday. Every number below is computed from what is actually there this morning.
+**1️⃣ From a percentage to a real loss budget** 
 
-### 2. Mandate — the drawdown budget
+The client only defines the maximum loss they are willing to tolerate:
 
-The client's drawdown limit becomes a dollar figure:
+> *Maximum drawdown: 10%*
 
-```
-10% × $99,978  =  $9,998
-      └── the reference ──┘
-```
+To turn that percentage into a real dollar amount, we fix the portfolio value at the moment the promise opens.
 
-**Why $99,978 and not the $100,000 in the table above.** The portfolio was
-bought at 15:44 and the promise opened at 15:48. In those four minutes the
-market marked the new positions down by $22. The reference is the account as it
-stood at the second moment, and that is the number every budget for the next
-twelve months is a percentage of.
+On 28 August 2026, the portfolio was worth $99,978, so the maximum loss allowed by the mandate is $9,998. That becomes the drawdown budget.
 
-**The reference does not move.** Not with the market, and not when the client
-buys or sells. It is written down once and held for the whole twelve months.
+**This is important.** $9,998 is not the amount we expect the client to lose. It's the maximum loss the protection framework is allowed to leave exposed. The objective is always to lose less.
 
-That is deliberate, and the alternative is worse than it sounds. A budget of
-"10% of whatever the account is worth this morning" is not a promise — it is a
-promise that re-bases. Lose ten percent and tomorrow the agent defends ten
-percent of the smaller number, then ten percent of the one after that. Five
-steps of that permit a **47% loss** and report every one of them as kept. Worse,
-the budget shrinks fastest exactly when a fall has already begun, so the agent
-would buy *less* protection precisely as it became most necessary.
+**2️⃣ From the gap to the hedge**
 
-A high-water mark was the other candidate. It was rejected for a different
-reason: it moves when the market makes a new high, so the agent would re-strike
-its hedge because prices went **up**. This project's whole claim is that it
-never acts on where the market is going. One place where it does is enough to
-lose the argument.
+Our client's portfolio contains more than one instrument:
+- XLF: 900 shares
+- IWM: 100 shares
 
-The client's gains are not left unprotected forever. They are locked in at
-renewal, on the calendar — 28 August 2027 — rather than continuously and on the
-market's cue.
+Each position contributes a different amount of risk to the portfolio. So, the agent allocates the budget proportionally to each instrument's weighted contribution to portfolio risk, as specified by the mandate.
 
-### 3. Stress — how much can this book actually lose?
-
-**Nobody can name the next shock.** Not the client, not the agent. A promise
-that only holds down to a depth somebody guessed is not much of a promise. So
-the agent does not pick a depth. It asks the question that needs no guess:
-
-> What is the most this book can lose, **anywhere on the way down**?
-
-For bare shares the answer is *everything*. The loss keeps growing as the price
-approaches zero — there is no bottom. So the worst case is the entire equity
-sleeve, and the part of it nobody has agreed to carry is what the agent is
-hired to close:
+For this portfolio, that gives:
 
 ```
-worst case (unprotected)    $82,023     ← the whole equity sleeve
-downside budget           −  $9,998     ← what the client agreed to absorb
-─────────────────────────────────────
-uncovered risk              $72,025     ← risk nobody has agreed to carry
+XLF → $6,382
+IWM → $3,616
+────────────
+Total $9,998
 ```
 
-**This is not a forecast.** The agent never says the market will fall. It says:
-*if it did, this book would break a promise that was already made.*
+**3️⃣ How do we protect the portfolio?**
 
-### 4. Protect — what the hedge actually does
+Drawdown Guard says: "With options".
 
-Here is the same book before and after the day-one hedge. Every figure comes
-from the project's own stress code:
+| Protection | How it works | Cost | Upside |
+|---|---|---|---|
+| 🛡️ **Protective put** | Buy a put against the shares | Pay premium upfront | Keep all upside |
+| 🎯 **Collar** | Buy a put and sell a call | Call premium helps pay for the put | Upside is capped at the call strike |
 
-| If the market falls | Without the agent | **With the agent** |
-|---|---:|---:|
-| −10% | $8,202 | **$5,923** |
-| −20% | $16,404 | **$5,923** |
-| −35% | $28,708 | **$5,923** |
-| −50% | $41,011 | **$5,923** |
-| −90% | $73,820 | **$5,923** |
-| −100% | $82,022 | **$5,923** |
+**The shares are never sold to cover the existing gap.** The client can sell their shares at any time, but the agent doesn't liquidate them simply to close the drawdown gap.
 
-**The column stops growing.** The market can go to zero and the client still
-loses $5,923 against a budget of $9,998. That is not a threshold past which
-losses resume — it is the floor.
+**3️⃣ Which option, today?**
 
-Below the strike, every dollar the shares lose is a dollar the puts gain, so
-the line simply lies flat. Infinity becomes a number, and that number cost
-**$3,801 in premium**.
+The agent compares both structures using the live option chain. The decision depends on the current cost and volatility of the options and on the client's constraints. The agent is not trying to predict which structure will make more money. It asks:
 
-#### How the hedge is sized — two separate decisions
+> *Which structure can satisfy the protection requirement at the lowest acceptable cost?*
 
-**Contracts come from the share count, never from the size of the risk.**
+**4️⃣ How many option contracts do we need?**
+
+The number of contracts comes from the number of shares, not from the size of the dollar risk.
+
+One standard equity-option contract covers 100 shares.
 
 ```
 XLF:  900 shares → ceil(900/100) = 9 contracts
 IWM:  100 shares → ceil(100/100) = 1 contract
 ```
 
-Always one contract per hundred shares. Cover only part of the book and the
-uncovered shares keep falling to zero, so the worst case runs away again — a
-hedge over half a portfolio is not half a promise kept, it is a promise broken
-at half the price.
+The objective is to avoid leaving part of the portfolio exposed. A hedge over half a portfolio is not half a promise kept, it is a promise broken at half the price.
 
-**The strike comes from the budget.** Each symbol gets a share of the promise
-in proportion to what it can lose, and the agent solves for the deepest strike
-that still fits:
+**5️⃣ Now solve for the strike?**
 
-```
-XLF   share of the budget $6,382
-  fall to the strike   (58.17 − 54) × 900  =  $3,758
-  premium                   2.64 × 9 × 100 =  $2,376
-                                              ───────
-  worst case                                   $6,134   ≤  $6,382  ✅
+Once we know how many contracts are required, the agent has to decide which strike to buy. The strike **always** comes from the budget. 
 
-IWM   share of the budget $3,616
-  fall to the strike  (296.65 − 275) × 100  =  $2,165
-  premium                  14.25 × 1 × 100  =  $1,425
-                                               ───────
-  worst case                                    $3,590   ≤  $3,616  ✅
-```
-
-The two terms move against each other — a lower strike means further to fall
-but a cheaper premium — so the total is monotonic and the answer is unique. The
-agent takes the **lowest strike that still fits**. Go lower and the unprotected
-drop alone spends the promise; go higher and the client pays for protection
-they never asked for.
-
-Nothing here is an optimiser with weights. It is the first strike that fits,
-walking the live chain from the bottom.
-
-> The premium is charged against the promise, not treated as free. A hedge
-> sized as though its own cost were nothing comes up short by exactly that
-> cost — which comes out of the same account the promise is written against.
-
-**Four fixed shocks are published alongside all of this** — −5%, −10%, −20% and
-−35% — and the [status page](https://ol1ak5.github.io/Drawdown-Guard/) lets a
-reader drag the floor across them. They are how a person reads the book; they
-are not how the agent sizes it. The rungs are fixed on purpose, and a mandate
-cannot pick its own: one that promised against a flattering shock would be
-choosing the exam as well as sitting it.
-
-## 🔗 The Chain of Decision
-
-**1️⃣ How much protection?** Answered above: contracts from the share count, strike from the budget. Enough that the worst case *at any depth* is inside the promise, and no more — protection is a cost, and a dollar spent past the promise is a dollar taken from the client for nothing.
-
-**2️⃣ What closes it?** Options. The portfolio stays exactly where it is:
-
-| Option | Costs | Keeps | Undoable |
-|---|---|---|---|
-| 🛡️ **Protective put** | Cash, up front | **All** the upside | Yes — it expires |
-| 🎯 **Collar** | Little or nothing — the put is paid for by selling a call | Upside up to the call strike | Yes — it expires |
-
-**The shares are never sold to cover the existing gap.** The client can sell the shares when he wants, but they are never used to cover the gap. **CHECK**
-
-**3️⃣ Which option type, today?** Both are priced on the live chain, every cycle, and the cheaper one that fits the client's constraints wins.
-
-**4️⃣ For how long?** Historic data showed that short-dated protection is cheap **because it only covers fast crashes**. A slow grind walks straight past it, and slow grinds are how most real drawdowns happen. The client's promise is not about one terrible day. It is about not losing 10% of their money in 12 months, so the agent buys protection dated **past the end of the promise**. An agent that reshuffles its hedge every week pays the spread every week, and that bill arrives whether or not the crash ever does.
-
-**5️⃣ At what price does the order go?** Every order is a limit, never a market order. But a limit set *exactly* at the offer fills only if nobody moves, and we saw it on the first live day. Two protective puts were sent at the ask, the ask rose a few cents while the cycle was still running, and both sat unfilled until the close:
+Every order is a limit order. Yet a limit set *exactly* at the offer fills only if nobody moves, and we saw it on the first live day. Two protective puts were sent at the ask, the ask rose a few cents while the cycle was still running, and both sat unfilled until the close:
 
 | Options | Our limit | Ask, minutes later | Filled |
 |---|---|---|---|
 | XLF 54 put ×9 | 2.64 | 2.72 | ❌ |
 | IWM 275 put ×1 | 14.25 | 14.37 | ❌ |
 
-**$71,985 of risk left uncovered overnight to avoid paying $20.** So we changed the rule, and now the limit reaches a quarter of the spread past the side being crossed to. 
-
-**6️⃣ Then the agent gives the protection back.** ♻️ When the book returns
-inside its budget *with room to spare*, the hedge is released — on a margin,
-not on the line itself, so ordinary daily wobble cannot walk a position across
-the boundary and back while paying the spread each time.
-
-Protection is released in the two senses that differ:
-
-| | What it means | Does the margin apply? |
-|---|---|---|
-| 🪦 **Spent** | The strike no longer reaches. A 440 put behind a stock that rallied to 550 pays nothing at the promised shock — it is not holding the promise up. | No. Removing something worth nothing cannot widen the risk. |
-| 📦 **Redundant** | The protection still pays, but the promise holds without it and with headroom to spare. | Yes — 15% of the budget on the balanced mandate. |
-
-This is the half that most hedging stops at. Protection is easy to buy and
-nobody remembers to sell it, so the client ends up paying for a wall around a
-risk that went away months ago. **Risk becoming covered is as much a signal as
-risk opening up.**
-
-### When the agent steps in 🚦
-
-Never on a hunch, and never because it thinks it knows what the market will do next. The trigger is one line of arithmetic, recomputed every morning:
+So, in our case we had:
 
 ```
-uncovered_risk = worst_loss(what is held today) − budget      > 0  →  act
+XLF   share of the budget $6,382
+  fall to the strike    (58.17 − 54) × 900  =  $3,753
+  premium                   2.64 × 9 × 100  =  $2,376
+                                               ───────
+  worst case                                   $6,134   ≤  $6,382  ✅
+
+IWM   share of the budget $3,616
+  fall to the strike  (296.65 − 275) × 100  =  $2,165
+  premium                  14.25 × 1 × 100  =  $1,425
+                                               ───────
+  worst case                                   $3,590   ≤  $3,616  ✅
 ```
 
-Because the budget is fixed and the book is not, there are exactly four ways that line can turn positive. All of them mechanical, none of them a market call:
+Every order is a limit, never a market order. But a limit set *exactly* at the offer fills only if nobody moves, and we saw it on the first live day. Two protective puts were sent at the ask, the ask rose a few cents while the cycle was still running, and both sat unfilled until the close:
+
+**6️⃣ What does the protection actually do?** 
+
+Here is the same book before and after the day-one hedge. Without protection, losses continue to grow as the market falls. With the options in place, the loss reaches a floor.
+
+Stress scenario for the protective put:
+
+| Market falls | Without the agent | **With the agent** | Premium paid | **Floor + Premium** | Drawdown budget | Promise |
+|---|---|---|---|---|---|---|
+| −10% | $8,202 | **$5,923** | $3,801 | **$9,724** | $9,998 | ✅ |
+| −20% | $16,404 | **$5,923** |$3,801 | **$9,724** | $9,998 | ✅ |
+| −35% | $28,708 | **$5,923** | $3,801 | **$9,724** | $9,998 | ✅ |
+| −50% | $41,011 | **$5,923** | $3,801 | **$9,724** |$9,998 | ✅ |
+| −90% | $73,820 | **$5,923** | $3,801 | **$9,724** |$9,998 | ✅ |
+| −100% | $82,022 | **$5,923** | $3,801 | **$9,724** |$9,998 | ✅ |
+
+Stress scenario for the collar:
+
+| Market falls | Without the agent | **With the agent** | Net premium | **Floor + Premium** | Drawdown budget | Promise |
+|---|---|---|---|---|---|---|
+| −10% | $8,202 | **$5,923** | $2,408 | **$8,331** | $9,998 | ✅ |
+| −20% | $16,404 | **$5,923** | $2,408 | **$8,331** | $9,998 | ✅ |
+| −35% | $28,708 | **$5,923** | $2,408 | **$8,331** | $9,998 | ✅ |
+| −50% | $41,011 | **$5,923** | $2,408 | **$8,331** |$9,998 | ✅ |
+| −90% | $73,820 | **$5,923** | $2,408 | **$8,331** |$9,998 | ✅ |
+| −100% | $82,022 | **$5,923** | $2,408 | **$8,331** |$9,998 | ✅ |
+
+In the case of collar, the net premium the client pays is calculated as s premium paid for the put reduced by the premium received by selling a call:
+
+```
+$3,801 - $1,393 =  $2,408 
+```
+
+**7.  When the agent steps in**
 
 | | Trigger | Why it uncovers risk |
 |---|---|---|
@@ -296,39 +229,6 @@ Because the budget is fixed and the book is not, there are exactly four ways tha
 | 🛒 | **The client bought** | New holdings arrive unhedged. Adding protection when a client invests is the unglamorous half of the job. |
 | ⏳ | **The hedge aged** | The market moved and the strike that used to hold the floor no longer reaches it. |
 | 📅 | **Something expired** | Coverage silently ended. Nothing but recomputation notices. |
-
-
-### What the client actually gets 🎁
-
-The promise was "in the worst case, I can tolerate a 10% loss." Here is the
-whole answer, in three lines:
-
-```
-premium paid                      $3,801     3.80%   ← certain, spent on day one
-worst the market can still do     $5,923     5.92%   ← at any depth, to zero
-                                  ───────   ──────
-worst outcome, all in             $9,724     9.73%
-the client agreed to              $9,998    10.00%   ✅
-```
-
-**9.73% against a promise of 10%.** Not because the market was kind — because
-the floor was bought and the arithmetic was checked against it. Unprotected,
-the same book loses **82% if the market goes to zero**.
-
-The margin is $274, and it is there because contracts are lumpy: nine XLF puts
-cannot be bought as eight and a half. Slightly over-covered is the correct
-direction to round.
-
-**Read the first line, because it is the honest one.** 📏 The premium is spent
-whether or not anything happens. In a quiet year the client is worse off by
-$3,801 and gets nothing back. That is not a flaw to be explained away — that is
-what insurance is. You pay every year to be whole in the year that matters.
-
-**Name the promise and its window → check the book against it → solve for the
-protection that floors the loss → buy it long → hand it back when it is no
-longer needed.** Every weekday, in writing. 📓
-
----
 
 ## 🛑 How to Stop the Agent
 
