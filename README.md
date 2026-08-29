@@ -86,7 +86,7 @@ Seven steps presented as five nodes in the LangGraph cycle. Once every weekday. 
 | # | Step | The agent does | Node |
 |---|---|---|---|
 | 1️⃣ | **Reconcile** | Asks the broker what is actually held. Never assumes | `reconcile` |
-| 2️⃣ | **Mandate** | Turns the client's tolerance into a fixed dollar budget. When the book changes, the LLM evaluates the new risk state and determines what protection response is warranted | `mandate` |
+| 2️⃣ | **Mandate** | Turns the client's tolerance into a fixed dollar budget. The LLM acts as a risk analyst, identifies risk implications when the book changes, and gives recommendations | `mandate` |
 | 3️⃣ | **Stress** | Runs the book down the whole descent and measures the uncovered risk | `mandate` |
 | 4️⃣ | **Protect** | Builds valid hedge candidates. The LLM chooses between eligible structures | `protect` |
 | 5️⃣ | **Gate** | Checks every order against hard limits before it can reach the broker | `execute` |
@@ -321,7 +321,7 @@ Built directly against the four agent types this track names:
 | **Alpaca MCP Server** | Every broker call goes through MCP |
 | **LangGraph** | The five-node cycle, including the conditional halt edge |
 | **LangChain** | The provider-agnostic chat interface behind the journal's explanation |
-| **Google Gemini** | Portfolio reasoning and hedge-structure selection |
+| **Google Gemini** | Portfolio risk analysis and hedge structure selection |
 | **NumPy · SciPy · pandas** | Black-Scholes, the stress ladder, the payoff maths |
 | **Pydantic** | Mandates and limits are validated types |
 | **GitHub Actions** | The agent's heartbeat. One autonomous cycle every weekday |
