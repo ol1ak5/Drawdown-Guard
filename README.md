@@ -93,34 +93,29 @@ Seven steps presented as five nodes in the LangGraph cycle. Once every weekday. 
 | 6️⃣ | **Execute** | Sends the approved orders, then reads back what the broker actually did | `execute` |
 | 7️⃣ | **Journal** | Writes down what happened and why, in plain language, with an LLM | `journal` |
 
-### Where the AI is
+## 🚩 Where the AI is
 
-The system deliberately separates reasoning from risk calculation. The deterministic risk engine calculates the numbers. The LLM reasons over the decisions that require judgment.
+The deterministic risk engine calculates the numbers. The LLM reasons over the decisions that require judgment.
 
 **LLM call #1 - Portfolio review**
 
-When the book changes, the LLM receives the portfolio diff and the relevant protection state annd answers the following question:
+When the book changes, the LLM receives the portfolio diff and the relevant protection state, and answers the following question:
 
 > *What changed, what does it mean for the existing protection, and what should happen next?*
 
 For example:
 
-**PORTFOLIO CHANGE**
-
+```
+**Portfolio change**
 XLF: 900 → 0 shares
-
-**LLM REVIEW**
-
+**LLM review**
 The XLF position was fully closed. The nine puts are now protecting an exposure that no longer exists. Recommend
 releasing the hedge.
-
-**RISK CHECK**
-
+**Risk check**
 XLF exposure = $0
-
 XLF hedge = redundant
-
-→ RELEASE 9 PUTS
+→ Release 9 puts
+```
 
 **LLM call #2 - Protection choice**
 
@@ -135,7 +130,7 @@ So the AI decision can always be compared with the deterministic rule.
 
 ## 🔗 The Chain of Decision
 
-**1. How much loss can the client tolerate?** 
+**1️⃣ How much loss can the client tolerate?** 
 
 The client only defines the maximum loss he is willing to tolerate:
 
@@ -145,7 +140,7 @@ On 28 August 2026, at the moment the promise opened, the portfolio was worth $99
 
 **$9,998 is not the amount we expect the client to lose.** It's the maximum loss the protection framework is allowed to leave exposed. The objective is always to lose less.
 
-**2. How much of that budget belongs to each position?**
+**2️⃣ How much of that budget belongs to each position?**
 
 Our client's portfolio contains more than one instrument:
 - XLF: 900 shares
@@ -162,7 +157,7 @@ IWM → $3,616
 Total $9,998
 ```
 
-**3. How do we protect the portfolio?**
+**3️⃣ How do we protect the portfolio?**
 
 Drawdown Guard says: "With options".
 
@@ -173,7 +168,7 @@ Drawdown Guard says: "With options".
 
 **The shares are never sold to cover the existing gap.** The client can sell shares at any time, but the agent doesn't liquidate them simply to close the drawdown gap.
 
-**3. Which option should we use today?**
+**4️⃣ Which option should we use today?**
 
 The agent compares both structures using the live option chain. The LLM chooses between candidates that have already passed the deterministic risk filters.
 
@@ -183,7 +178,7 @@ The decision depends on:
 - the cost of protection;
 - the client's constraints.
 
-**4. How many option contracts do we need?**
+**5️⃣ How many option contracts do we need?**
 
 The number of contracts comes from **the number of shares**. The objective is to avoid leaving part of the portfolio exposed. A hedge over half a portfolio is not half a promise kept, it's a promise broken at half the price.
 
@@ -194,7 +189,7 @@ XLF:  900 shares → ceil(900/100) = 9 contracts
 IWM:  100 shares → ceil(100/100) = 1 contract
 ```
 
-**5. Which strike fits the mandate?**
+**6️⃣ Which strike fits the mandate?**
 
 Once the agent knows how many contracts are required, it has to decide which strike to buy. The strike **always** comes from the budget.
 
@@ -228,7 +223,7 @@ On Day 1, the initial limits were exactly at the ask:
 
 The ask moved before the orders could fill. That's why we changed the execution logic, so now it allows the limit to move by a quarter of the spread beyond the crossed price. This keeps the order bounded while reducing the chance that a small market move leaves the portfolio uncovered.
 
-**6. What does the protection actually do?** 
+**7️⃣ What does the protection actually do?** 
 
 The answer is below. Without protection, losses continue to grow as the market falls. With the options in place, the loss reaches a floor.
 
@@ -260,7 +255,7 @@ For a collar, the net premium the client pays is calculated as s premium paid fo
 $3,801 - $1,393 =  $2,408 
 ```
 
-**7.  When the agent steps in**
+**8️⃣ When the agent steps in**
 
 The trigger is mechanical:
 
@@ -276,7 +271,7 @@ The portfolio can become uncovered for several reasons:
 |---|---|
 | 📈 **Portfolio grew** | More exposure behind the same fixed budget. The floor has to be re-struck |
 | 🛒 **Client bought** | New holdings arrive unhedged. Adding protection when a client invests is the unglamorous half of the job |
-| 🛒 **Client sold** | XXX |
+| 💵 **Client sold** | Risk exposure falls. The agent reassesses the book and returns any protection that is no longer needed |
 | ⏳ **Hedge aged** | The market moved and the strike that used to hold the floor no longer reaches it |
 | 📅 **Coverage expired** | Coverage silently ended. Nothing but recomputation notices |
 
