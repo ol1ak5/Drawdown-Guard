@@ -8,6 +8,7 @@ no scheduler.
 import argparse
 import asyncio
 import sys
+import textwrap
 
 from drawdownguard.agent.graph import run_cycle
 
@@ -43,28 +44,117 @@ def main() -> int:
     filled = sum(1 for r in results if r.submitted and r.filled_qty >= 1)
     working = sum(1 for r in results if r.submitted and r.filled_qty == 0)
 
-    kinds = [r.kind for r in state.get("protection") or []]
-    print(f"uncovered risk : {state.get('uncovered_risk') or 0:,.0f}")
-    print(f"protection     : {', '.join(kinds) or 'none'}")
-    print(
-        f"halted         : {state.get('halted')} "
-        f"{state.get('halt_reason', '')}".strip()
-    )
-    print(f"submitted      : {submitted}")
-    print(f"  filled       : {filled}")
+    if state.get("halted"):
+        _block("HALTED", [state.get("halt_reason", "no reason recorded")])
+        return 0
+
+    _changed(state)
+    _risk(state)
+    _decision(state)
+    _orders(results, submitted, filled, working, refused, held)
+    return 0
+
+
+def _block(title: str, lines: list[str]) -> None:
+    """One labelled block, or nothing at all.
+
+    A heading with no lines under it reads as a section that failed rather than
+    one with nothing to report, so an empty block is not printed.
+    """
+    if not lines:
+        return
+    print(f"\n{title}")
+    for line in lines:
+        print(line)
+
+
+def _changed(state: dict) -> None:
+    """What the client did, and what the model made of it."""
+    review = state.get("review") or {}
+    if not review:
+        return
+    if review.get("first"):
+        _block("PORTFOLIO CHANGE", ["first cycle against this book"])
+    elif not review.get("moved"):
+        _block("PORTFOLIO CHANGE", ["nothing moved"])
+    else:
+        _block("PORTFOLIO CHANGE", list(review.get("changes") or []))
+    if verdict := review.get("verdict"):
+        _block("LLM REVIEW", _wrap(verdict))
+
+
+def _risk(state: dict) -> None:
+    """The arithmetic, printed next to the prose that described it.
+
+    Deliberately adjacent. The verdict above is a language model's reading and
+    this is the measurement it was reading; a reader has to be able to see both
+    without deciding which one to trust, which is only possible if the page
+    never puts one of them alone.
+    """
+    uncovered = state.get("uncovered_risk") or 0
+    lines = [
+        f"uncovered risk   {uncovered:,.0f}"
+        + ("" if uncovered > 0 else "   the promise holds")
+    ]
+    if released := state.get("released"):
+        lines.append(
+            f"release          {released.contracts} contracts, {released.reason}"
+        )
+    if not state.get("book_complete", True):
+        lines.append("book             incomplete: a holding could not be priced")
+    _block("RISK CHECK", lines)
+
+
+def _decision(state: dict) -> None:
+    """What was chosen per sleeve, and by whom.
+
+    `decided_by` is printed on every line rather than only when the model
+    decided. "Chosen by the rule" is a fact about the run, and a field that
+    appears only sometimes reads as an exception being flagged.
+    """
+    lines = []
+    for entry in state.get("choice") or []:
+        if not entry.get("chosen"):
+            continue
+        lines.append(f"{entry['symbol']:<6} {entry['chosen']}  [{entry['decided_by']}]")
+        lines += [f"       {line}" for line in _wrap(entry.get("because") or "", 66)]
+        # Only when they disagree. Printing "the rule agreed" on every sleeve
+        # would bury the one morning they did not.
+        rule = entry.get("rule_would_have")
+        if entry["decided_by"] == "model" and rule and rule != entry["chosen"]:
+            lines.append(f"       the rule would have taken the {rule}")
+    _block("DECISION", lines)
+
+
+def _orders(
+    results: list, submitted: int, filled: int, working: int, refused: int, held: int
+) -> None:
+    """What actually went to the broker, and what came back.
+
+    Accepted is not bought, so `filled` and `working` are separate counts and
+    the working ones say so in words. A cycle that reported the send as the
+    outcome is how an agent claims a client is protected while the account
+    holds nothing.
+    """
+    if not results:
+        return
+    lines = [f"submitted {submitted}   filled {filled}   refused {refused}"]
     if working:
-        print(f"  still working: {working}  ← accepted, not bought")
-    print(f"refused        : {refused}")
+        lines.append(f"still working {working}  <- accepted, not bought")
     if held:
-        print(f"not sent       : {held} (approved by the gate)")
+        lines.append(f"not sent {held} (approved by the gate)")
     for result in results:
         note = result.reason
         if result.submitted:
             note = f"{result.broker_status or 'unknown'}, filled {result.filled_qty}"
             if result.filled_avg_price is not None:
                 note += f" @ {result.filled_avg_price}"
-        print(f"  {result.occ_symbol}: {note}")
-    return 0
+        lines.append(f"  {result.occ_symbol}: {note}")
+    _block("ORDERS", lines)
+
+
+def _wrap(text: str, width: int = 72) -> list[str]:
+    return textwrap.wrap(" ".join(text.split()), width=width) if text else []
 
 
 if __name__ == "__main__":

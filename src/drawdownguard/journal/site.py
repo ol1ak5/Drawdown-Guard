@@ -188,6 +188,9 @@ footer a { color: var(--ink); text-decoration: none;
 .note{margin:1.4rem 0 0;padding:1.1rem 1.3rem;border-left:2px solid var(--ink);
   background:var(--panel);font-size:.98rem;line-height:1.65;max-width:62ch}
 .note.empty{border-left-color:var(--muted);color:var(--muted);font-style:italic}
+.changed{margin:0}
+.changes{margin:0;padding-left:1.2rem;line-height:1.9}
+.changes li{font-variant-numeric:tabular-nums}
 .card .s{display:block;margin-top:.35rem;font-size:.78rem;color:var(--muted);
   letter-spacing:.02em}
 .good{color:#1c7c4a}
@@ -323,6 +326,40 @@ def latest(entries: list[dict], event: str) -> dict:
         if entry.get("event") == event:
             return entry.get("payload") or {}
     return {}
+
+
+def _changed(review: dict) -> str:
+    """What the client did since the last cycle, and what it was read to mean.
+
+    The list of changes is the diff arithmetic produced; the paragraph beneath
+    it is a language model's read of the same diff. They are shown apart, and
+    labelled apart, because one is a fact about the account and the other is
+    prose about it -- a reader has to be able to tell which is which without
+    being told.
+
+    An absent verdict is shown as absent. The model is allowed to be
+    unreachable and the page is not allowed to cover for it.
+    """
+    if not review:
+        return '<p class="empty">No cycle has read the book yet.</p>'
+
+    if review.get("first"):
+        headline = "First cycle against this book &mdash; nothing to compare with."
+    elif not review.get("moved"):
+        headline = "Nothing moved in the book since the last cycle."
+    else:
+        rows = "".join(
+            f"<li>{_cell(line)}</li>" for line in review.get("changes") or []
+        )
+        headline = f"<ul class=\"changes\">{rows}</ul>"
+
+    note = review.get("verdict")
+    prose = (
+        f'<p class="note">{_cell(note)}</p>'
+        if note
+        else '<p class="note empty">The model did not answer this cycle.</p>'
+    )
+    return f'<div class="changed">{headline}{prose}</div>'
 
 
 def _promise(stress: dict, note: str) -> str:
@@ -612,10 +649,12 @@ def render_site(
 ) -> str:
     """The whole page, as a string. Pure: no files, no clock, no network."""
     stress = latest(entries, "mandate.stress")
+    review = latest(entries, "book.reviewed")
     promise_block = _promise(
         stress, latest(entries, "protection.explained").get("note", "")
     )
     floor_block = _floor(stress)
+    changed_block = _changed(review)
     plan = latest(entries, "protection.plan")
     book_cards = _book_cards(stress, plan)
     sleeve_rows = _sleeve_rows(plan)
@@ -640,6 +679,15 @@ promise stops holding it buys back the difference &mdash; the cheapest
 structure that floors the loss at every depth, never a view on where the market
 is going.</p>
 </header>
+
+<section class="reveal">
+<h2>What changed this morning</h2>
+<p class="lede">The agent compares the book against yesterday&rsquo;s snapshot
+before it measures anything. The list is arithmetic; the paragraph under it is
+the model&rsquo;s read of what the change does to the cover already in place.
+Neither decides anything &mdash; the hedge is sized from the ladder below.</p>
+{changed_block}
+</section>
 
 <section class="reveal">
 <h2>The promise, and where the book stands</h2>

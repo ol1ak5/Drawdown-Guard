@@ -66,6 +66,19 @@ class GuardState(TypedDict, total=False):
     # the ask moved and the limit was left behind. Prose about a settled
     # decision has no business preceding the trade it describes.
     narration: dict
+    # What moved in the client's book since the last cycle, and the model's
+    # read of what it means for the cover. Written by `mandate`, spent by
+    # `journal`. Nothing downstream reads the prose: `protect` decides from the
+    # ladder exactly as it did before this key existed, which is the property
+    # that makes putting a model this early in the cycle safe at all.
+    review: dict
+    # Who chose each sleeve's structure -- the model or the rule -- and what
+    # the other one would have done. The model only ever picks between
+    # structures that all close the risk and all expire, so this records a
+    # judgement about price, never about whether the promise is kept. Carried
+    # so the terminal and the page can show the disagreement without reopening
+    # the journal.
+    choice: list
     results: list[OrderResult]
     discrepancies: list[str]
     halted: bool

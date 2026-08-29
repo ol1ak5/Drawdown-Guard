@@ -68,10 +68,16 @@ from drawdownguard.agent.state import GuardState, initial_state
 # It can come back when it decides something. Until then the honest version of
 # "we plan to" is an empty directory.
 #
-# What remains of the model is one call, in `journal`, writing prose about a
-# decision that is already finished. The plumbing it needs lives in
+# What remains of the model is two calls, and the shared plumbing lives in
 # `drawdownguard/llm.py` -- named for what it is rather than for the role that
 # used to own it.
+#
+# `mandate` asks it what the change in the client's book means for the cover,
+# and only on a morning when something actually moved. `journal` asks it to
+# write up a decision already finished. The rule both obey is the one `regime`
+# broke from the other side: a model may be read by a person, and may not be
+# read by an order. Nothing between `mandate` and `execute` looks at either
+# answer.
 NODES = (
     ("reconcile", reconcile_node),
     ("mandate", mandate_node),

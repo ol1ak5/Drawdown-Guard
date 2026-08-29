@@ -15,18 +15,26 @@ indistinguishable from one that crashed.
 the whole project rather than an accident of wiring. The agent finds out what it
 already owes the client before it is allowed to look at what it might buy.
 
-WHERE THE LANGUAGE MODEL IS, AND WHY IT IS ONLY THERE
-------------------------------------------------------
-At the end of `protect`, after the decision is finished. The budget came from
-the client, the strike from arithmetic over the live chain, and the order faces
-a deterministic gate; the model is handed all of it as settled fact and writes
-the note a client reads. It cannot change a strike, a size, or whether an order
-goes. It can only be unclear, and it is unclear in the journal beside the
-numbers it describes.
+WHERE THE LANGUAGE MODEL IS, AND WHAT IT IS NOT ALLOWED TO REACH
+-----------------------------------------------------------------
+Two places, and neither of them decides anything.
 
-There used to be a model earlier in the cycle, classifying the market regime.
-Nothing read its answer, so it was a billed call that could not reach a
-decision. Explaining is the opposite arrangement and the safe one.
+The first is the end of `mandate`: the book is diffed against yesterday's
+snapshot by arithmetic, and the model is handed the diff to say what the change
+means for the cover already in place. It runs before `protect`, which is the
+only point in this program where a model speaks ahead of an action -- so the
+boundary is structural rather than promised. `protect` reads `ladder` and
+`uncovered_risk`, both settled before the call, and reads no word of the prose.
+The verdict changes what a person sees in the journal. It changes nothing the
+agent does.
+
+The second is `journal`, after everything is finished, writing the note a
+client reads.
+
+There used to be a model earlier still, classifying the market regime. Nothing
+read its answer, so it was a billed call that could not reach a decision. The
+distinction that matters is not how early a model runs -- it is whether its
+answer is an input to money. Neither of these is.
 """
 
 from decimal import Decimal
@@ -36,12 +44,14 @@ from typing import Any
 import yaml
 
 from drawdownguard.agent.middleware.guards import HALT_FILE, halt_file_present
+from drawdownguard.agent.roles.chooser import eligible, pick
 from drawdownguard.agent.roles.explainer import explain
+from drawdownguard.agent.roles.reviewer import review
 from drawdownguard.agent.state import GuardState
 from drawdownguard.execution.orders import confirm, submit_order
 from drawdownguard.journal import writer
 from drawdownguard.market.client import get_account, get_positions
-from drawdownguard.risk import period
+from drawdownguard.risk import changes, period
 from drawdownguard.risk.book import to_book
 from drawdownguard.risk.limits import load_limits
 from drawdownguard.risk.mandate import load_mandate
@@ -64,6 +74,7 @@ from drawdownguard.risk.stress import (
 )
 
 STRATEGY_PATH = Path("config/strategy.yaml")
+
 
 def strategy(path: str | Path = STRATEGY_PATH) -> dict[str, Any]:
     return yaml.safe_load(Path(path).read_text())
@@ -206,9 +217,7 @@ async def mandate_node(state: GuardState) -> GuardState:
     # re-bases every cycle: lose ten percent and the agent starts defending ten
     # percent of the smaller number, which permits a 47% loss in five steps and
     # calls every one of them kept. See `risk/period.py`.
-    promise, renewed = period.current(
-        float(portfolio.equity), mandate.horizon_months
-    )
+    promise, renewed = period.current(float(portfolio.equity), mandate.horizon_months)
     budget = mandate.budget(promise.reference)
     if renewed:
         writer.write(
@@ -281,11 +290,62 @@ async def mandate_node(state: GuardState) -> GuardState:
         },
         severity="breach" if uncovered > 0 else "info",
     )
+    # What the client did since the last cycle, and what a model makes of it.
+    #
+    # The diff is arithmetic -- a set difference between two snapshots -- and
+    # stays that way. The model is handed the answer and writes the sentence a
+    # person reads on a morning when nine hundred shares left the account and
+    # the puts bought against them are suddenly standing behind nothing.
+    #
+    # Nothing below this line reads the prose. `protect` works from `ladder`
+    # and `uncovered_risk`, both settled above, so the verdict cannot move a
+    # strike, a size, or whether an order goes. That is the only arrangement in
+    # which a language model belongs this early in the cycle.
+    counts = changes.snapshot(book)
+    diff = changes.compare(changes.load(), counts)
+    # Asked only when there is something to judge. A book that did not move
+    # produces the same three words every morning, and a model billed daily to
+    # write "nothing moved" is the exact arrangement that got the old regime
+    # classifier deleted. The fact is recorded either way; the prose is what
+    # the change buys.
+    verdict = None
+    if diff.moved or diff.first:
+        verdict = await review(
+            diff,
+            {
+                "legs_held": len(book.legs),
+                "exposure": book.equity_exposure,
+                "budget": budget,
+                "uncovered_risk": uncovered,
+            },
+        )
+    writer.write(
+        "book.reviewed",
+        {
+            "first": diff.first,
+            "moved": diff.moved,
+            "changes": [c.describe() for c in diff.changes],
+            "verdict": verdict,
+        },
+        severity="info",
+    )
+    # Recorded only after the cycle has read it, so a run that dies mid-cycle
+    # compares against the same yesterday next time rather than silently
+    # adopting a book it never finished measuring.
+    changes.save(counts)
+
     return GuardState(
         ladder=rungs,
         uncovered_risk=uncovered,
         book_complete=book.complete,
         book=book,
+        review={
+            "first": diff.first,
+            "moved": diff.moved,
+            "changes": [c.describe() for c in diff.changes],
+            "summary": diff.describe(),
+            "verdict": verdict,
+        },
     )
 
 
@@ -396,9 +456,7 @@ async def protect_node(state: GuardState) -> GuardState:
             severity="info",
         )
 
-    given = release(
-        book.holdings, book.legs, budget, shock, mandate.release_margin_pct
-    )
+    given = release(book.holdings, book.legs, budget, shock, mandate.release_margin_pct)
 
     # Handing protection back is an order like any other, and for a while it
     # was not one. `release` returned the legs and nothing closed them: the
@@ -495,8 +553,17 @@ async def protect_node(state: GuardState) -> GuardState:
             released=given, release_orders=release_orders, uncovered_risk=uncovered
         )
 
-    chosen_all: list = []
-    planned: list[dict] = []
+    # Two passes over the sleeves, and the split is the point.
+    #
+    # The first prices every structure the mandate permits and works out which
+    # of them are admissible -- closes the risk in full, and expires. The
+    # second decides between what is left. They are separated because one
+    # language model call covering every sleeve costs a few seconds once,
+    # while a call inside the loop costs them per symbol; and seconds between
+    # reading the chain and pricing the order are what left both of day one's
+    # limits under the market. See `roles/chooser`.
+    offered: dict[str, list] = {}
+    context: dict[str, dict] = {}
 
     for symbol, sleeve, sleeve_budget in sleeves(book.holdings, budget):
         spot = sleeve[0].price
@@ -519,8 +586,14 @@ async def protect_node(state: GuardState) -> GuardState:
                     sleeve, sleeve_legs, sleeve_budget, shock, symbol, spot, puts
                 ),
                 collar(
-                    sleeve, sleeve_legs, sleeve_budget, shock, symbol, spot,
-                    puts, calls,
+                    sleeve,
+                    sleeve_legs,
+                    sleeve_budget,
+                    shock,
+                    symbol,
+                    spot,
+                    puts,
+                    calls,
                 ),
                 reduce_exposure(sleeve, sleeve_legs, sleeve_budget, shock, symbol)
                 if mandate.allow_reduce_exposure
@@ -528,18 +601,47 @@ async def protect_node(state: GuardState) -> GuardState:
             )
             if remedy is not None
         ]
-        picked, why = choose(offers)
+        offered[symbol] = offers
+        context[symbol] = {
+            "spot": spot,
+            "exposure": round(sum(h.value for h in sleeve), 2),
+            "budget": round(sleeve_budget, 2),
+        }
+
+    # The model is asked only where there is a real choice: two or more
+    # structures that both keep the promise. One admissible structure is not a
+    # decision, and a morning of those costs nothing to run.
+    open_choices = {
+        symbol: admissible
+        for symbol, offers in offered.items()
+        if len(admissible := eligible(offers)) > 1
+    }
+    model_picks = await pick(open_choices) if open_choices else {}
+
+    chosen_all: list = []
+    planned: list[dict] = []
+    for symbol, offers in offered.items():
+        sleeve = context[symbol]
+        # The rule runs on every sleeve regardless, because it is what the
+        # model is checked against and what the journal has to be able to
+        # show. A cycle that only recorded the answer it used could not be
+        # audited for the times the two disagreed.
+        rule_pick, rule_why = choose(offers)
+        picked, why, decided_by = rule_pick, rule_why, "rule"
+        if symbol in model_picks:
+            picked, why = model_picks[symbol]
+            decided_by = "model"
         if picked is not None:
             chosen_all.append(picked)
         planned.append(
             {
                 "symbol": symbol,
-                "spot": spot,
-                "exposure": round(sum(h.value for h in sleeve), 2),
+                "spot": sleeve["spot"],
+                "exposure": sleeve["exposure"],
                 # Its share of the promise, in proportion to what it can lose.
                 # A symbol holding half the book may lose half the money, so it
                 # is allowed half the budget, and the shares sum to the whole.
-                "budget": round(sleeve_budget, 2),
+                "budget": sleeve["budget"],
                 "offers": [
                     {
                         "kind": remedy.kind,
@@ -570,6 +672,14 @@ async def protect_node(state: GuardState) -> GuardState:
                 ],
                 "chosen": picked.kind if picked else None,
                 "because": why,
+                # Who decided, and what the other one would have done. Recorded
+                # on every sleeve so a disagreement is visible rather than
+                # inferred: a run where the model consistently overrode the
+                # rule is a fact somebody should be able to read off the
+                # journal without rerunning anything.
+                "decided_by": decided_by,
+                "rule_would_have": rule_pick.kind if rule_pick else None,
+                "rule_because": rule_why,
             }
         )
 
@@ -631,6 +741,16 @@ async def protect_node(state: GuardState) -> GuardState:
         protection=chosen_all,
         uncovered_risk=uncovered,
         narration=narration,
+        choice=[
+            {
+                "symbol": entry["symbol"],
+                "chosen": entry["chosen"],
+                "decided_by": entry["decided_by"],
+                "because": entry["because"],
+                "rule_would_have": entry["rule_would_have"],
+            }
+            for entry in planned
+        ],
     )
 
 
@@ -808,9 +928,7 @@ async def journal_node(state: GuardState) -> GuardState:
             # closes it. One entry per sleeve, since each symbol is hedged on
             # its own underlying.
             "protection": [r.kind for r in state.get("protection") or []],
-            "released": (
-                state["released"].contracts if state.get("released") else 0
-            ),
+            "released": (state["released"].contracts if state.get("released") else 0),
             "discrepancies": state.get("discrepancies", []),
             "dry_run": state.get("dry_run", False),
         },
