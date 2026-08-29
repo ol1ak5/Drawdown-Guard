@@ -77,7 +77,7 @@ The portfolio is intentionally not static. A client who never touches their allo
 
 **What happened on Day 1?**
 
-The agent submitted limit orders at the ask, but the ask moved while the cycle was still running. The orders expired without filling, journalled as `order.working`. We changed the execution rule so the limit can move a quarter of the spread beyond the price being crossed. This keeps every order a limit order while giving it enough room to follow a moving market instead of expiring unfilled.
+The agent submitted limit orders at the ask, but the orders expired without filling. We changed the execution rule to allow the limit to move up to a quarter of the spread beyond the crossed price - still a limit order, but with room to follow a moving market.
 
 ## ⚙️ How the agent actually works
 
@@ -106,20 +106,20 @@ When the book changes, the LLM receives the portfolio diff and the relevant prot
 For example:
 
 ```
-**Portfolio change**
-XLF: 900 → 0 shares
-**LLM review**
-The XLF position was fully closed. The nine puts are now protecting an exposure that no longer exists. Recommend
-releasing the hedge.
-**Risk check**
-XLF exposure = $0
-XLF hedge = redundant
-→ Release 9 puts
+Portfolio change:
+XLF: 900 → 0
+
+Existing protection:
+9 XLF puts
+
+LLM:
+Risk issue: existing XLF protection no longer corresponds to an equity position.
+Recommendation: review the XLF hedge for removal.
 ```
 
 **LLM call #2 - Protection choice**
 
-When protection is required, the deterministic engine first builds eligible candidates, and the LLM chooses how to protect the portfolio. **Important.** If the LLM is unavailable, produces an invalid response, or cannot make a valid selection, the deterministic rule remains the fallback.
+When protection is required, the LLM chooses between eligible hedge structures based on the mandate and current market conditions. If the LLM fails or returns an invalid choice, the deterministic rule remains the fallback.
 
 Every LLM decision records:
 - `decided_by`
@@ -207,12 +207,12 @@ IWM   share of the budget $3,616
   worst case                                   $3,590   ≤  $3,616  ✅
 ```
 
-> **The premium is part of the risk budget.**
+> The premium is part of the risk budget.
 > Protection is not free: the cost of buying the hedge is charged against the same loss allowance.
 
 ### Execution price
 
-Every order is a limit order.
+Every order is a limit order. After Day 1 unfilled orders, we allowed the limit price to move up to a quarter of the spread beyond the crossed price to prevent the same issue in future cycles.
 
 On Day 1, the initial limits were exactly at the ask:
 
@@ -221,13 +221,16 @@ On Day 1, the initial limits were exactly at the ask:
 | XLF 54 put ×9 | 2.64 | 2.72 | ❌ |
 | IWM 275 put ×1 | 14.25 | 14.37 | ❌ |
 
-The ask moved before the orders could fill. That's why we changed the execution logic, so now it allows the limit to move by a quarter of the spread beyond the crossed price. This keeps the order bounded while reducing the chance that a small market move leaves the portfolio uncovered.
+On Day 2, the orders were executed correctly:
+
+XXXXXXXXXX
+
 
 **7️⃣ What does the protection actually do?** 
 
 The answer is below. Without protection, losses continue to grow as the market falls. With the options in place, the loss reaches a floor.
 
-### Protective put
+**Protective put**
 
 | Market falls | Without the agent | **With the agent** | Premium paid | **Floor + Premium** | Drawdown budget | Promise |
 |---|---|---|---|---|---|---|
@@ -238,7 +241,7 @@ The answer is below. Without protection, losses continue to grow as the market f
 | -90% | $73,820 | **$5,923** | $3,801 | **$9,724** |$9,998 | ✅ |
 | -100% | $82,022 | **$5,923** | $3,801 | **$9,724** |$9,998 | ✅ |
 
-### Collar
+**Collar**
 
 | Market falls | Without the agent | **With the agent** | Net premium | **Floor + Net premium** | Drawdown budget | Promise |
 |---|---|---|---|---|---|---|
@@ -259,11 +262,13 @@ $3,801 - $1,393 =  $2,408
 
 The trigger is mechanical:
 
+```
 uncovered_risk = worst_loss(current_book) − budget
 
 uncovered_risk > 0
         ↓
-    ACTION REQUIRED
+    Action Required
+```
 
 The portfolio can become uncovered for several reasons:
 
@@ -277,10 +282,9 @@ The portfolio can become uncovered for several reasons:
 
 ## 🔌 Alpaca Trading API and MCP Server
 
-Drawdown Guard uses Alpaca Trading API and Alpaca MCP Server to read the account, positions, market data and option chain, submit orders, and reconcile their results.
+Drawdown Guard uses the Alpaca Trading API and Alpaca MCP Server to read the account, positions, market data and option chain, submit orders, and reconcile execution.
 
-The process is the following:
-
+```
 Drawdown Guard
       ↓
 Alpaca MCP tools
@@ -288,6 +292,7 @@ Alpaca MCP tools
 Alpaca Trading API
       ↓
 Paper account
+```
 
 The agent decides what should happen. MCP provides the controlled interface to the broker. The deterministic Gate remains the final trading boundary.
 
@@ -308,10 +313,10 @@ Built directly against the four agent types this track names:
 
 | Track agent type | How Drawdon Guard implements it |
 |---|---|
-| 🛡️ **Protective put agents** | Sizes long puts against the exact dollar shortfall |
-| 🎯 **Collar agents** | Prices the financing call every cycle and takes it only when the call's implied volatility is at or above the put's |
-| 📉 **Drawdown-defense agents** | The entire product: a client-stated loss budget, checked against the real book daily |
-| ♻️ **Hedge rebalancers for equity portfolios** | Adds protection when risk is uncovered and hands it back on a margin band. Demonstrated on day 4, when the client sells the whole XLF position |
+| 📉 **Drawdown-defense agents** | Checks the portfolio against a client-defined loss budget and keeps the book within its mandate |
+| 🛡️ **Protective put strategy** | Uses long puts to cover the calculated downside shortfall |
+| 🎯 **Collar strategy** | Uses a put financed by a short call when the mandate and market conditions make it appropriate |
+| ♻️ **Hedge rebalancers for equity portfolios** | Adds protection when risk is uncovered and hands it back on a margin band. Demonstrated on day 4 and 5 |
 
 ## 🧰 Technologies
 
