@@ -62,7 +62,8 @@ The client's mandate is simple:
 
 **Just two numbers:**
 
-- 🔟 **10%** — the most the client can lose. $10,000 of a $100,000 account.
+- 🔟 **10%** — the most the client can lose. Roughly $10,000 on this account;
+  the exact figure is fixed the day the promise opens and never moves after.
 - 📆 **12 months** — the window that promise has to hold.
 
 ### Activity during the hackathon
@@ -108,11 +109,36 @@ The cycle starts by reading the client's account, not by trusting what the agent
 The client's drawdown limit becomes a dollar figure:
 
 ```
-10% × $100,000  =  $10,000
+10% × $99,978  =  $9,998
       └── the reference ──┘
 ```
 
-**The reference does not move.** It is the account value on the day the promise started, written down once and held for the whole twelve months. he agent doesn't react to short-term market fluctuations that will make him rebalance the hedge protection and spend all the money on everyday. **CHECK**
+**Why $99,978 and not the $100,000 in the table above.** The portfolio was
+bought at 15:44 and the promise opened at 15:48. In those four minutes the
+market marked the new positions down by $22. The reference is the account as it
+stood at the second moment, and that is the number every budget for the next
+twelve months is a percentage of.
+
+**The reference does not move.** Not with the market, and not when the client
+buys or sells. It is written down once and held for the whole twelve months.
+
+That is deliberate, and the alternative is worse than it sounds. A budget of
+"10% of whatever the account is worth this morning" is not a promise — it is a
+promise that re-bases. Lose ten percent and tomorrow the agent defends ten
+percent of the smaller number, then ten percent of the one after that. Five
+steps of that permit a **47% loss** and report every one of them as kept. Worse,
+the budget shrinks fastest exactly when a fall has already begun, so the agent
+would buy *less* protection precisely as it became most necessary.
+
+A high-water mark was the other candidate. It was rejected for a different
+reason: it moves when the market makes a new high, so the agent would re-strike
+its hedge because prices went **up**. This project's whole claim is that it
+never acts on where the market is going. One place where it does is enough to
+lose the argument.
+
+The client's gains are not left unprotected forever. They are locked in at
+renewal, on the calendar — 28 August 2027 — rather than continuously and on the
+market's cue.
 
 ### 3. Stress — the ladder, and the risk
 
