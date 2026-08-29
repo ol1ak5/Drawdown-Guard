@@ -8,9 +8,7 @@ Drawdown Guard is an autonomous AI trading agent that checks a portfolio every w
 
 **The market moves. The loss mandate doesn't. Drawdown Guard keeps the two in line.**
 
-🔴 Live decisions: **[status page](https://ol1ak5.github.io/Drawdown-Guard/)** 
-
-📓 Every decision ever made: **[journal](journal/)**
+🔴 **[Demo Application Platform](https://ol1ak5.github.io/Drawdown-Guard/)** · 📓 **[Journal](journal/)**
 
 ---
 
@@ -22,9 +20,7 @@ Investors can decide how much downside they can accept. But once the portfolio i
 
 Markets move. Positions change. Options expire. New exposure is added.
 
-The portfolio keeps evolving, while the client's risk limit stays the same. Over time, the two can drift apart, and the investor may not discover the gap until the market tests it.
-
-Predicting the next crash is hard. Knowing whether today's portfolio still respects the risk limit set for it is a different problem. That's exactly what Drawdown Guard is built to solve.
+The problem is not knowing what the market will do next. It is keeping the portfolio aligned with the risk limit the client already chose. That's exactly what Drawdown Guard is built to solve.
 
 ## 💡 The solution
 
@@ -68,7 +64,7 @@ The client changes the portfolio mid-flight:
 - Sells the whole XLF position of 900 shares on September 2nd
 - Buys 100 shares of AAPL on September 3rd
 
-The portfolio is intentionally not static. A client who never touches their allocation isn't the point. That gives Drawdown Guard a real job: it keep the changing portfolio aligned with a fixed risk mandate.
+The portfolio is intentionally not static. A client who never touches their allocation isn't the point. That gives Drawdown Guard a real job - it keep the changing portfolio aligned with a fixed risk mandate.
 
 | Day | Date | Client does | Agent does |
 |---|---|---|---|
@@ -84,23 +80,23 @@ The agent submitted limit orders at the ask, but the ask moved while the cycle w
 
 ## ⚙️ How the agent actually works
 
-Seven steps presented as five nodes in the LangGraph cycle, once every weekday, fully autonomous.
+Seven steps presented as five nodes in the LangGraph cycle. Once every weekday. Fully autonomous.
 
-| # | Step | The agent does | Where it lives |
+| # | Step | The agent does | Node |
 |---|---|---|---|
-| 1️⃣ | **Reconcile** | Asks the broker what is actually held. Never assumes | `reconcile` node |
-| 2️⃣ | **Mandate** | Turns the client's tolerance into a live dollar budget | `mandate` node |
-| 3️⃣ | **Stress** | Runs the book down the whole descent and measures the uncovered risk | `mandate` node |
-| 4️⃣ | **Protect** | Solves for the cheapest hedge that covers it, sleeve by sleeve | `protect` node |
-| 5️⃣ | **Gate** | Checks every order against hard limits before it can reach the broker | `execute` node |
-| 6️⃣ | **Execute** | Sends the approved orders, then reads back what the broker actually did with each | `execute` node |
-| 7️⃣ | **Journal** | Writes down what happened and why, in plain language, with an LLM | `journal` node |
+| 1️⃣ | **Reconcile** | Asks the broker what is actually held. Never assumes | `reconcile` |
+| 2️⃣ | **Mandate** | Turns the client's tolerance into a live dollar budget | `mandate` |
+| 3️⃣ | **Stress** | Runs the book down the whole descent and measures the uncovered risk | `mandate` |
+| 4️⃣ | **Protect** | Solves for the cheapest hedge that covers it, sleeve by sleeve | `protect` |
+| 5️⃣ | **Gate** | Checks every order against hard limits before it can reach the broker | `execute` |
+| 6️⃣ | **Execute** | Sends the approved orders, then reads back what the broker actually did with each | `execute` |
+| 7️⃣ | **Journal** | Writes down what happened and why, in plain language, with an LLM | `journal` |
 
 ## 🔗 The Chain of Decision
 
-**1. From a percentage to a real loss budget** 
+**1. How much loss can the client tolerate?** 
 
-The client only defines the maximum loss they are willing to tolerate:
+The client only defines the maximum loss he is willing to tolerate:
 
 > *Maximum drawdown: 10%*
 
@@ -108,7 +104,7 @@ On 28 August 2026, at the moment the promise opened, the portfolio was worth $99
 
 **$9,998 is not the amount we expect the client to lose.** It's the maximum loss the protection framework is allowed to leave exposed. The objective is always to lose less.
 
-**2. From the gap to the hedge**
+**2. How much of that budget belongs to each position?**
 
 Our client's portfolio contains more than one instrument:
 - XLF: 900 shares
@@ -136,7 +132,7 @@ Drawdown Guard says: "With options".
 
 **The shares are never sold to cover the existing gap.** The client can sell shares at any time, but the agent doesn't liquidate them simply to close the drawdown gap.
 
-**3. Which option, today?**
+**3. Which option should we use today?**
 
 The agent compares both structures using the live option chain. The decision depends on the current cost and volatility of the options and the client's constraints.
 
@@ -151,18 +147,18 @@ XLF:  900 shares → ceil(900/100) = 9 contracts
 IWM:  100 shares → ceil(100/100) = 1 contract
 ```
 
-**5. Now solve for the strike?**
+**5. Which strike fits the mandate?**
 
 Once the agent knows how many contracts are required, it has to decide which strike to buy. The strike **always** comes from the budget. 
 
-Every order is a limit order. Yet a limit set *exactly* at the offer fills only if nobody moves, and we saw it on the first live day. Two protective puts were sent at the ask, the ask rose a few cents while the cycle was still running, and both sat unfilled until the close:
+Every order is a **limit order**. Yet a limit set exactly at the offer fills only if nobody moves, as we saw on the first live day. Two protective puts were sent at the ask, and both sat unfilled until the close:
 
 | Options | Our limit | Ask, minutes later | Filled |
 |---|---|---|---|
 | XLF 54 put ×9 | 2.64 | 2.72 | ❌ |
 | IWM 275 put ×1 | 14.25 | 14.37 | ❌ |
 
-So, in our case we had:
+So we added a quarter-spread margin to the limit price. In our case, this  looked like:
 
 ```
 XLF   share of the budget $6,382
@@ -204,7 +200,7 @@ Stress scenario for the collar:
 | -90% | $73,820 | **$5,923** | $2,408 | **$8,331** |$9,998 | ✅ |
 | -100% | $82,022 | **$5,923** | $2,408 | **$8,331** |$9,998 | ✅ |
 
-In the case of collar, the net premium the client pays is calculated as s premium paid for the put reduced by the premium received by selling a call:
+For a collar, the net premium the client pays is calculated as s premium paid for the put reduced by the premium received by selling a call:
 
 ```
 $3,801 - $1,393 =  $2,408 
@@ -226,11 +222,11 @@ It is an autonomous agent trading an account on a schedule, so there has to be a
 ```bash
 touch HALT && git add HALT && git commit -m "halt" && git push
 ```
-**It stops the agent, not the protection.** Every position stays exactly where it is; hedges already bought keep working. A stop button that liquidated the client's protection would disarm the portfolio at the precise moment somebody was worried enough to press it.
+**It stops the agent, not the protection.** Every position stays exactly where it is. Hedges already bought keep working. A stop button that liquidated the client's protection would disarm the portfolio at the precise moment somebody was worried enough to press it.
 
 ## 🏁 Main Tracks
 
-**Track 03 — Hedging & Risk Protection Agents** 🛡️
+**Track 03 — Hedging & Risk Protection Agents**
 
 Built directly against the four agent types this track names:
 
@@ -267,7 +263,7 @@ uv run python3 scripts/build_site.py           # rebuilds the status page
 uv run pytest
 ```
 
-🔐 `ALPACA_PAPER_TRADE=true` is a **hard interlock**. The program refuses to start without it. This has never traded real money.
+🔐 `ALPACA_PAPER_TRADE=true` is a hard interlock. The program refuses to start without it. This has never traded real money.
 
 ## 📁 Layout
 
