@@ -20,7 +20,7 @@ Investors can decide how much downside they can accept. But once the portfolio i
 
 Markets move. Positions change. Options expire. New exposure is added.
 
-The problem is not knowing what the market will do next. It is keeping the portfolio aligned with the risk limit the client already chose. That's exactly what Drawdown Guard is built to solve.
+**The problem is not knowing what the market will do next.** It's keeping the portfolio aligned with the risk limit the client already chose. That's exactly what Drawdown Guard is built to solve.
 
 ## 💡 The solution
 
