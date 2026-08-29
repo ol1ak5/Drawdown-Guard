@@ -16,7 +16,7 @@ Drawdown Guard is an autonomous AI trading agent that checks a portfolio every w
 
 **Just knowing a loss tolerance limit is not a loss control.**
 
-Investors can decide how much downside they can accept. But once the portfolio is built, that number does not enforce itself.
+Investors can decide how much downside they can accept. But once the portfolio is built, that number doesn't enforce itself.
 
 Markets move. Positions change. Options expire. New exposure is added.
 
@@ -64,7 +64,7 @@ The client changes the portfolio mid-flight:
 - Sells the whole XLF position of 900 shares on September 2nd
 - Buys 100 shares of AAPL on September 3rd
 
-The portfolio is intentionally not static. A client who never touches their allocation isn't the point. That gives Drawdown Guard a real job - it keep the changing portfolio aligned with a fixed risk mandate.
+The portfolio is intentionally not static. A client who never touches their allocation isn't the point. That gives Drawdown Guard a real job - it keeps the changing portfolio aligned with a fixed risk mandate.
 
 | Day | Date | Client does | Agent does |
 |---|---|---|---|
