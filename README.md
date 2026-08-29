@@ -55,8 +55,8 @@ The client's mandate is simple:
 
 **Just two numbers:**
 
-- 🔟 **10%** — the most the client can lose in our case. Roughly $10,000 on this account. The exact figure is fixed the day the promise opens.
-- 📆 **12 months** — the window that promise has to hold.
+- 🔟 **10%** - the most the client can lose in our case. Roughly $10,000 on this account. The exact figure is fixed the day the promise opens.
+- 📆 **12 months** - the window that promise has to hold.
 
 ### Activity during the hackathon
 
@@ -89,7 +89,7 @@ Seven steps presented as five nodes in the LangGraph cycle. Once every weekday. 
 | 3️⃣ | **Stress** | Runs the book down the whole descent and measures the uncovered risk | `mandate` |
 | 4️⃣ | **Protect** | Solves for the cheapest hedge that covers it, sleeve by sleeve | `protect` |
 | 5️⃣ | **Gate** | Checks every order against hard limits before it can reach the broker | `execute` |
-| 6️⃣ | **Execute** | Sends the approved orders, then reads back what the broker actually did with each | `execute` |
+| 6️⃣ | **Execute** | Sends the approved orders, then reads back what the broker actually did | `execute` |
 | 7️⃣ | **Journal** | Writes down what happened and why, in plain language, with an LLM | `journal` |
 
 ## 🔗 The Chain of Decision
@@ -112,7 +112,7 @@ Our client's portfolio contains more than one instrument:
 
 The agent allocates the budget proportionally to each instrument's weighted contribution to portfolio risk, as specified by the mandate.
 
-For this portfolio, that gives:
+**For this portfolio, that gives:**
 
 ```
 XLF → $6,382
