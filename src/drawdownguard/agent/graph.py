@@ -59,11 +59,19 @@ from drawdownguard.agent.state import GuardState, initial_state
 #
 # `snapshot` existed to feed it.
 #
-# `analyst/` and its tests are kept. There is a real job here -- reading what
-# the options market charges for protection, and why, which is the one thing a
-# model does better than arithmetic -- and it becomes reachable once the agent
-# can buy ahead of need instead of only at the moment the promise breaks. It
-# returns when it decides something.
+# `roles/analyst.py` is gone too, and was kept for a while on the argument that
+# there is a real job here -- reading what the options market charges for
+# protection, and why, which is the one thing a model does better than
+# arithmetic. The argument still holds and the code was still dead: nothing but
+# its own tests imported it, and a module kept against a future that has not
+# arrived is a module a reader has to rule out before understanding the cycle.
+# It can come back when it decides something. Until then the honest version of
+# "we plan to" is an empty directory.
+#
+# What remains of the model is one call, in `journal`, writing prose about a
+# decision that is already finished. The plumbing it needs lives in
+# `drawdownguard/llm.py` -- named for what it is rather than for the role that
+# used to own it.
 NODES = (
     ("reconcile", reconcile_node),
     ("mandate", mandate_node),

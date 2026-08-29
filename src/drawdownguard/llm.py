@@ -1,9 +1,15 @@
-"""The chat model behind the analyst.
+"""The chat model, and the one place in this program that talks to one.
 
-The provider is swappable on purpose. The analyst is the one component whose
-output is advisory — it can tighten the risk parameters and never loosen them —
-so which model produces that advice is a cost decision, not a safety one. This
-project runs Gemini because that is the key its author has.
+It is called once per cycle, in `journal`, to write the paragraph a client
+reads. Everything it describes is already settled -- the strike is chosen, the
+gate has ruled, the orders are at the broker and their fills have been read
+back -- so which model produces that prose is a cost decision and not a safety
+one. This project runs Gemini because that is the key its author has.
+
+This module used to be `analyst/llm.py`, named for a role that read the market
+and returned a judgement. That role was removed when it turned out nothing
+imported it. The plumbing outlived it because the explanation still needs a
+model, and it is named for what it is now.
 
 WHY `response_text` EXISTS
 --------------------------
@@ -24,21 +30,21 @@ from langchain_core.language_models import BaseChatModel
 
 from drawdownguard.settings import get_settings
 
-# Gemini 3.7 Flash: fast, cheap, and enough for reading headlines and returning
-# a regime judgement. The analyst makes one call per cycle, so the ceiling on
-# spend is a few cents a day; there is nothing to be gained by going smaller.
+# Gemini 3.7 Flash: fast, cheap, and enough to write one paragraph from facts
+# it is handed. One call per cycle, so the ceiling on spend is a few cents a
+# day; there is nothing to be gained by going smaller.
 DEFAULT_MODEL = "gemini-3.7-flash"
 
-# The analyst reads news and returns a structured judgement. Sampling variance
-# buys nothing here and makes a disagreement between two runs impossible to
-# attribute, so it is pinned off.
+# The same numbers should produce the same sentence. Sampling variance buys
+# nothing when the job is describing a decision already made, and it makes a
+# disagreement between two runs impossible to attribute, so it is pinned off.
 DEFAULT_TEMPERATURE = 0.0
 
 
 def build_llm(
     model: str = DEFAULT_MODEL, temperature: float = DEFAULT_TEMPERATURE
 ) -> BaseChatModel:
-    """The analyst's chat model, keyed from settings rather than the ambient env.
+    """The chat model, keyed from settings rather than the ambient env.
 
     Reading the key through `get_settings` rather than letting the client pick
     up `GOOGLE_API_KEY` on its own keeps one loader responsible for
@@ -50,7 +56,8 @@ def build_llm(
     settings = get_settings()
     if not settings.google_api_key:
         raise RuntimeError(
-            "GOOGLE_API_KEY is empty. The analyst cannot run without it. "
+            "GOOGLE_API_KEY is empty. The explanation cannot be written "
+            "without it, though the cycle itself does not need it. "
             "Set it in .env; it is gitignored."
         )
     return ChatGoogleGenerativeAI(

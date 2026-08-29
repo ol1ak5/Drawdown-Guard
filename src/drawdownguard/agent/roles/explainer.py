@@ -41,7 +41,7 @@ alone.
 from pathlib import Path
 from typing import Any
 
-from drawdownguard.analyst.llm import build_llm, response_text
+from drawdownguard.llm import build_llm, response_text
 
 PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "explainer.md"
 
