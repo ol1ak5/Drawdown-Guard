@@ -140,93 +140,106 @@ The client's gains are not left unprotected forever. They are locked in at
 renewal, on the calendar — 28 August 2027 — rather than continuously and on the
 market's cue.
 
-### 3. Stress — the ladder, and the risk
-
-The agent prices the book at four published shocks, the same four every day.
-This is the day-one cycle, and every figure below can be checked against the
-journal entry it came from — `mandate.stress`, 2026-08-28 16:53:07 UTC:
-
-| If the market falls | The portfolio loses | Budget | Verdict |
-|---|---:|---:|---|
-| −5% | $4,101 | $9,998 | ✅ inside the promise |
-| −10% | $8,202 | $9,998 | ✅ inside the promise |
-| −20% | $16,405 | $9,998 | 🚨 **$6,407 past it** |
-| −35% | $28,708 | $9,998 | 🚨 **$18,710 past it** |
-
-The rungs are fixed and published on purpose. A ladder that moved with the
-market would let a bad day quietly redefine what "safe" means.
-
-**This is not a forecast.** The agent does not say the market will fall 20%. It
-says: *if it did, this book would break a promise that was already made.*
-
-## 📏 What "uncovered risk" actually measures
-
-This is the number everything else hangs on, and it is **not** the −20% row
-above. That row is the one a human reads. The number the agent sizes against is
-different, and larger, and the difference is the whole idea.
+### 3. Stress — how much can this book actually lose?
 
 **Nobody can name the next shock.** Not the client, not the agent. A promise
 that only holds down to a depth somebody guessed is not much of a promise. So
-the agent does not pick a rung. It asks the question that needs no guess:
+the agent does not pick a depth. It asks the question that needs no guess:
 
 > What is the most this book can lose, **anywhere on the way down**?
 
-For a book of bare shares, the answer is *everything*. The loss keeps growing
-as the price approaches zero — there is no bottom, so the worst case is the
-entire equity exposure:
+For bare shares the answer is *everything*. The loss keeps growing as the price
+approaches zero — there is no bottom. So the worst case is the entire equity
+sleeve, and the part of it nobody has agreed to carry is what the agent is
+hired to close:
 
 ```
 worst case (unprotected)    $82,023     ← the whole equity sleeve
-downside budget           −  $9,998
+downside budget           −  $9,998     ← what the client agreed to absorb
 ─────────────────────────────────────
 uncovered risk              $72,025     ← risk nobody has agreed to carry
 ```
 
-That is why the journal reports seventy-two thousand of uncovered risk on a book
-whose −20% shortfall is only $6,407. Both numbers are true and they answer
-different questions. The agent acts on the first one.
+**This is not a forecast.** The agent never says the market will fall. It says:
+*if it did, this book would break a promise that was already made.*
 
-**Matching puts to shares is what makes the answer finite.** One contract per
-hundred shares, and below the strike every dollar the shares lose is a dollar
-the puts gain. The line stops falling. The worst case becomes a number you can
-write down:
+### 4. Protect — what the hedge actually does
+
+Here is the same book before and after the day-one hedge. Every figure comes
+from the project's own stress code:
+
+| If the market falls | Without the agent | **With the agent** |
+|---|---:|---:|
+| −10% | $8,202 | **$5,923** |
+| −20% | $16,404 | **$5,923** |
+| −35% | $28,708 | **$5,923** |
+| −50% | $41,011 | **$5,923** |
+| −90% | $73,820 | **$5,923** |
+| −100% | $82,022 | **$5,923** |
+
+**The column stops growing.** The market can go to zero and the client still
+loses $5,923 against a budget of $9,998. That is not a threshold past which
+losses resume — it is the floor.
+
+Below the strike, every dollar the shares lose is a dollar the puts gain, so
+the line simply lies flat. Infinity becomes a number, and that number cost
+**$3,801 in premium**.
+
+#### How the hedge is sized — two separate decisions
+
+**Contracts come from the share count, never from the size of the risk.**
 
 ```
-worst case (protected)  =  the fall down to the strike  +  the premium paid
-                           └── unprotected drop ──┘        └── certain ──┘
+XLF:  900 shares → ceil(900/100) = 9 contracts
+IWM:  100 shares → ceil(100/100) = 1 contract
 ```
 
-Both terms move against each other as the strike moves — lower strike, further
-to fall, cheaper premium — so the total is monotonic and the answer is unique.
-The agent takes the **lowest strike that still fits inside the budget**. Go
-lower and the unprotected drop alone spends the promise. Go higher and the
-client pays for protection they never asked for.
+Always one contract per hundred shares. Cover only part of the book and the
+uncovered shares keep falling to zero, so the worst case runs away again — a
+hedge over half a portfolio is not half a promise kept, it is a promise broken
+at half the price.
 
-A real sleeve, priced on the live chain: XLF at $58.25 with a $6,379 share of
-the budget — its share because it is 900 of the book's shares, and a symbol
-that can lose most of the money is allowed most of the promise.
+**The strike comes from the budget.** Each symbol gets a share of the promise
+in proportion to what it can lose, and the agent solves for the deepest strike
+that still fits:
 
 ```
-buy 9 × XLF 54 put @ 2.61
+XLF   share of the budget $6,382
+  fall to the strike   (58.17 − 54) × 900  =  $3,758
+  premium                   2.64 × 9 × 100 =  $2,376
+                                              ───────
+  worst case                                   $6,134   ≤  $6,382  ✅
 
-fall to the strike    (58.25 − 54) × 900 shares  =  $3,825
-premium                       2.61 × 9 × 100     =  $2,349
-                                                    ───────
-worst case                                          $6,174   ≤  $6,379  ✅
+IWM   share of the budget $3,616
+  fall to the strike  (296.65 − 275) × 100  =  $2,165
+  premium                  14.25 × 1 × 100  =  $1,425
+                                               ───────
+  worst case                                    $3,590   ≤  $3,616  ✅
 ```
 
-Below $54 the book stops losing. At −20%, at −50%, at whatever comes. **No
-scenario had to be guessed**, and nothing here depends on anyone being right
-about the future.
+The two terms move against each other — a lower strike means further to fall
+but a cheaper premium — so the total is monotonic and the answer is unique. The
+agent takes the **lowest strike that still fits**. Go lower and the unprotected
+drop alone spends the promise; go higher and the client pays for protection
+they never asked for.
 
-> ⚠️ **Note for the demo:** the measure is charged for the hedge's own cost. A
-> hedge sized as though its premium were free comes up short by exactly that
-> premium — which is the amount that has to come out of the same account the
-> promise is written against.
+Nothing here is an optimiser with weights. It is the first strike that fits,
+walking the live chain from the bottom.
+
+> The premium is charged against the promise, not treated as free. A hedge
+> sized as though its own cost were nothing comes up short by exactly that
+> cost — which comes out of the same account the promise is written against.
+
+**Four fixed shocks are published alongside all of this** — −5%, −10%, −20% and
+−35% — and the [status page](https://ol1ak5.github.io/Drawdown-Guard/) lets a
+reader drag the floor across them. They are how a person reads the book; they
+are not how the agent sizes it. The rungs are fixed on purpose, and a mandate
+cannot pick its own: one that promised against a flattering shock would be
+choosing the exam as well as sitting it.
 
 ## 🔗 The Chain of Decision
 
-**1️⃣ How much protection?** Enough that the worst case *at any depth* is the 10% promised to our simulated client. Protection is a cost, so the agent solves for the strike rather than rounding up to something that feels safe.
+**1️⃣ How much protection?** Answered above: contracts from the share count, strike from the budget. Enough that the worst case *at any depth* is inside the promise, and no more — protection is a cost, and a dollar spent past the promise is a dollar taken from the client for nothing.
 
 **2️⃣ What closes it?** Options. The portfolio stays exactly where it is:
 
@@ -287,25 +300,29 @@ Because the budget is fixed and the book is not, there are exactly four ways tha
 
 ### What the client actually gets 🎁
 
-Contracts matched one for every hundred shares, struck below the market, dated
-past the client's twelve months. Here is the same portfolio before and after:
+The promise was "in the worst case, I can tolerate a 10% loss." Here is the
+whole answer, in three lines:
 
-| If the market falls | Without the agent | With the agent | |
-|---|---:|---:|---|
-| −5% | loses 4.0% | loses 6.0% | 💸 the premium, and this is what it costs |
-| −10% | loses 8.0% | loses **10.0%** | at the line |
-| −20% | loses **16.0%** 🚨 | loses **10.0%** | ✅ the promise, kept |
-| −35% | loses **28.0%** 🚨 | loses **10.0%** | ✅ the promise, kept |
-| −50% | loses **40.0%** 🚨 | loses **10.0%** | ✅ the promise, kept |
+```
+premium paid                      $3,801     3.80%   ← certain, spent on day one
+worst the market can still do     $5,923     5.92%   ← at any depth, to zero
+                                  ───────   ──────
+worst outcome, all in             $9,724     9.73%
+the client agreed to              $9,998    10.00%   ✅
+```
 
-**The floor does not care how far the market falls.** Below the strike, every
-dollar the shares lose is a dollar the puts gain, so the line simply stops
-going down — at −20%, at −50%, at whatever comes.
+**9.73% against a promise of 10%.** Not because the market was kind — because
+the floor was bought and the arithmetic was checked against it. Unprotected,
+the same book loses **82% if the market goes to zero**.
 
-And read the first row, because it is the honest one. 📏 In a mild dip the
-client is **worse off by the premium** — 6% instead of 4%. That is not a flaw
-to be explained away; that is what insurance is. You pay every year to be whole
-in the year that matters.
+The margin is $274, and it is there because contracts are lumpy: nine XLF puts
+cannot be bought as eight and a half. Slightly over-covered is the correct
+direction to round.
+
+**Read the first line, because it is the honest one.** 📏 The premium is spent
+whether or not anything happens. In a quiet year the client is worse off by
+$3,801 and gets nothing back. That is not a flaw to be explained away — that is
+what insurance is. You pay every year to be whole in the year that matters.
 
 **Name the promise and its window → check the book against it → solve for the
 protection that floors the loss → buy it long → hand it back when it is no
