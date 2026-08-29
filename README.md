@@ -8,7 +8,7 @@ Drawdown Guard is an autonomous AI trading agent that checks a portfolio every w
 
 **The market moves. The loss mandate doesn't. Drawdown Guard keeps the two in line.**
 
-🔴 Live decisions: **[status page](https://ol1ak5.github.io/Drawdown-Guard/)**
+🔴 Live decisions: **[status page](https://ol1ak5.github.io/Drawdown-Guard/)** 
 
 📓 Every decision ever made: **[journal](journal/)**
 
@@ -43,17 +43,13 @@ For this hackathon, we turn the problem into a concrete situation.
 ### Initial settings
 
 Our simulated client has a c. $100,000 portfolio that includes:
-- 82% equity: IWM, XLF
-- 9% fixed income: BIL
-- 9% cash
 
-| Ticker | Shares | Fill price | Value | Exposure | Description |
+| Ticker | Shares | Entry price | Value | Exposure | Description |
 |---|---|---|---|---|---|
 | **IWM** | 100 | 297.34 | **$29,734** | Equity | Small-cap index |
 | **XLF** | 900 | 58.25 | **$52,425** | Equity | Financial sector |
 | **BIL** | 100 | 91.66 | **$9,166** | Fixed income | 1-3 month T-bills |
 | **Cash** | n.a. | n.a. | **$8,675** | Liquidity | Used for the hedge |
-| **Total** | | | **$100,000** | | |
 
 ### The promise
 
@@ -78,17 +74,17 @@ The portfolio is intentionally not static. A client who never touches their allo
 |---|---|---|---|
 | Day 1 | Aug 28 | Buys 100 IWM, 900 XLF, 100 BIL | Checks the portfolio. Steps in. Orders expired unfilled. **Execution logic fixed for the next week** |
 | Day 2 | Aug 31 | - | Checks the portfolio. Prices and sends the orders again |
-| Day 3 | Sep 1 | - | **Nothing.** The promise holds and the book has not moved |
+| Day 3 | Sep 1 | - | Checks the portfolio. The promise holds if the book hasn't moved |
 | Day 4 | Sep 2 | Sells 900 XLF | Risk drops. Hands back all nine XLF puts |
 | Day 5 | Sep 3 | Buys 100 AAPL | Risk rises again. Hedges the new holding on its own underlying |
 | Day 6 | Sep 4 | - | Confirms the mandate still holds |
 
-**What happened?**
-Day 1 exposed an execution issue. The agent submitted limit orders at the ask, but the ask moved while the cycle was still running. The orders expired without filling, journalled as `order.working`. We changed the execution rule so the limit can move a quarter of the spread beyond the price being crossed. This keeps every order a limit order while giving it enough room to follow a moving market instead of expiring unfilled.
+**What happened on Day 1?**
+The agent submitted limit orders at the ask, but the ask moved while the cycle was still running. The orders expired without filling, journalled as `order.working`. We changed the execution rule so the limit can move a quarter of the spread beyond the price being crossed. This keeps every order a limit order while giving it enough room to follow a moving market instead of expiring unfilled.
 
 ## ⚙️ How the agent actually works
 
-Seven steps, once every weekday, fully autonomous. Five of them are nodes in the LangGraph cycle.
+Seven steps presented as five nodes in the LangGraph cycle, once every weekday, fully autonomous.
 
 | # | Step | The agent does | Where it lives |
 |---|---|---|---|
@@ -102,25 +98,23 @@ Seven steps, once every weekday, fully autonomous. Five of them are nodes in the
 
 ## 🔗 The Chain of Decision
 
-**1️⃣ From a percentage to a real loss budget** 
+**1. From a percentage to a real loss budget** 
 
 The client only defines the maximum loss they are willing to tolerate:
 
 > *Maximum drawdown: 10%*
 
-To turn that percentage into a real dollar amount, we fix the portfolio value at the moment the promise opens.
+On 28 August 2026, at the moment the promise opened, the portfolio was worth $99,978. So the maximum loss allowed by the mandate is $9,998. That becomes the drawdown budget.
 
-On 28 August 2026, the portfolio was worth $99,978, so the maximum loss allowed by the mandate is $9,998. That becomes the drawdown budget.
+**$9,998 is not the amount we expect the client to lose.** It's the maximum loss the protection framework is allowed to leave exposed. The objective is always to lose less.
 
-**This is important.** $9,998 is not the amount we expect the client to lose. It's the maximum loss the protection framework is allowed to leave exposed. The objective is always to lose less.
-
-**2️⃣ From the gap to the hedge**
+**2. From the gap to the hedge**
 
 Our client's portfolio contains more than one instrument:
 - XLF: 900 shares
 - IWM: 100 shares
 
-Each position contributes a different amount of risk to the portfolio. So, the agent allocates the budget proportionally to each instrument's weighted contribution to portfolio risk, as specified by the mandate.
+The agent allocates the budget proportionally to each instrument's weighted contribution to portfolio risk, as specified by the mandate.
 
 For this portfolio, that gives:
 
@@ -131,7 +125,7 @@ IWM → $3,616
 Total $9,998
 ```
 
-**3️⃣ How do we protect the portfolio?**
+**3. How do we protect the portfolio?**
 
 Drawdown Guard says: "With options".
 
@@ -140,17 +134,15 @@ Drawdown Guard says: "With options".
 | 🛡️ **Protective put** | Buy a put against the shares | Pay premium upfront | Keep all upside |
 | 🎯 **Collar** | Buy a put and sell a call | Call premium helps pay for the put | Upside is capped at the call strike |
 
-**The shares are never sold to cover the existing gap.** The client can sell their shares at any time, but the agent doesn't liquidate them simply to close the drawdown gap.
+**The shares are never sold to cover the existing gap.** The client can sell shares at any time, but the agent doesn't liquidate them simply to close the drawdown gap.
 
-**3️⃣ Which option, today?**
+**3. Which option, today?**
 
-The agent compares both structures using the live option chain. The decision depends on the current cost and volatility of the options and on the client's constraints. The agent is not trying to predict which structure will make more money. It asks:
+The agent compares both structures using the live option chain. The decision depends on the current cost and volatility of the options and the client's constraints.
 
-> *Which structure can satisfy the protection requirement at the lowest acceptable cost?*
+**4. How many option contracts do we need?**
 
-**4️⃣ How many option contracts do we need?**
-
-The number of contracts comes from the number of shares, not from the size of the dollar risk.
+The number of contracts comes from **the number of shares**, not from the size of the dollar risk. The objective is to avoid leaving part of the portfolio exposed. A hedge over half a portfolio is not half a promise kept, it is a promise broken at half the price.
 
 One standard equity-option contract covers 100 shares.
 
@@ -159,11 +151,9 @@ XLF:  900 shares → ceil(900/100) = 9 contracts
 IWM:  100 shares → ceil(100/100) = 1 contract
 ```
 
-The objective is to avoid leaving part of the portfolio exposed. A hedge over half a portfolio is not half a promise kept, it is a promise broken at half the price.
+**5. Now solve for the strike?**
 
-**5️⃣ Now solve for the strike?**
-
-Once we know how many contracts are required, the agent has to decide which strike to buy. The strike **always** comes from the budget. 
+Once the agent knows how many contracts are required, it has to decide which strike to buy. The strike **always** comes from the budget. 
 
 Every order is a limit order. Yet a limit set *exactly* at the offer fills only if nobody moves, and we saw it on the first live day. Two protective puts were sent at the ask, the ask rose a few cents while the cycle was still running, and both sat unfilled until the close:
 
@@ -188,33 +178,31 @@ IWM   share of the budget $3,616
   worst case                                   $3,590   ≤  $3,616  ✅
 ```
 
-Every order is a limit, never a market order. But a limit set *exactly* at the offer fills only if nobody moves, and we saw it on the first live day. Two protective puts were sent at the ask, the ask rose a few cents while the cycle was still running, and both sat unfilled until the close:
+**6. What does the protection actually do?** 
 
-**6️⃣ What does the protection actually do?** 
-
-Here is the same book before and after the day-one hedge. Without protection, losses continue to grow as the market falls. With the options in place, the loss reaches a floor.
+The answer is below. Without protection, losses continue to grow as the market falls. With the options in place, the loss reaches a floor.
 
 Stress scenario for the protective put:
 
 | Market falls | Without the agent | **With the agent** | Premium paid | **Floor + Premium** | Drawdown budget | Promise |
 |---|---|---|---|---|---|---|
-| −10% | $8,202 | **$5,923** | $3,801 | **$9,724** | $9,998 | ✅ |
-| −20% | $16,404 | **$5,923** |$3,801 | **$9,724** | $9,998 | ✅ |
-| −35% | $28,708 | **$5,923** | $3,801 | **$9,724** | $9,998 | ✅ |
-| −50% | $41,011 | **$5,923** | $3,801 | **$9,724** |$9,998 | ✅ |
-| −90% | $73,820 | **$5,923** | $3,801 | **$9,724** |$9,998 | ✅ |
-| −100% | $82,022 | **$5,923** | $3,801 | **$9,724** |$9,998 | ✅ |
+| -10% | $8,202 | **$5,923** | $3,801 | **$9,724** | $9,998 | ✅ |
+| -20% | $16,404 | **$5,923** |$3,801 | **$9,724** | $9,998 | ✅ |
+| -35% | $28,708 | **$5,923** | $3,801 | **$9,724** | $9,998 | ✅ |
+| -50% | $41,011 | **$5,923** | $3,801 | **$9,724** |$9,998 | ✅ |
+| -90% | $73,820 | **$5,923** | $3,801 | **$9,724** |$9,998 | ✅ |
+| -100% | $82,022 | **$5,923** | $3,801 | **$9,724** |$9,998 | ✅ |
 
 Stress scenario for the collar:
 
-| Market falls | Without the agent | **With the agent** | Net premium | **Floor + Premium** | Drawdown budget | Promise |
+| Market falls | Without the agent | **With the agent** | Net premium | **Floor + Net premium** | Drawdown budget | Promise |
 |---|---|---|---|---|---|---|
-| −10% | $8,202 | **$5,923** | $2,408 | **$8,331** | $9,998 | ✅ |
-| −20% | $16,404 | **$5,923** | $2,408 | **$8,331** | $9,998 | ✅ |
-| −35% | $28,708 | **$5,923** | $2,408 | **$8,331** | $9,998 | ✅ |
-| −50% | $41,011 | **$5,923** | $2,408 | **$8,331** |$9,998 | ✅ |
-| −90% | $73,820 | **$5,923** | $2,408 | **$8,331** |$9,998 | ✅ |
-| −100% | $82,022 | **$5,923** | $2,408 | **$8,331** |$9,998 | ✅ |
+| -10% | $8,202 | **$5,923** | $2,408 | **$8,331** | $9,998 | ✅ |
+| -20% | $16,404 | **$5,923** | $2,408 | **$8,331** | $9,998 | ✅ |
+| -35% | $28,708 | **$5,923** | $2,408 | **$8,331** | $9,998 | ✅ |
+| -50% | $41,011 | **$5,923** | $2,408 | **$8,331** |$9,998 | ✅ |
+| -90% | $73,820 | **$5,923** | $2,408 | **$8,331** |$9,998 | ✅ |
+| -100% | $82,022 | **$5,923** | $2,408 | **$8,331** |$9,998 | ✅ |
 
 In the case of collar, the net premium the client pays is calculated as s premium paid for the put reduced by the premium received by selling a call:
 
@@ -224,12 +212,12 @@ $3,801 - $1,393 =  $2,408
 
 **7.  When the agent steps in**
 
-| | Trigger | Why it uncovers risk |
-|---|---|---|
-| 📈 | **The portfolio grew** | More exposure behind the same fixed budget. The floor has to be re-struck. |
-| 🛒 | **The client bought** | New holdings arrive unhedged. Adding protection when a client invests is the unglamorous half of the job. |
-| ⏳ | **The hedge aged** | The market moved and the strike that used to hold the floor no longer reaches it. |
-| 📅 | **Something expired** | Coverage silently ended. Nothing but recomputation notices. |
+| Trigger | Why it uncovers risk |
+|---|---|
+| 📈 **The portfolio grew** | More exposure behind the same fixed budget. The floor has to be re-struck. |
+| 🛒 **The client bought** | New holdings arrive unhedged. Adding protection when a client invests is the unglamorous half of the job. |
+| ⏳ **The hedge aged** | The market moved and the strike that used to hold the floor no longer reaches it. |
+| 📅 **Coverage expired** | Coverage silently ended. Nothing but recomputation notices. |
 
 ## 🛑 How to Stop the Agent
 
