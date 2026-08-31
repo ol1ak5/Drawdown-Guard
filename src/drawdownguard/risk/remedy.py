@@ -410,7 +410,27 @@ def _tradable(row: dict) -> bool:
 #
 # This is a cost, and it is charged where the promise is sized rather than
 # discovered at the fill -- see `crossing_price`, used by `solve_for_strike`.
-CROSS_FRACTION = 0.25
+#
+# Raised from a quarter to the whole spread on 2026-08-31, on the evidence of
+# the day it failed to buy. The XLF put was priced at 14:19 with an ask of 2.72
+# and sent at 2.78; by the close the ask was 2.87 against a 2.63 bid, and the
+# order sat all day a cent under the market. The IWM put on the same mechanism
+# filled, because its ask happened not to move.
+#
+# A day limit is set once and cannot chase. So the tolerance is not really
+# "how much are we willing to overpay" -- it is "how far may the offer drift
+# before the promise goes unheld for another day", and a quarter of the spread
+# turned out to be about an hour of drift.
+#
+# The trade is not symmetric and that is the whole argument. Crossing the full
+# spread on that contract risks 0.24 x 9 x 100 = 216 dollars of overpayment
+# against leaving 52,000 of exposure unprotected overnight. The gate still
+# bounds it: nothing wider than `max_spread_pct` is tradable at all, so this
+# reaches at most one such spread past an offer the gate already accepted.
+#
+# It remains a limit. A market order on an option with a 9% spread is not the
+# faster version of this, it is an unbounded one.
+CROSS_FRACTION = 1.0
 
 
 def crossing_price(row: dict, buying: bool) -> Decimal:

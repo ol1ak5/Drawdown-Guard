@@ -101,7 +101,7 @@ def test_the_lowest_strike_that_still_keeps_the_promise_wins():
     # 2.50 asked plus a quarter of the 0.10 spread, rounded up to the cent:
     # 2.53, and twelve contracts of it. The tolerance is charged here because
     # it is charged at the broker -- see `crossing_price`.
-    assert remedy.premium_cost == pytest.approx(3_036)
+    assert remedy.premium_cost == pytest.approx(3_132)
 
 
 def test_a_hedge_stands_behind_every_share_or_it_is_not_a_floor():
@@ -272,7 +272,7 @@ def test_the_three_are_priced_in_three_currencies_and_never_summed():
     ringed = collar(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS, CALLS)
     sold = reduce_exposure(BOOK, [], BUDGET, SHOCK, "SPY")
 
-    assert (put_only.premium_cost, put_only.forgone_upside) == (3_036.0, 0.0)
+    assert (put_only.premium_cost, put_only.forgone_upside) == (3_132.0, 0.0)
     assert ringed.premium_cost < put_only.premium_cost
     assert ringed.forgone_upside > 0
     assert sold.premium_cost == 0.0
@@ -335,8 +335,8 @@ def test_the_one_comparison_that_is_arithmetic_is_made():
     ringed = collar(BOOK, [], BUDGET, SHOCK, "SPY", SPOT, PUTS, THIN_CALLS)
 
     assert put_only.risk_covered == pytest.approx(500_000)
-    assert put_only.cash_per_1k == pytest.approx(6.072)
-    assert ringed.cash_per_1k == pytest.approx(1.272)
+    assert put_only.cash_per_1k == pytest.approx(6.264)
+    assert ringed.cash_per_1k == pytest.approx(1.464)
 
 
 def test_a_remedy_that_costs_no_cash_does_not_score_zero_on_the_cash_axis():
@@ -765,7 +765,7 @@ def test_a_remedy_arrives_carrying_the_order_that_places_it():
     assert order.expiry == rows[0]["expiry"]
     # The ask plus a quarter of the spread, never the mid: a mid is a price
     # nobody is offering, and the ask alone fills only if nobody moves.
-    assert order.limit_price == Decimal("2.53")
+    assert order.limit_price == Decimal("2.61")
     assert order.delta < 0  # a long put shortens the book
     assert order.open_interest == 5_000
 
@@ -932,7 +932,7 @@ def test_a_released_leg_becomes_an_order_that_sells_it():
     assert orders[0].contracts == -3  # closing a long position is a sale
     # The bid less a quarter of the spread. A sale priced exactly at the bid
     # has the same problem in the other direction.
-    assert orders[0].limit_price == Decimal("5.97")
+    assert orders[0].limit_price == Decimal("5.90")
     assert orders[0].strike == Decimal("440")
 
 
@@ -995,19 +995,39 @@ def test_one_sleeve_being_over_hedged_does_not_release_another_sleeve():
     assert sum(leg.contracts for leg in kept_xlf) == 4
 
 
-def test_a_limit_reaches_past_the_offer_by_a_fraction_of_the_spread():
+def test_a_limit_reaches_a_whole_spread_past_the_offer():
     """Set exactly at the offer, a limit fills only if nobody moves.
 
     On 2026-08-28 two protective puts were priced at the ask, the ask rose a
     few cents while the cycle was still running, and both sat unfilled until
     the close -- 71,985 of risk left uncovered overnight to avoid paying 20
     dollars.
+
+    A quarter of the spread was the first answer and it was not enough. On
+    2026-08-31 the XLF put was priced against a 2.72 ask and sent at 2.78; by
+    the close the ask was 2.87 and the order had sat under the market all day.
+    A day limit cannot chase, so the tolerance is really "how far may the offer
+    drift before the promise goes unheld for another day".
     """
     from drawdownguard.risk.remedy import CROSS_FRACTION, crossing_price
 
     row = {"bid": 2.63, "ask": 2.70}
-    assert crossing_price(row, buying=True) == Decimal("2.72")
-    assert CROSS_FRACTION == 0.25
+    assert crossing_price(row, buying=True) == Decimal("2.78")
+    assert CROSS_FRACTION == 1.0
+
+
+def test_the_tolerance_would_have_bought_the_day_it_failed():
+    """The actual quote the XLF put was priced against, and the actual close.
+
+    Kept as a test rather than as a comment because the number was changed on
+    this evidence, and a constant tuned against a day nobody can reproduce is
+    a constant that drifts back.
+    """
+    from drawdownguard.risk.remedy import crossing_price
+
+    limit = crossing_price({"bid": 2.48, "ask": 2.72}, buying=True)
+    assert limit == Decimal("2.97")
+    assert limit > Decimal("2.87"), "the ask it drifted to by the close"
 
 
 def test_the_tolerance_scales_with_the_spread_and_not_with_the_price():
@@ -1021,8 +1041,8 @@ def test_the_tolerance_scales_with_the_spread_and_not_with_the_price():
 
     wide = crossing_price({"bid": 14.14, "ask": 14.30}, buying=True)
     tight = crossing_price({"bid": 5.00, "ask": 5.02}, buying=True)
-    assert wide == Decimal("14.35"), "0.16 of spread earns four cents of room"
-    assert tight == Decimal("5.03"), "0.02 of spread earns one"
+    assert wide == Decimal("14.47"), "0.16 of spread earns sixteen cents of room"
+    assert tight == Decimal("5.04"), "0.02 of spread earns two"
 
 
 def test_a_sale_gives_up_spread_rather_than_demanding_it():
@@ -1030,7 +1050,7 @@ def test_a_sale_gives_up_spread_rather_than_demanding_it():
     sale priced exactly at the bid does not fill once the bid ticks down."""
     from drawdownguard.risk.remedy import crossing_price
 
-    assert crossing_price({"bid": 2.63, "ask": 2.70}, buying=False) == Decimal("2.61")
+    assert crossing_price({"bid": 2.63, "ask": 2.70}, buying=False) == Decimal("2.55")
 
 
 def test_a_sale_is_never_talked_below_a_penny():
