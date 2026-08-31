@@ -1,0 +1,15 @@
+name = "drawdown-guard-scheduler"
+main = "src/index.js"
+compatibility_date = "2026-08-31"
+
+[triggers]
+# 09:45 New York, Monday to Friday -- fifteen minutes after the open, the
+# same reasoning as the workflow's own first attempt: an option quote is
+# widest in the opening auction's wake, and both the liquidity filter and the
+# limit price are paid out of that width.
+#
+# Cloudflare cron is UTC and does not follow daylight saving, so this is
+# correct for EDT, in force through 2026-11-01. Under EST it would be an hour
+# early -- before the open -- and the healthcheck would decline the day. Move
+# it to "45 14" then.
+crons = ["45 13 * * 1-5"]
