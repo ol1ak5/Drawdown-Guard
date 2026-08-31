@@ -12,14 +12,23 @@ on:
     # tick, because declining is a success. Two days of an eight-day unattended
     # run were lost that way and nothing said so.
     #
-    # So the day is asked for five times across the session. The first one to
+    # So the day is asked for six times across the session. The first one to
     # land while the market is open runs the cycle; `check_not_already_run`
     # declines every attempt after it, keyed on `cycle.complete` in today's
     # journal. A day only fails now if every attempt drifts past the close.
     #
-    # 14:00 UTC = 10:00 ET, thirty minutes after the open; 18:00 UTC = 14:00
-    # ET, two hours before it shuts. All five are inside the session under EDT,
+    # 13:45 UTC = 09:45 ET, fifteen minutes after the open; 18:00 UTC = 14:00
+    # ET, two hours before it shuts. All six are inside the session under EDT,
     # which is in force through 2026-11-01 and covers the whole event.
+    #
+    # Fifteen minutes rather than five, and it is a spread decision rather
+    # than caution. An option's quote is at its widest in the opening auction's
+    # wake, and two things here are priced off that width: `liquid` drops a
+    # contract whose spread exceeds `max_spread_pct`, so an early cycle can
+    # find nothing it is allowed to buy, and the limit pays a quarter of the
+    # spread past the offer, so a wide one is paid for in cash. Waiting a
+    # quarter of an hour costs nothing and buys back both.
+    - cron: "45 13 * * 1-5"
     - cron: "0 14 * * 1-5"
     - cron: "0 15 * * 1-5"
     - cron: "0 16 * * 1-5"
