@@ -280,6 +280,12 @@ The portfolio can become uncovered for several reasons:
 | ⏳ **Hedge aged** | The market moved and the strike that used to hold the floor no longer reaches it |
 | 📅 **Coverage expired** | Coverage silently ended. Nothing but recomputation notices |
 
+## 🔄 The agent loop
+
+The full decision cycle is:
+
+XXXXXXXX
+
 ## 🔌 Alpaca Trading API and MCP Server
 
 Drawdown Guard uses the Alpaca Trading API and Alpaca MCP Server to read the account, positions, market data and option chain, submit orders, and reconcile execution.

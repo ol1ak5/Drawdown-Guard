@@ -2,11 +2,29 @@ name: trade
 
 on:
   schedule:
-    # 14:00 UTC = 10:00 ET, thirty minutes after the open, Monday to Friday.
-    # GitHub cron is UTC and does not follow daylight saving. This is correct
-    # for EDT, which is in force through 2026-11-01 and so covers the whole
-    # event. It would be an hour late under EST.
+    # Five attempts, not one, and the repetition is the fix rather than
+    # belt-and-braces.
+    #
+    # GitHub's cron is a request, not a promise: under load a run is delayed,
+    # and on 2026-08-27 and 2026-08-28 the 14:00 booking arrived at 23:37 and
+    # 23:24 UTC. The market had been shut for hours, the healthcheck declined
+    # correctly, and the day produced no cycle at all -- reported as a green
+    # tick, because declining is a success. Two days of an eight-day unattended
+    # run were lost that way and nothing said so.
+    #
+    # So the day is asked for five times across the session. The first one to
+    # land while the market is open runs the cycle; `check_not_already_run`
+    # declines every attempt after it, keyed on `cycle.complete` in today's
+    # journal. A day only fails now if every attempt drifts past the close.
+    #
+    # 14:00 UTC = 10:00 ET, thirty minutes after the open; 18:00 UTC = 14:00
+    # ET, two hours before it shuts. All five are inside the session under EDT,
+    # which is in force through 2026-11-01 and covers the whole event.
     - cron: "0 14 * * 1-5"
+    - cron: "0 15 * * 1-5"
+    - cron: "0 16 * * 1-5"
+    - cron: "0 17 * * 1-5"
+    - cron: "0 18 * * 1-5"
   workflow_dispatch:
     inputs:
       dry_run:

@@ -24,8 +24,10 @@ no point doing anything at all if the paper-trading interlock is off.
 """
 
 import asyncio
+import json
 from datetime import date, datetime
 
+from drawdownguard.journal import writer
 from drawdownguard.mcp.alpaca_client import FULL_TOOLSETS, alpaca_session
 from drawdownguard.settings import get_settings
 from drawdownguard.store import load_all
@@ -182,9 +184,40 @@ async def check_state_reconciles(session) -> str:
     return f"state reconciles, {len(positions)} broker positions"
 
 
+def check_not_already_run() -> str:
+    """Decline if a cycle has already completed today.
+
+    The schedule fires several times because GitHub's cron is not a promise:
+    a run booked for 14:00 UTC has arrived as late as 23:24, by which time the
+    market had been shut for hours and the cycle correctly declined -- so the
+    day produced no cycle at all, under a green tick. Extra attempts across the
+    session are the answer to drift, and this is what stops them becoming
+    several cycles on the days when nothing drifted.
+
+    Keyed on the journal rather than on a lock file, because the journal is the
+    record that already has to be right: a cycle that completed wrote
+    `cycle.complete` into today's file, and one that did not, did not.
+    """
+    today = date.today().isoformat()
+    entries = writer.JOURNAL_DIR / f"{today}.jsonl"
+    if not entries.exists():
+        return "no cycle has run today"
+    try:
+        for line in entries.read_text().splitlines():
+            if json.loads(line).get("event") == "cycle.complete":
+                raise Declined(f"a cycle already completed today ({today})")
+    except (OSError, json.JSONDecodeError):
+        # An unreadable journal is not evidence that nothing ran, but it is
+        # also not a reason to refuse the day. Reported and allowed: the
+        # concurrency group stops two cycles overlapping, and a second cycle
+        # in one day is a smaller harm than none at all.
+        return "today's journal could not be read; proceeding"
+    return "no cycle has run today"
+
+
 async def run() -> int:
     print(f"drawdownguard healthcheck {datetime.now().isoformat(timespec='seconds')}")
-    for check in (check_halt_file, check_paper_interlock):
+    for check in (check_halt_file, check_paper_interlock, check_not_already_run):
         try:
             print(f"  ok   {check()}")
         except Declined as declined:
