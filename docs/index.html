@@ -41,21 +41,34 @@ body {
   font-feature-settings: "cv05" 1, "ss01" 1; letter-spacing: -.006em;
   min-height: 100dvh; overflow-x: hidden;
 }
-/* Three slow fields, in one blue-to-violet family so they read as a single
-   iridescence rather than as three coloured lights. Fixed and
-   pointer-events-none: a gradient inside the scrolling flow repaints on every
-   frame, which is invisible on a laptop and visibly stutters on a phone.
+/* Night sky. One hue and one hue only -- what changes across the field is
+   lightness, not colour, which is why it reads as depth rather than as a
+   gradient. The previous pass mixed a blue field with a violet one, and where
+   the two overlapped at low opacity over near-black they muddied into brown.
+   Two colours over black almost always do.
 
-   Blue rather than the green it used to be. Green is doing a job on this page
-   -- it means the promise is holding -- and a background in the same hue
-   spends the one colour the reader is meant to look for. */
+   Fixed and pointer-events-none: a gradient inside the scrolling flow repaints
+   on every frame, which is invisible on a laptop and stutters on a phone.
+
+   Blue rather than the green this started as. Green is doing a job on this
+   page -- it means the promise is holding -- and a background in the same hue
+   spends the one colour the reader is meant to be looking for. */
 body::before {
   content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
   background:
-    radial-gradient(70rem 46rem at 8% -12%, rgba(56,89,214,.16), transparent 62%),
-    radial-gradient(56rem 40rem at 96% 2%, rgba(124,58,237,.13), transparent 60%),
-    radial-gradient(48rem 34rem at 62% 34%, rgba(34,150,199,.07), transparent 66%);
+    linear-gradient(180deg, rgba(23,42,84,.55) 0%, rgba(10,18,38,.22) 38%,
+                    transparent 72%),
+    radial-gradient(72rem 48rem at 14% -14%, rgba(43,78,158,.28), transparent 64%),
+    radial-gradient(58rem 42rem at 88% 6%, rgba(28,54,120,.20), transparent 62%);
 }
+/* A thin haze at the horizon, so the dark at the foot of the page is a depth
+   rather than an absence. */
+body::after {
+  content: ""; position: fixed; left: 0; right: 0; bottom: 0; height: 40vh;
+  pointer-events: none; z-index: 0;
+  background: linear-gradient(0deg, rgba(16,30,64,.30), transparent 100%);
+}
+
 .wrap { position: relative; z-index: 1; max-width: 72rem; margin: 0 auto;
         padding: 6rem 2rem 5rem; }
 @media (max-width: 768px) { .wrap { padding: 3rem 1rem 3rem; } }
@@ -229,7 +242,7 @@ client-defined downside limit, through an option overlay.</p>
 
 <footer class="reveal">
 Rebuilt from the journal after every cycle &middot;
-2026-09-01 21:16 UTC &middot;
+2026-09-01 21:32 UTC &middot;
 Alpaca paper trading. This has never traded real money.
 </footer>
 
