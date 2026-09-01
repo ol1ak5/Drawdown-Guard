@@ -8,14 +8,12 @@ and that nothing on the page was computed by the page.
 
 from datetime import UTC, datetime
 
-import pytest
-
 from drawdownguard.journal import writer
 from drawdownguard.journal.site import (
     build_site,
-    covered_share,
     daily_series,
     entry_from_journal,
+    promise_held,
     render_site,
 )
 
@@ -254,48 +252,29 @@ def test_a_day_with_no_completed_cycle_is_not_a_point_on_the_line():
     assert daily_series(entries) == []
 
 
-def test_buying_nothing_is_nought_per_cent_not_a_fraction_of_the_loss():
-    """The question is "have you bought what you said you would".
+def test_the_track_says_held_or_not_held_for_every_measured_day():
+    """A percentage lived here and was more than a line under a chart can
+    carry: it needed a label to explain it, a denominator a reader had to
+    trust, and a third state for the days recorded before it existed.
 
-    Measuring the share of the possible loss that fits inside the promise gave
-    12% on a day with no hedge at all, which reads as though an eighth of the
-    work were done when none of it was.
+    Held or not held is the question the page exists to answer, and it is
+    available for every day the book was measured.
     """
-    unhedged = {
-        "worst_case_unhedged": 81885.0,
-        "remaining_budget": 9997.84,
-        "uncovered": 71887.16,
-    }
-    assert covered_share(unhedged) == pytest.approx(0.0, abs=1e-9)
+    assert promise_held({"uncovered": 0.0}) is True
+    assert promise_held({"uncovered": 71887.16}) is False
 
 
-def test_closing_the_gap_is_a_hundred_per_cent():
-    done = {
-        "worst_case_unhedged": 80530.0,
-        "remaining_budget": 8175.11,
-        "uncovered": 0.0,
-    }
-    assert covered_share(done) == 1.0
+def test_a_day_never_measured_is_not_called_held():
+    """An absent reading is not evidence that the promise was kept."""
+    assert promise_held({}) is True, "no risk recorded reads as none open"
+    assert daily_series([]) == []
 
 
-def test_a_book_that_needed_nothing_is_already_fully_protected():
-    """Not a divide by zero, and not zero per cent."""
-    idle = {
-        "worst_case_unhedged": 4000.0,
-        "remaining_budget": 9997.84,
-        "uncovered": 0.0,
-    }
-    assert covered_share(idle) == 1.0
-
-
-def test_a_day_recorded_before_this_reading_says_so():
-    """None, not a number from the older formula.
-
-    Two different measurements under one label is how a chart misleads, and
-    "we did not record this" is a true thing to say.
-    """
-    assert covered_share({"budget": 9997.84, "worst_case": 2795.0}) is None
-    assert "not recorded" in _page(_week())
+def test_the_track_is_drawn_in_both_colours_across_the_week():
+    page = _page(_week())
+    assert page.count("#fbbf24") >= 2, "two days opened outside the promise"
+    assert "#4ade80" in page, "and one closed inside it"
+    assert "not recorded" not in page
 
 
 def test_one_close_is_not_a_line():

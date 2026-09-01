@@ -537,37 +537,20 @@ def _events_by_date(entries: list[dict]) -> dict[str, str]:
     return labels
 
 
-def covered_share(row: dict) -> float | None:
-    """How much of the protection this day needed is actually in place, 0 to 1.
+def promise_held(row: dict) -> bool:
+    """Whether the client was inside the number they were given that day.
 
-    The question a client asks is not "what fraction of my possible loss fits
-    inside the promise" -- that is 12% on a day with no hedge at all, which
-    reads as though an eighth of the work were done when none of it was. It is
-    "have you bought what you said you would".
+    A percentage lived here for a while -- how much of the day's required
+    protection was actually in place -- and it was more information than the
+    line beneath a chart can carry. It needed a label to explain it, a
+    denominator a reader had to trust, and a third state for the days recorded
+    before it existed.
 
-    So the denominator is the protection the day required: what the book would
-    lose with the options taken off, less what the promise still allows. The
-    numerator is how much of that requirement no longer stands open. Buy
-    nothing and this is zero; close the gap and it is one.
-
-    None when the day predates this reading, which is different from zero
-    coverage: one is "we bought nothing", the other is "we cannot say".
+    This is the question the page exists to answer, and the answer is available
+    for every day the book was measured, including the ones written before any
+    of this was thought about.
     """
-    unhedged = row.get("worst_case_unhedged")
-    remaining = row.get("remaining_budget")
-    if unhedged is None or remaining is None:
-        # Journalled before this reading existed. None rather than a number
-        # from the older, weaker formula: two different measurements under one
-        # label is how a chart misleads, and "we did not record this" is a
-        # true thing to say.
-        return None
-
-    required = unhedged - remaining
-    if required <= 0:
-        # Nothing needed buying: the book fits inside the promise unhedged.
-        return 1.0
-    still_open = row.get("uncovered") or 0.0
-    return min(max(1.0 - still_open / required, 0.0), 1.0)
+    return (row.get("uncovered") or 0.0) <= 0
 
 
 def _coverage_track(
@@ -577,53 +560,41 @@ def _coverage_track(
     right: float,
     y: float,
 ) -> str:
-    """One horizontal track under the line: how much of each day's risk the
-    promise covered.
+    """One track under the line: green where the promise held, amber where it
+    did not.
 
-    A track rather than columns. The chart above it is a line across time, and
-    a row of vertical bars underneath is a second kind of picture asking the
-    reader to switch how they look at the same axis. A bar that fills from the
-    left along the same dates keeps one reading.
+    A track rather than columns. The chart above is a line across time, and a
+    row of vertical bars underneath is a second kind of picture asking the
+    reader to switch how they look at the same axis.
 
-    Drawn as a share of the whole, not as held-or-not-held: a two-colour strip
-    made the morning the book was twelve percent covered look exactly like a
-    morning it was ninety-nine percent covered, and those are not the same
-    morning.
+    Each day spans the halfway points to its neighbours, so the place the
+    colour changes is the place the promise changed, and the first and last
+    days own only the half of the interval that exists.
     """
-    measured = [(i, row) for i, row in enumerate(series) if row.get("budget")]
+    measured = [
+        (i, row) for i, row in enumerate(series) if row.get("uncovered") is not None
+    ]
     if not measured:
         return ""
-    height = 26.0
-    out = (
-        f'<rect x="{left:.1f}" y="{y:.1f}" width="{right - left:.1f}" '
-        f'height="{height:.1f}" rx="{height / 2:.1f}" fill="#ffffff" '
-        f'opacity=".05"/>'
-    )
+    height = 14.0
+    out = ""
     for i, row in measured:
         start = left if i == 0 else (points[i - 1][0] + points[i][0]) / 2
         end = right if i == len(series) - 1 else (points[i][0] + points[i + 1][0]) / 2
-        share = covered_share(row)
-        if share is None:
-            out += (
-                f'<text x="{(start + end) / 2:.1f}" '
-                f'y="{y + height / 2 + 4:.1f}" text-anchor="middle" '
-                f'font-size="11" fill="#8b8b86">not recorded</text>'
-            )
-            continue
-        full = share >= 0.999
-        colour = "#4ade80" if full else "#fbbf24"
-        # A zero-width bar is invisible, and invisible is what a missing
-        # reading looks like. A stub keeps "we bought nothing" on the page.
-        width = max((end - start) * share, 3.0)
+        colour = "#4ade80" if promise_held(row) else "#fbbf24"
         out += (
-            f'<rect x="{start:.1f}" y="{y:.1f}" width="{width:.1f}" '
-            f'height="{height:.1f}" rx="{height / 2:.1f}" fill="{colour}" '
-            f'opacity=".9"/>'
-            f'<text x="{start + 10:.1f}" y="{y + height / 2 + 4:.1f}" '
-            f'font-size="12" font-weight="600" '
-            f'fill="{"#0b1220" if full else "#fbbf24"}">{share * 100:.0f}%</text>'
+            f'<rect x="{start:.1f}" y="{y:.1f}" width="{max(end - start, 1):.1f}" '
+            f'height="{height:.1f}" fill="{colour}" opacity=".85"/>'
         )
-    return out
+    # Rounded at the two outer ends only, so the run reads as one bar rather
+    # than as a row of separate pills with the changes lost between them.
+    first = left if measured[0][0] == 0 else 0.0
+    return (
+        f'<clipPath id="trackclip"><rect x="{first:.1f}" y="{y:.1f}" '
+        f'width="{right - first:.1f}" height="{height:.1f}" '
+        f'rx="{height / 2:.1f}"/></clipPath>'
+        f'<g clip-path="url(#trackclip)">{out}</g>'
+    )
 
 
 def _evolution(entries: list[dict]) -> str:
@@ -649,7 +620,7 @@ def _evolution(entries: list[dict]) -> str:
         )
 
     labels = _events_by_date(entries)
-    width, height = 1000.0, 372.0
+    width, height = 1000.0, 340.0
     left, right, top, floor = 24.0, 24.0, 58.0, 214.0
     values = [row["equity"] for row in series]
     low, high = min(values), max(values)
@@ -711,14 +682,11 @@ def _evolution(entries: list[dict]) -> str:
 <polyline points="{line}" fill="none" stroke="#4ade80" stroke-width="2"
           stroke-linejoin="round" stroke-linecap="round"/>
 {marks}
-<text x="{left:.0f}" y="316" font-size="11" fill="#8b8b86"
-      letter-spacing=".16em">HOW MUCH OF THE PROTECTION THAT DAY NEEDED WAS IN
-      PLACE</text>
-{_coverage_track(series, points, left, width - right, 330.0)}
+{_coverage_track(series, points, left, width - right, 316.0)}
 </svg>
 </div>
-<p class="legend"><span class="c"><i></i>fully protected</span>
-<span class="u"><i></i>protection still missing</span></p>"""
+<p class="legend"><span class="c"><i></i>inside the promise</span>
+<span class="u"><i></i>risk outside it</span></p>"""
 
 
 # --- what was decided -------------------------------------------------------
