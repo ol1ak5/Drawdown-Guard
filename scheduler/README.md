@@ -49,6 +49,21 @@ You need a GitHub token. Create it yourself and put it in Cloudflare yourself
    few seconds. Anything else prints the status, and `npx wrangler tail` shows
    the body GitHub sent back.
 
+## Two schedulers, on purpose
+
+The workflow carries the same thirteen cron entries and the worker asks for
+every one of them. That is not redundancy for its own sake -- it is two
+schedulers that fail independently.
+
+On 2026-09-01, GitHub delivered three of its thirteen: 13:45 on time, then
+nothing for three and a half hours, then 17:27 and 17:48. A queue under load
+drops the middle of the day, and the middle of the day is the session.
+
+A cycle asked for twice costs nothing. `execute` recognises an order it has
+already placed and does not send it again, and `protect` only buys when
+`uncovered_risk` is open -- so a duplicate request measures the book, finds
+the promise held, and writes a line in the journal.
+
 ## When the clocks change
 
 `crons` is UTC. `45 13` is 09:45 ET under EDT, which holds through

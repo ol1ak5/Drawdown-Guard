@@ -3,13 +3,20 @@ main = "src/index.js"
 compatibility_date = "2026-08-31"
 
 [triggers]
-# 09:45 New York, Monday to Friday -- fifteen minutes after the open, the
-# same reasoning as the workflow's own first attempt: an option quote is
-# widest in the opening auction's wake, and both the liquidity filter and the
-# limit price are paid out of that width.
+# Every half hour while the market is open, and every one of these is the
+# whole schedule rather than a backup for it.
 #
-# Cloudflare cron is UTC and does not follow daylight saving, so this is
-# correct for EDT, in force through 2026-11-01. Under EST it would be an hour
-# early -- before the open -- and the healthcheck would decline the day. Move
-# it to "45 14" then.
-crons = ["45 13 * * 1-5"]
+# The workflow carries the same thirteen cron entries, and on 2026-09-01
+# three of them arrived: 13:45 on time, then nothing until 17:27, then 17:48.
+# Seven bookings inside the session were never delivered at all. GitHub's
+# scheduler is a queue, and a queue under load drops the middle of the day.
+#
+# So the worker asks for each one itself. Cloudflare's cron is not a guarantee
+# either, but the two schedulers fail independently -- and a cycle asked for
+# twice is refused the second time by `already_working`, which recognises an
+# order it has already placed, so a duplicate request costs nothing.
+#
+# 13:45 UTC = 09:45 ET, fifteen minutes after the open. 19:45 UTC = 15:45 ET,
+# fifteen minutes before the close. Correct for EDT, in force through
+# 2026-11-01; shift both by an hour under EST.
+crons = ["45 13 * * 1-5", "15,45 14-19 * * 1-5"]

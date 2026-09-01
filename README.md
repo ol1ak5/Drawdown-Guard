@@ -400,7 +400,7 @@ Built directly against the four agent types this track names:
 | **Pydantic** | Mandates and limits are validated types |
 | **GitHub Actions** | The agent's heartbeat. Thirteen autonomous cycles a day, every weekday |
 | **GitHub Pages** | The live status page, rebuilt from the journal after every cycle |
-| **Cloudflare Workers** | Presses the first cycle of the day on time, because GitHub's cron does not |
+| **Cloudflare Workers** | Asks for all thirteen cycles on time. Two schedulers that fail independently: GitHub delivered three of thirteen on 2026-09-01 |
 | **Python 3.11** | The language the project runs on |
 
 ## ▶️ Try it
