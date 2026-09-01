@@ -48,7 +48,11 @@ from drawdownguard.agent.roles.chooser import eligible, pick
 from drawdownguard.agent.roles.explainer import explain
 from drawdownguard.agent.roles.reviewer import review
 from drawdownguard.agent.state import GuardState
-from drawdownguard.execution.orders import confirm, submit_order
+from drawdownguard.execution.orders import (
+    already_working,
+    confirm,
+    submit_order,
+)
 from drawdownguard.journal import writer
 from drawdownguard.market.client import get_account, get_positions
 from drawdownguard.risk import changes, period
@@ -308,18 +312,29 @@ async def mandate_node(state: GuardState) -> GuardState:
     # write "nothing moved" is the exact arrangement that got the old regime
     # classifier deleted. The fact is recorded either way; the prose is what
     # the change buys.
-    findings = None
-    if diff.moved or diff.first:
-        findings = await review(
-            book,
-            diff,
-            rungs,
-            {
-                "mandate": mandate.name,
-                "budget": budget,
-                "reference": promise.reference,
-            },
-        )
+    # Asked on every cycle, including the ones where the client did nothing.
+    #
+    # It used to be gated on `diff.moved`, on the argument that a model billed
+    # to write "nothing changed" is the regime classifier again. The argument
+    # was right about the cost and wrong about the material: the book being
+    # unchanged does not mean the picture is. Prices move between cycles, so a
+    # strike that was 7% out of the money at the open is 8% out of it by
+    # midday, a leg walks toward its expiry, and the ladder is rebuilt from
+    # live quotes every time. There is something new to read every half hour,
+    # and it is not something anyone could have written in advance.
+    #
+    # What stays gated is the money. `protect` runs on `uncovered_risk`, which
+    # is settled above this call, so thirteen readings a day still buy nothing.
+    findings = await review(
+        book,
+        diff,
+        rungs,
+        {
+            "mandate": mandate.name,
+            "budget": budget,
+            "reference": promise.reference,
+        },
+    )
     writer.write(
         "book.reviewed",
         {
@@ -810,6 +825,45 @@ async def execute_node(state: GuardState) -> GuardState:
     dry_run = state.get("dry_run", False)
     results = []
     for order in orders:
+        # An order this cycle already sent earlier today is not sent again.
+        #
+        # The cycle runs every half hour now, and `uncovered_risk` stays open
+        # for as long as a limit sits unfilled -- so without this, one
+        # unfilled put is re-proposed twelve more times before the close. The
+        # broker would refuse each on the duplicate `client_order_id`, which is
+        # the interlock working, but it would land in the journal as twelve
+        # rejections and read like twelve failures.
+        #
+        # Asked of the broker rather than tracked in state, because state does
+        # not survive between cycles and the broker is the only thing that
+        # knows what it is holding. A read that fails is treated as "not
+        # there": the duplicate key still stops a second fill, so the worst
+        # case is the noisy journal this avoids, not a double position.
+        # Not on a dry run. The read is harmless in itself, but a dry run's
+        # contract is that it reaches the broker for nothing at all, and there
+        # is nothing to deduplicate against when no order is going out.
+        standing = None if dry_run else await already_working(order)
+        if standing is not None:
+            writer.write(
+                "order.still_working",
+                {
+                    "occ_symbol": standing.occ_symbol,
+                    "broker_status": standing.broker_status,
+                    "filled_qty": standing.filled_qty,
+                    "meaning": (
+                        "sent earlier today and still live at the broker; "
+                        "not sent again"
+                    ),
+                },
+                # Not a breach on its own -- the order is working and may yet
+                # fill. The open risk it leaves is already reported by
+                # `mandate.stress`, and reporting it twice at breach would
+                # make an ordinary afternoon look like a crisis.
+                severity="info",
+            )
+            results.append(standing)
+            continue
+
         result = await submit_order(order, portfolio, limits, dry_run=dry_run)
         # What the broker did with it, not merely that it took it. An option
         # order is a day limit priced at the ask the decision was made on; the

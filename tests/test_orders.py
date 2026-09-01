@@ -8,6 +8,8 @@ real orders to prove it does not place real orders is not a test.
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from drawdownguard.execution.orders import (
     OrderResult,
     _order_arguments,
@@ -314,3 +316,56 @@ async def test_nothing_is_read_back_for_an_order_that_never_went():
     broker.assert_not_awaited()
     assert done.filled_qty == 0
     assert done.broker_status is None
+
+
+@pytest.mark.asyncio
+async def test_an_order_already_live_is_recognised_rather_than_sent_again():
+    """The cycle runs every half hour and re-proposes the same unfilled put.
+
+    Without this the broker refuses each one on the duplicate key -- the
+    interlock working -- and the journal fills with twelve rejections that read
+    like twelve failures.
+    """
+    from drawdownguard.execution.orders import already_working
+
+    live = {"data": {"status": "new", "filled_qty": "0", "filled_avg_price": None}}
+    with patch(
+        "drawdownguard.execution.orders.call_tool", new=AsyncMock(return_value=live)
+    ):
+        standing = await already_working(make_order())
+    assert standing is not None
+    assert standing.broker_status == "new"
+    assert standing.filled_qty == 0
+
+
+@pytest.mark.asyncio
+async def test_a_finished_order_does_not_block_the_rest_of_the_day():
+    """Cancelled, expired and rejected are gone, and the day may try again.
+
+    A filled one is not a blocker either: the position it created is what the
+    next cycle measures, so nothing will ask for it a second time.
+    """
+    from drawdownguard.execution.orders import already_working
+
+    for status in ("canceled", "expired", "rejected", "done_for_day"):
+        with patch(
+            "drawdownguard.execution.orders.call_tool",
+            new=AsyncMock(return_value={"data": {"status": status}}),
+        ):
+            assert await already_working(make_order()) is None, status
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_order_is_treated_as_absent():
+    """Sending again is safe -- the duplicate key still refuses a second fill.
+
+    The cost of guessing wrong in this direction is the noisy journal this
+    avoids, not a doubled position.
+    """
+    from drawdownguard.execution.orders import already_working
+
+    with patch(
+        "drawdownguard.execution.orders.call_tool",
+        new=AsyncMock(side_effect=RuntimeError("not found")),
+    ):
+        assert await already_working(make_order()) is None

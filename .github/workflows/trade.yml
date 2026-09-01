@@ -2,38 +2,33 @@ name: trade
 
 on:
   schedule:
-    # Five attempts, not one, and the repetition is the fix rather than
-    # belt-and-braces.
+    # Every half hour while the market is open, and the frequency is the
+    # design rather than caution.
     #
-    # GitHub's cron is a request, not a promise: under load a run is delayed,
-    # and on 2026-08-27 and 2026-08-28 the 14:00 booking arrived at 23:37 and
-    # 23:24 UTC. The market had been shut for hours, the healthcheck declined
-    # correctly, and the day produced no cycle at all -- reported as a green
-    # tick, because declining is a success. Two days of an eight-day unattended
-    # run were lost that way and nothing said so.
+    # A cycle that ran once a morning could not see a client selling at 15:55,
+    # and no schedule can: the option market shuts at 16:00 with the stock
+    # market, so an action in the last minutes is unhedgeable by anyone. What
+    # the frequency buys is a smaller window -- a change is found within half
+    # an hour, with time left to trade it -- and a record of the times it was
+    # found too late to act on.
     #
-    # So the day is asked for six times across the session. The first one to
-    # land while the market is open runs the cycle; `check_not_already_run`
-    # declines every attempt after it, keyed on `cycle.complete` in today's
-    # journal. A day only fails now if every attempt drifts past the close.
+    # Every one of these is a full cycle, analyst included. Prices move between
+    # readings even when the book does not, so a strike that was 7% out of the
+    # money at the open is 8% out of it by midday and the ladder is measured
+    # again each time; there is something new to read every half hour. What
+    # does not repeat is the buying: `protect` runs on `uncovered_risk`, and
+    # an order already live at the broker is recognised and not sent twice.
     #
-    # 13:45 UTC = 09:45 ET, fifteen minutes after the open; 18:00 UTC = 14:00
-    # ET, two hours before it shuts. All six are inside the session under EDT,
-    # which is in force through 2026-11-01 and covers the whole event.
+    # GitHub's cron is also a request rather than a promise -- the 14:00
+    # booking arrived at 23:24 on 2026-08-28 -- so thirteen attempts are
+    # additionally thirteen chances for one of them to be on time. The
+    # Cloudflare worker in `scheduler/` presses the first one punctually.
     #
-    # Fifteen minutes rather than five, and it is a spread decision rather
-    # than caution. An option's quote is at its widest in the opening auction's
-    # wake, and two things here are priced off that width: `liquid` drops a
-    # contract whose spread exceeds `max_spread_pct`, so an early cycle can
-    # find nothing it is allowed to buy, and the limit pays a quarter of the
-    # spread past the offer, so a wide one is paid for in cash. Waiting a
-    # quarter of an hour costs nothing and buys back both.
+    # 13:45 UTC = 09:45 ET, fifteen minutes after the open; 19:45 UTC = 15:45
+    # ET, fifteen minutes before the close. Correct for EDT, in force through
+    # 2026-11-01. Shift both by an hour under EST.
     - cron: "45 13 * * 1-5"
-    - cron: "0 14 * * 1-5"
-    - cron: "0 15 * * 1-5"
-    - cron: "0 16 * * 1-5"
-    - cron: "0 17 * * 1-5"
-    - cron: "0 18 * * 1-5"
+    - cron: "15,45 14-19 * * 1-5"
   workflow_dispatch:
     inputs:
       dry_run:

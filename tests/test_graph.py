@@ -17,6 +17,7 @@ from drawdownguard.agent.graph import build_graph
 from drawdownguard.agent.nodes import strategy
 from drawdownguard.agent.state import initial_state
 from drawdownguard.domain import Portfolio, Position
+from drawdownguard.execution.orders import FILL_TOOL
 from drawdownguard.journal import writer
 from drawdownguard.market.features import MarketSnapshot
 from drawdownguard.risk.mandate import load_mandate
@@ -65,7 +66,6 @@ def snapshot(symbol: str) -> MarketSnapshot:
     )
 
 
-
 def only_sleeve(plan: dict) -> dict:
     """The one sleeve in a plan, for tests whose book holds a single symbol.
 
@@ -78,7 +78,6 @@ def only_sleeve(plan: dict) -> dict:
     sleeves = plan["payload"]["sleeves"]
     assert len(sleeves) == 1, f"expected one sleeve, got {len(sleeves)}"
     return sleeves[0]
-
 
 
 async def run(
@@ -126,11 +125,37 @@ async def run(
         patch("drawdownguard.journal.writer.JOURNAL_DIR", journal_dir),
         patch(
             "drawdownguard.execution.orders.call_tool",
-            new=AsyncMock(return_value=BROKER_FILLED),
+            new=broker_answering(BROKER_FILLED),
         ) as broker,
     ):
         final = await build_graph().ainvoke(initial_state())
         return final, broker
+
+
+def broker_answering(payload: dict):
+    """A broker that does not know an order until it has been placed.
+
+    `execute` now asks whether the same order is already live before sending
+    it, so a mock that answers every read with an accepted order tells the
+    cycle its order was placed a moment before it placed it. That is not a
+    thing a broker can say: `get_order_by_client_id` raises for a key it has
+    never seen.
+
+    So the first read raises and every read after the submit answers. Which is
+    also the behaviour the deduplication is built on -- it is only correct
+    because an unplaced order cannot be found.
+    """
+    placed = False
+
+    async def call(tool, args=None):
+        nonlocal placed
+        if tool == FILL_TOOL and not placed:
+            raise RuntimeError("order not found")
+        if tool != FILL_TOOL:
+            placed = True
+        return payload
+
+    return AsyncMock(side_effect=call)
 
 
 async def test_the_graph_completes_and_journals_the_cycle(journal_dir):
@@ -365,7 +390,9 @@ async def test_the_gap_is_closed_the_way_todays_prices_favour(journal_dir):
     read from a config file to get here.
     """
     final, _ = await run(
-        healthy_portfolio(), chain_rows=CHAIN, journal_dir=journal_dir,
+        healthy_portfolio(),
+        chain_rows=CHAIN,
+        journal_dir=journal_dir,
         positions=EXPOSED,
     )
 
@@ -391,7 +418,9 @@ async def test_the_same_client_gets_a_different_answer_from_a_different_chain(
     """
     cheap_calls = [CHAIN[0], chain_row(540, 5.00, 5.10, "C", iv=0.10)]
     final, _ = await run(
-        healthy_portfolio(), chain_rows=cheap_calls, journal_dir=journal_dir,
+        healthy_portfolio(),
+        chain_rows=cheap_calls,
+        journal_dir=journal_dir,
         positions=EXPOSED,
     )
 
@@ -402,7 +431,9 @@ async def test_the_same_client_gets_a_different_answer_from_a_different_chain(
     # And back again on the original chain, with nothing about the client
     # touched in between.
     again, _ = await run(
-        healthy_portfolio(), chain_rows=CHAIN, journal_dir=journal_dir,
+        healthy_portfolio(),
+        chain_rows=CHAIN,
+        journal_dir=journal_dir,
         positions=EXPOSED,
     )
     assert again["protection"][0].kind == "collar"
@@ -415,7 +446,9 @@ async def test_the_remedy_that_was_declined_is_recorded_too(journal_dir):
     that rejected it, rather than take the answer on trust.
     """
     final, _ = await run(
-        healthy_portfolio(), chain_rows=CHAIN, journal_dir=journal_dir,
+        healthy_portfolio(),
+        chain_rows=CHAIN,
+        journal_dir=journal_dir,
         positions=EXPOSED,
     )
     plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
@@ -483,7 +516,9 @@ async def test_the_uniform_shock_assumption_is_written_down_next_to_the_hedge(
     ladder moves every equity holding by the same percentage. Real declines do
     not, so the assumption is recorded rather than left to be discovered."""
     _, _ = await run(
-        healthy_portfolio(), chain_rows=CHAIN, journal_dir=journal_dir,
+        healthy_portfolio(),
+        chain_rows=CHAIN,
+        journal_dir=journal_dir,
         positions=EXPOSED,
     )
     plan = [e for e in entries(journal_dir) if e["event"] == "protection.plan"][-1]
@@ -535,8 +570,7 @@ async def test_spent_protection_is_handed_back_before_anything_is_bought(journal
     # leg that is not holding the promise up -- but the journal reports what it
     # costs instead of asserting it costs nothing.
     assert (
-        given[-1]["payload"]["headroom_after"]
-        < given[-1]["payload"]["headroom_before"]
+        given[-1]["payload"]["headroom_after"] < given[-1]["payload"]["headroom_before"]
     )
     # And the cycle still closed the gap afterwards.
     assert final["protection"] is not None
@@ -848,7 +882,7 @@ async def test_an_order_the_market_walked_away_from_is_not_reported_as_bought(
         patch("drawdownguard.journal.writer.JOURNAL_DIR", journal_dir),
         patch(
             "drawdownguard.execution.orders.call_tool",
-            new=AsyncMock(return_value=accepted_unfilled),
+            new=broker_answering(accepted_unfilled),
         ),
     ):
         await build_graph().ainvoke(initial_state())

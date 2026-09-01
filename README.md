@@ -66,19 +66,6 @@ The client changes the portfolio mid-flight:
 
 The portfolio is intentionally not static. A client who never touches their allocation isn't the point. That gives Drawdown Guard a real job - it keeps the changing portfolio aligned with a fixed risk mandate.
 
-| Day | Date | Client does | Agent does |
-|---|---|---|---|
-| Day 1 | Aug 28 | Buys 100 IWM, 900 XLF, 100 BIL | Checks the portfolio. Steps in. Orders expired unfilled. **Execution logic fixed for the next week** |
-| Day 2 | Aug 31 | - | Checks the portfolio. Prices and sends the orders again |
-| Day 3 | Sep 1 | - | Checks the portfolio. The promise holds if the book hasn't moved |
-| Day 4 | Sep 2 | Sells 900 XLF | Risk drops. Hands back all nine XLF puts |
-| Day 5 | Sep 3 | Buys 100 AAPL | Risk rises again. Hedges the new holding on its own underlying |
-| Day 6 | Sep 4 | - | Confirms the mandate still holds |
-
-**What happened on Day 1?**
-
-The agent submitted limit orders at the ask, but the orders expired without filling. We changed the execution rule to allow the limit to move up to a quarter of the spread beyond the crossed price - still a limit order, but with room to follow a moving market.
-
 ## ⚙️ How the agent actually works
 
 Seven steps presented as five nodes in the LangGraph cycle. Once every weekday. Fully autonomous.
@@ -317,7 +304,7 @@ touch HALT && git add HALT && git commit -m "halt" && git push
 
 Built directly against the four agent types this track names:
 
-| Track agent type | How Drawdon Guard implements it |
+| Track agent type | How Drawdown Guard implements it |
 |---|---|
 | 📉 **Drawdown-defense agents** | Checks the portfolio against a client-defined loss budget and keeps the book within its mandate |
 | 🛡️ **Protective put strategy** | Uses long puts to cover the calculated downside shortfall |

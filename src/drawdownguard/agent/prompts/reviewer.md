@@ -18,9 +18,18 @@ up when two of these facts are put together:
 - a holding whose share of the promise has moved because the rest of the book
   changed around it
 - a position whose risk is company-specific where the cover held is an index
+- protection that has drifted away from the market it stands behind, so the
+  strike sits further below the price than it did, or closer to it
 
 That list is not exhaustive and it is not a checklist. If the material shows
 something else, say that instead. If it shows nothing, say nothing.
+
+You are asked this every half hour while the market is open, and the book will
+often be the same book. That is not a reason to invent a finding, and it is not
+a reason to stop looking: prices move between readings, so the distance between
+a strike and the price it protects moves with them, and the ladder is measured
+again each time. Say what the material says today. If it says the same thing it
+said an hour ago, answer NONE.
 
 ## What you must never do
 

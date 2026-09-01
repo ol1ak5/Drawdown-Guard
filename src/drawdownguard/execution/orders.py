@@ -223,6 +223,62 @@ async def confirm(result: OrderResult) -> OrderResult:
     )
 
 
+async def already_working(order: ProposedOrder) -> OrderResult | None:
+    """The same order, sent earlier today and still live, or None.
+
+    WHY THIS EXISTS
+    ---------------
+    The cycle runs every half hour while the market is open, and
+    `uncovered_risk` stays open for as long as a limit sits unfilled. So the
+    same protective put is proposed again on every cycle until it fills, and
+    without this it would be sent again each time. The broker refuses a
+    duplicate `client_order_id` -- that interlock is the reason a double fill
+    is impossible -- but twelve refusals in an afternoon read like twelve
+    failures to anyone opening the journal.
+
+    Keyed on `idempotency_key`, which is derived from the order itself: same
+    symbol, right, strike, expiry and size on the same day is the same order.
+    A different strike or a different contract count is a different order and
+    is not stopped here.
+
+    None on any failure to read, and deliberately: not finding the order is
+    not evidence it is absent, but sending it again is safe -- the duplicate
+    key still refuses a second fill. The cost of guessing wrong here is a
+    noisy journal, which is the thing this avoids, not a doubled position.
+    """
+    key = idempotency_key(order)
+    try:
+        payload = await call_tool(FILL_TOOL, {"client_order_id": key})
+    except Exception:  # noqa: BLE001 -- an unreadable order is not a placed one
+        return None
+
+    body = payload.get("data", payload) if isinstance(payload, dict) else {}
+    if not isinstance(body, dict):
+        return None
+    body = body.get("result", body)
+    status = str(body.get("status") or "").lower()
+    if not status:
+        return None
+    # Terminal states are not standing orders. A filled one has done its job
+    # and the position it created is what the next cycle measures; a cancelled
+    # or expired one is gone, and the day may legitimately want to try again.
+    if status in {"canceled", "cancelled", "expired", "rejected", "done_for_day"}:
+        return None
+
+    filled = body.get("filled_qty")
+    price = body.get("filled_avg_price")
+    return OrderResult(
+        occ_symbol=_occ_symbol(order),
+        submitted=True,
+        approved=True,
+        reason="sent earlier today; still live at the broker",
+        client_order_id=key,
+        filled_qty=int(Decimal(str(filled))) if filled is not None else 0,
+        filled_avg_price=Decimal(str(price)) if price is not None else None,
+        broker_status=status,
+    )
+
+
 async def submit_order(
     order: ProposedOrder,
     portfolio: Portfolio,
@@ -268,5 +324,3 @@ async def submit_order(
         broker_order_id=_broker_order_id(payload),
         client_order_id=client_order_id,
     )
-
-
