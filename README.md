@@ -68,12 +68,12 @@ The portfolio is intentionally not static. A client who never touches their allo
 
 ## ⚙️ How the agent actually works
 
-Seven steps presented as five nodes in the LangGraph cycle. Once every weekday. Fully autonomous.
+Seven steps presented as five nodes in the LangGraph cycle. Every half hour while the market is open. Fully autonomous.
 
 | # | Step | The agent does | Node |
 |---|---|---|---|
 | 1️⃣ | **Reconcile** | Asks the broker what is actually held. Never assumes | `reconcile` |
-| 2️⃣ | **Mandate** | Turns the client's tolerance into a fixed dollar budget. The LLM acts as a risk analyst, identifies risk implications when the book changes, and gives recommendations | `mandate` |
+| 2️⃣ | **Mandate** | Turns the client's tolerance into a fixed dollar budget. The LLM acts as a risk analyst: it is handed the material and not the conclusion, and names what needs attention | `mandate` |
 | 3️⃣ | **Stress** | Runs the book down the whole descent and measures the uncovered risk | `mandate` |
 | 4️⃣ | **Protect** | Builds valid hedge candidates. The LLM chooses between eligible structures | `protect` |
 | 5️⃣ | **Gate** | Checks every order against hard limits before it can reach the broker | `execute` |
@@ -84,11 +84,15 @@ Seven steps presented as five nodes in the LangGraph cycle. Once every weekday. 
 
 The deterministic risk engine calculates the numbers. The LLM reasons over the decisions that require judgment.
 
-**LLM call #1 - Portfolio review**
+**LLM call #1 - Risk analysis**
 
-When the book changes, the LLM receives the portfolio diff and the relevant protection state, and answers the following question:
+On every cycle, the LLM receives the material and answers the following question:
 
-> *What changed, what does it mean for the existing protection, and what should happen next?*
+> *Given this portfolio, this mandate and this existing protection, which positions carry a risk issue that needs attention, and what should be reviewed?*
+
+**It is not given the conclusion.** `uncovered_risk` is a single number the arithmetic has already worked out, and handing it over would turn the call into a paraphrase. What it gets instead is the raw material: holdings position by position, the promise and what it is measured against, the option legs held **listed separately and not paired with the holdings**, and what the book loses at each stress rung.
+
+So "nine puts and no shares behind them" is something the model has to put together rather than agree with.
 
 For example:
 
@@ -106,14 +110,22 @@ Recommendation: review the XLF hedge for removal.
 
 **LLM call #2 - Protection choice**
 
-When protection is required, the LLM chooses between eligible hedge structures based on the mandate and current market conditions. If the LLM fails or returns an invalid choice, the deterministic rule remains the fallback.
+When protection is required, the LLM chooses between eligible hedge structures. **Eligible is decided in code, not by the model:** a candidate is only shown to it if the structure closes the risk in full and expires. So the model cannot leave the promise broken and cannot sell the client's shares - it chooses between hedges that all keep the promise, on the one question that is genuinely about today's prices.
 
-Every LLM decision records:
-- `decided_by`
-- `rule_would_have`
-- `rule_because`
+If the LLM fails, returns an invalid choice or names a structure that was not offered, the deterministic rule remains the fallback.
 
-So the AI decision can always be compared with the deterministic rule.
+Every protection choice records:
+- `decided_by` - the model or the rule
+- `rule_would_have` - what the rule would have taken
+- `rule_because` - the rule's own reasoning
+
+The rule runs on every sleeve regardless, so a disagreement between the model and the arithmetic is visible in the journal rather than inferred.
+
+**LLM call #3 - The client's note**
+
+After the orders have gone and their fills have been read back, the LLM writes the paragraph a client reads. Nothing is left to decide by then, so it can be unclear but it cannot be expensive.
+
+**Where the AI cannot reach.** No LLM output is read by an order. `protect` sizes the hedge from `uncovered_risk`, which is settled before the model is called; the deterministic Gate is the last check either way. A finding the cycle did not act on is recorded as `review.unaddressed` - either the model was wrong or the checks have a blind spot, and neither is discoverable if the two are never compared.
 
 ## 🔗 The Chain of Decision
 
@@ -138,8 +150,8 @@ The agent allocates the budget proportionally to each instrument's weighted cont
 **For this portfolio, that gives:**
 
 ```
-XLF → $6,382
-IWM → $3,616
+XLF → $6,385
+IWM → $3,613
 ────────────
 Total $9,998
 ```
@@ -199,18 +211,27 @@ IWM   share of the budget $3,616
 
 ### Execution price
 
-Every order is a limit order. After Day 1 unfilled orders, we allowed the limit price to move up to a quarter of the spread beyond the crossed price to prevent the same issue in future cycles.
+Every order is a limit order. After Day 1 unfilled orders, we allowed the limit price to reach past the crossed price by a fraction of the spread. That fraction was a quarter, and on Day 2 it was still not enough - so it is now the whole spread.
 
 On Day 1, the initial limits were exactly at the ask:
 
 | Options | Our limit | Ask, minutes later | Filled |
 |---|---|---|---|
-| XLF 54 put ×9 | 2.64 | 2.72 | ❌ |
-| IWM 275 put ×1 | 14.25 | 14.37 | ❌ |
+| XLF 54 put ×9 | 2.71 | 2.78 | ❌ |
+| IWM 275 put ×1 | 14.48 | 14.60 | ❌ |
 
-On Day 2, the orders were executed correctly:
+On Day 2, one of the two filled:
 
-XXXXXXXXXX
+| Options | Our limit | Result |
+|---|---|---|
+| IWM 275 put ×1 | 15.06 | ✅ filled at 15.06 |
+| XLF 54 put ×9 | 2.78 | ❌ still working at the close |
+
+The IWM put is the first protection this account actually holds.
+
+The XLF order sat a cent under the market all day. It was priced at 14:19 against a 2.72 ask and sent at 2.78; by the close the ask was 2.87 against a 2.63 bid. A day limit is set once and cannot chase, so the tolerance is not really "how much are we willing to overpay" - it is "how far may the offer drift before the promise goes unheld for another day".
+
+The trade is not symmetric, which is the whole argument for crossing the full spread: $216 of possible overpayment against $52,000 of exposure left unprotected overnight. It remains a limit order. A market order on an option with a 9% spread is not the faster version of this, it is the unbounded one.
 
 
 **7️⃣ What does the protection actually do?** 
@@ -269,9 +290,46 @@ The portfolio can become uncovered for several reasons:
 
 ## 🔄 The agent loop
 
-The full decision cycle is:
+```mermaid
+flowchart TD
+    CRON["⏰ Every 30 min, 09:45-15:45 ET<br/>Cloudflare worker + GitHub Actions"] --> HALT{HALT file?}
+    HALT -- yes --> JOURNAL
+    HALT -- no --> RECONCILE
 
-XXXXXXXX
+    RECONCILE["1️⃣ RECONCILE<br/>Ask the broker what is held.<br/>Never assume"] --> KILL{Drawdown ><br/>kill-switch?}
+    KILL -- yes --> JOURNAL
+    KILL -- no --> MANDATE
+
+    MANDATE["2️⃣ MANDATE + 3️⃣ STRESS<br/>Budget fixed once when the promise opened.<br/>Run the book down the whole descent"] --> LLM1
+    LLM1(["🤖 LLM · risk analyst<br/>given the material, not the answer<br/>→ issue + recommendation"]) --> GAP{uncovered_risk > 0<br/>or a sleeve exposed?}
+
+    GAP -- no --> JOURNAL
+    GAP -- yes --> PROTECT
+
+    PROTECT["4️⃣ PROTECT<br/>Release what is redundant.<br/>Price every permitted structure<br/>on the live chain"] --> ELIGIBLE{Closes the risk?<br/>Expires?}
+    ELIGIBLE -- no --> DROP[Never shown to the model]
+    ELIGIBLE -- yes --> LLM2
+
+    LLM2(["🤖 LLM · chooser<br/>picks between admissible structures<br/>fallback: deterministic rule"]) --> GATE
+
+    GATE{"5️⃣ GATE<br/>capital at risk · liquidity · spread<br/>drawdown · net delta"}
+    GATE -- veto --> JOURNAL
+    GATE -- approve --> EXECUTE
+
+    EXECUTE["6️⃣ EXECUTE<br/>Already live at the broker? Do not resend.<br/>Otherwise send, then read the fill back"] --> JOURNAL
+
+    JOURNAL["7️⃣ JOURNAL<br/>Append-only record · status page<br/>🤖 LLM · the client's note"] --> END([Commit and stop])
+
+    style LLM1 fill:#7c3aed,stroke:#4c1d95,color:#fff
+    style LLM2 fill:#7c3aed,stroke:#4c1d95,color:#fff
+    style JOURNAL fill:#0f766e,stroke:#134e4a,color:#fff
+    style GATE fill:#b91c1c,stroke:#7f1d1d,color:#fff
+    style DROP fill:#57534e,stroke:#292524,color:#fff
+```
+
+**Read it as two colours.** Purple is where a language model speaks; red is the boundary it cannot cross. Every purple box is downstream of a number that was already settled and upstream of a check it cannot influence.
+
+**The halt edge is the reason this is a graph and not a function.** An early return can skip the journal, and a cycle that stopped without writing anything is indistinguishable, six days later, from a cycle that crashed. Routing every halt *to* the journal makes "we deliberately did nothing, here is why" a recorded outcome rather than an absence.
 
 ## 🔌 Alpaca Trading API and MCP Server
 
@@ -298,6 +356,23 @@ touch HALT && git add HALT && git commit -m "halt" && git push
 ```
 **It stops the agent, not the protection.** Every position stays exactly where it is. Hedges already bought keep working. A stop button that liquidated the client's protection would disarm the portfolio at the precise moment somebody was worried enough to press it.
 
+## 🔧 What broke, and how we knew
+
+Every one of these was found in the journal, not in a stack trace. That is the claim worth making: an autonomous agent trading unattended does not get to fail loudly, so the only defence is a record detailed enough to be read against reality.
+
+| When | What broke | How we found out | The fix |
+|---|---|---|---|
+| Aug 28 | Limits set exactly at the ask never filled | Journal said `submitted: 2`; the account held nothing | The limit reaches past the offer by a fraction of the spread |
+| Aug 28 | "Sent" was being reported as "bought" | Two facts sat in the record with nothing connecting them | Three outcomes instead of two: `filled`, `partial`, `working` |
+| Aug 28 | The LLM sat 41 seconds between pricing an order and sending it | Timestamps in the journal | The model now writes *after* the fills are read back, not before |
+| Aug 27-28 | The cycle did not run at all | Scheduled runs arrived at 23:24 UTC, hours after the close | Thirteen attempts a day, plus a Cloudflare worker that presses the first one on time |
+| Aug 31 | A quarter of the spread was still not enough | The XLF ask drifted 2.72 → 2.87 across the session | Cross the whole spread |
+| Aug 31 | A client selling near the close would go unseen until the next morning | Reading the schedule against the scenario | A full cycle every half hour, all session |
+
+Plus fifteen defects from a full-codebase audit: a state key dropped on an early return that silently discarded release orders, a mid price averaged against a missing quote side, a hedge released and immediately rebought because two checks disagreed about scope, and twelve more.
+
+**Two of these could not have been found by testing.** The unfilled limits and the missing cycles are both cases where every component behaved exactly as written and the outcome was still wrong. Only the record caught them.
+
 ## 🏁 Main Tracks
 
 **Track 03 — Hedging & Risk Protection Agents**
@@ -308,8 +383,8 @@ Built directly against the four agent types this track names:
 |---|---|
 | 📉 **Drawdown-defense agents** | Checks the portfolio against a client-defined loss budget and keeps the book within its mandate |
 | 🛡️ **Protective put strategy** | Uses long puts to cover the calculated downside shortfall |
-| 🎯 **Collar strategy** | Uses a put financed by a short call when the mandate and market conditions make it appropriate |
-| ♻️ **Hedge rebalancers for equity portfolios** | Adds protection when risk is uncovered and hands it back on a margin band. Demonstrated on day 4 and 5 |
+| 🎯 **Collar strategy** | Priced on every cycle against the put, and taken when the call is the richer leg. It has not been taken yet: on this book the call has priced below the put on every reading, so buying outright won 37 times out of 37. The journal records every declined collar and the volatilities that declined it |
+| ♻️ **Hedge rebalancers for equity portfolios** | Adds protection when risk is uncovered and hands it back on a margin band. The client's sale on day 4 and purchase on day 5 are what exercise both halves |
 
 ## 🧰 Technologies
 
@@ -318,12 +393,13 @@ Built directly against the four agent types this track names:
 | **Alpaca Trading API** | Live paper account, level 3 |
 | **Alpaca MCP Server** | Every broker call goes through MCP |
 | **LangGraph** | The five-node cycle, including the conditional halt edge |
-| **LangChain** | The provider-agnostic chat interface behind the journal's explanation |
-| **Google Gemini** | Portfolio risk analysis and hedge structure selection |
+| **LangChain** | The provider-agnostic chat interface behind all three model calls |
+| **Google Gemini** | Risk analysis, hedge structure selection, and the client's note |
 | **NumPy · SciPy · pandas** | Black-Scholes, the stress ladder, the payoff maths |
 | **Pydantic** | Mandates and limits are validated types |
-| **GitHub Actions** | The agent's heartbeat. One autonomous cycle every weekday |
+| **GitHub Actions** | The agent's heartbeat. Thirteen autonomous cycles a day, every weekday |
 | **GitHub Pages** | The live status page, rebuilt from the journal after every cycle |
+| **Cloudflare Workers** | Presses the first cycle of the day on time, because GitHub's cron does not |
 | **Python 3.11** | The language the project runs on |
 
 ## ▶️ Try it
@@ -350,8 +426,11 @@ src/drawdownguard/
   execution/   order submission and broker reconciliation
   mcp/         the Alpaca MCP client and its toolsets
   journal/     append-only record, and the status page built from it
-  config/      risk.yaml, the permanent limits; mandates.yaml, the promises
+
+config/        risk.yaml, the permanent limits; mandates.yaml, the promises
                scenario.yaml, the client's week, committed before it runs
-  scripts/     run_cycle, healthcheck, build_portfolio, build_site, client_action
-  docs/        the published status page
+scripts/       run_cycle, healthcheck, build_portfolio, build_site, client_action
+scheduler/     the Cloudflare worker that presses the button on time
+journal/       the append-only record, one file per day
+docs/          the published status page
 ```
