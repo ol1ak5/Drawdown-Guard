@@ -8,6 +8,8 @@ and that nothing on the page was computed by the page.
 
 from datetime import UTC, datetime
 
+import pytest
+
 from drawdownguard.journal import writer
 from drawdownguard.journal.site import (
     build_site,
@@ -252,28 +254,48 @@ def test_a_day_with_no_completed_cycle_is_not_a_point_on_the_line():
     assert daily_series(entries) == []
 
 
-def test_each_day_says_how_much_of_its_risk_the_promise_covered():
-    """A percentage, not a pass mark.
+def test_buying_nothing_is_nought_per_cent_not_a_fraction_of_the_loss():
+    """The question is "have you bought what you said you would".
 
-    A two-colour strip could only say held or not held, so the morning the book
-    was twelve percent covered looked the same as the morning it was
-    ninety-nine percent covered. Those are not the same morning.
+    Measuring the share of the possible loss that fits inside the promise gave
+    12% on a day with no hedge at all, which reads as though an eighth of the
+    work were done when none of it was.
     """
-    page = _page(_week())
-    assert ">12%<" in page, "9,998 of an 81,885 worst case"
-    assert ">100%<" in page, "and the day the second put filled"
+    unhedged = {
+        "worst_case_unhedged": 81885.0,
+        "remaining_budget": 9997.84,
+        "uncovered": 71887.16,
+    }
+    assert covered_share(unhedged) == pytest.approx(0.0, abs=1e-9)
 
 
-def test_a_covered_day_is_a_full_column_and_an_uncovered_one_is_not():
-    covered = {"budget": 9997.84, "worst_case": 2795.0}
-    breached = {"budget": 9997.84, "worst_case": 81885.0}
-    assert covered_share(covered) == 1.0
-    assert 0.12 < covered_share(breached) < 0.13
+def test_closing_the_gap_is_a_hundred_per_cent():
+    done = {
+        "worst_case_unhedged": 80530.0,
+        "remaining_budget": 8175.11,
+        "uncovered": 0.0,
+    }
+    assert covered_share(done) == 1.0
 
 
-def test_a_day_that_was_never_measured_draws_no_column():
-    """Zero coverage and no reading are different, and only one is a fact."""
-    assert covered_share({"budget": None, "worst_case": None}) == 0.0
+def test_a_book_that_needed_nothing_is_already_fully_protected():
+    """Not a divide by zero, and not zero per cent."""
+    idle = {
+        "worst_case_unhedged": 4000.0,
+        "remaining_budget": 9997.84,
+        "uncovered": 0.0,
+    }
+    assert covered_share(idle) == 1.0
+
+
+def test_a_day_recorded_before_this_reading_says_so():
+    """None, not a number from the older formula.
+
+    Two different measurements under one label is how a chart misleads, and
+    "we did not record this" is a true thing to say.
+    """
+    assert covered_share({"budget": 9997.84, "worst_case": 2795.0}) is None
+    assert "not recorded" in _page(_week())
 
 
 def test_one_close_is_not_a_line():

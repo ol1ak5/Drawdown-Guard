@@ -480,6 +480,8 @@ def daily_series(entries: list[dict]) -> list[dict]:
                 "budget": None,
                 "worst_case": None,
                 "already_lost": 0.0,
+                "remaining_budget": None,
+                "worst_case_unhedged": None,
             },
         )
         payload = entry.get("payload") or {}
@@ -494,6 +496,8 @@ def daily_series(entries: list[dict]) -> list[dict]:
                 row["budget"] = float(payload.get("budget"))
                 row["worst_case"] = float(payload.get("worst_case"))
                 row["already_lost"] = float(payload.get("already_lost") or 0.0)
+                row["remaining_budget"] = payload.get("remaining_budget")
+                row["worst_case_unhedged"] = payload.get("worst_case_unhedged")
             except (TypeError, ValueError):
                 pass
     return [row for _, row in sorted(days.items()) if row["equity"] is not None]
@@ -533,31 +537,37 @@ def _events_by_date(entries: list[dict]) -> dict[str, str]:
     return labels
 
 
-def covered_share(row: dict) -> float:
-    """How much of the day's worst case the promise actually covers, 0 to 1.
+def covered_share(row: dict) -> float | None:
+    """How much of the protection this day needed is actually in place, 0 to 1.
 
-    The client agreed to lose at most `budget`. The book's worst outcome is
-    `worst_case`. When the second is inside the first the promise covers all of
-    it and this is 1; when it is not, the fraction is what the budget reaches.
+    The question a client asks is not "what fraction of my possible loss fits
+    inside the promise" -- that is 12% on a day with no hedge at all, which
+    reads as though an eighth of the work were done when none of it was. It is
+    "have you bought what you said you would".
 
-    On 2026-08-28 the book could lose 81,885 against a 9,998 budget: twelve
-    percent covered, and a client is owed that number in that form rather than
-    a red mark. On 2026-09-01, after the second put filled, the worst case fell
-    to 2,795 -- inside the budget, so all of it.
+    So the denominator is the protection the day required: what the book would
+    lose with the options taken off, less what the promise still allows. The
+    numerator is how much of that requirement no longer stands open. Buy
+    nothing and this is zero; close the gap and it is one.
 
-    Zero when the day was not measured, which is different from zero coverage
-    and is why the caller checks for the reading before drawing anything.
+    None when the day predates this reading, which is different from zero
+    coverage: one is "we bought nothing", the other is "we cannot say".
     """
-    budget, worst = row.get("budget"), row.get("worst_case")
-    if not budget or worst is None:
-        return 0.0
-    # On the same basis as the verdict: money already gone is money the promise
-    # has already spent, so it belongs in the total the budget is measured
-    # against.
-    worst += row.get("already_lost") or 0.0
-    if worst <= 0:
+    unhedged = row.get("worst_case_unhedged")
+    remaining = row.get("remaining_budget")
+    if unhedged is None or remaining is None:
+        # Journalled before this reading existed. None rather than a number
+        # from the older, weaker formula: two different measurements under one
+        # label is how a chart misleads, and "we did not record this" is a
+        # true thing to say.
+        return None
+
+    required = unhedged - remaining
+    if required <= 0:
+        # Nothing needed buying: the book fits inside the promise unhedged.
         return 1.0
-    return min(budget / worst, 1.0)
+    still_open = row.get("uncovered") or 0.0
+    return min(max(1.0 - still_open / required, 0.0), 1.0)
 
 
 def _coverage_track(
@@ -593,8 +603,17 @@ def _coverage_track(
         start = left if i == 0 else (points[i - 1][0] + points[i][0]) / 2
         end = right if i == len(series) - 1 else (points[i][0] + points[i + 1][0]) / 2
         share = covered_share(row)
+        if share is None:
+            out += (
+                f'<text x="{(start + end) / 2:.1f}" '
+                f'y="{y + height / 2 + 4:.1f}" text-anchor="middle" '
+                f'font-size="11" fill="#8b8b86">not recorded</text>'
+            )
+            continue
         full = share >= 0.999
         colour = "#4ade80" if full else "#fbbf24"
+        # A zero-width bar is invisible, and invisible is what a missing
+        # reading looks like. A stub keeps "we bought nothing" on the page.
         width = max((end - start) * share, 3.0)
         out += (
             f'<rect x="{start:.1f}" y="{y:.1f}" width="{width:.1f}" '
@@ -602,7 +621,7 @@ def _coverage_track(
             f'opacity=".9"/>'
             f'<text x="{start + 10:.1f}" y="{y + height / 2 + 4:.1f}" '
             f'font-size="12" font-weight="600" '
-            f'fill="{"#0b1220" if full else "#1a1206"}">{share * 100:.0f}%</text>'
+            f'fill="{"#0b1220" if full else "#fbbf24"}">{share * 100:.0f}%</text>'
         )
     return out
 
@@ -693,13 +712,13 @@ def _evolution(entries: list[dict]) -> str:
           stroke-linejoin="round" stroke-linecap="round"/>
 {marks}
 <text x="{left:.0f}" y="316" font-size="11" fill="#8b8b86"
-      letter-spacing=".16em">HOW MUCH OF THAT DAY&#39;S RISK THE PROMISE COVERED</text>
+      letter-spacing=".16em">HOW MUCH OF THE PROTECTION THAT DAY NEEDED WAS IN
+      PLACE</text>
 {_coverage_track(series, points, left, width - right, 330.0)}
 </svg>
 </div>
-<p class="legend"><span class="c"><i></i>the whole worst case is inside the
-promise</span>
-<span class="u"><i></i>part of it is not</span></p>"""
+<p class="legend"><span class="c"><i></i>fully protected</span>
+<span class="u"><i></i>protection still missing</span></p>"""
 
 
 # --- what was decided -------------------------------------------------------

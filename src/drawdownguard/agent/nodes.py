@@ -292,6 +292,12 @@ async def mandate_node(state: GuardState) -> GuardState:
             # alone would reach the wrong verdict on any day but the first.
             "already_lost": round(spent, 2),
             "remaining_budget": round(remaining, 2),
+            # The same book with the options taken off, which is the only way
+            # to say how much of the day's protection is actually in place.
+            # Without it a reader can see that risk is uncovered but not
+            # whether the agent has done none of the work or nearly all of it,
+            # and those are the two ends of the same number.
+            "worst_case_unhedged": round(worst_loss(book.holdings, []), 2),
             "equity_exposure": round(book.equity_exposure, 2),
             "binding_shock": mandate.binding_shock,
             "uncovered_risk": round(uncovered, 2),
