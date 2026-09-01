@@ -85,7 +85,7 @@ flowchart TD
     GAP -- no --> PROTECT
 
     PROTECT["4️⃣ PROTECT"] --> ELIGIBLE{Closes the risk?}
-    ELIGIBLE -- no --> DROP[Never shown to the model]
+    ELIGIBLE -- no --> DROP[Never shown to the LLM]
     ELIGIBLE -- yes --> LLM2
 
     LLM2(["🤖 LLM · PROTECTION CHOICE"]) --> GATE
@@ -96,11 +96,12 @@ flowchart TD
 
     EXECUTE["6️⃣ EXECUTE"] --> JOURNAL
 
-    JOURNAL["7️⃣ JOURNAL LLM<br/>THE CLIENT'S NOTE"] --> END([Commit and stop])
+    JOURNAL["7️⃣ JOURNAL<br/>LLM · THE CLIENT'S NOTE"] --> END([Commit and stop])
 
     style LLM1 fill:#7c3aed,stroke:#4c1d95,color:#fff
     style LLM2 fill:#7c3aed,stroke:#4c1d95,color:#fff
     style JOURNAL fill:#7c3aed,stroke:#134e4a,color:#fff
+    style DROP fill:#d3d3d3,stroke:#a9a9a9,color:#2f2f2f
 ```
 
 ## ⚙️ How the agent actually works
