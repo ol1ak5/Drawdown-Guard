@@ -186,8 +186,11 @@ th { text-align: left; font-weight: 500; font-size: 10px; letter-spacing: .16em;
      border-bottom: 1px solid var(--hair); white-space: nowrap; }
 td { padding: .72rem .7rem .72rem 0; border-bottom: 1px solid rgba(255,255,255,.05);
      vertical-align: baseline; color: var(--dim); }
-td.n, th.n { text-align: right; font-variant-numeric: tabular-nums;
-             padding-right: 0; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+/* A right-aligned column needs the gap on its right, not only on its left, or
+   the number touches the next cell -- which is how "55.0%" and the hedge it
+   describes rendered as one word. */
+td.n + td, th.n + th { padding-left: 1.6rem; }
 td.sym { color: var(--ink); font-weight: 500; }
 tbody tr { transition: background .45s var(--ease); }
 tbody tr:hover { background: rgba(255,255,255,.025); }
@@ -458,7 +461,16 @@ def daily_series(entries: list[dict]) -> list[dict]:
         date = str(entry.get("ts", ""))[:10]
         if not date:
             continue
-        row = days.setdefault(date, {"date": date, "equity": None, "uncovered": None})
+        row = days.setdefault(
+            date,
+            {
+                "date": date,
+                "equity": None,
+                "uncovered": None,
+                "budget": None,
+                "worst_case": None,
+            },
+        )
         payload = entry.get("payload") or {}
         if entry.get("event") == "cycle.complete" and row["equity"] is None:
             try:
@@ -468,6 +480,8 @@ def daily_series(entries: list[dict]) -> list[dict]:
         elif entry.get("event") == "mandate.stress" and row["uncovered"] is None:
             try:
                 row["uncovered"] = float(payload.get("uncovered_risk"))
+                row["budget"] = float(payload.get("budget"))
+                row["worst_case"] = float(payload.get("worst_case"))
             except (TypeError, ValueError):
                 pass
     return [row for _, row in sorted(days.items()) if row["equity"] is not None]
@@ -507,36 +521,80 @@ def _events_by_date(entries: list[dict]) -> dict[str, str]:
     return labels
 
 
-def _uncovered_wash(
+def covered_share(row: dict) -> float:
+    """How much of the day's worst case the promise actually covers, 0 to 1.
+
+    The client agreed to lose at most `budget`. The book's worst outcome is
+    `worst_case`. When the second is inside the first the promise covers all of
+    it and this is 1; when it is not, the fraction is what the budget reaches.
+
+    On 2026-08-28 the book could lose 81,885 against a 9,998 budget: twelve
+    percent covered, and a client is owed that number in that form rather than
+    a red mark. On 2026-09-01, after the second put filled, the worst case fell
+    to 2,795 -- inside the budget, so all of it.
+
+    Zero when the day was not measured, which is different from zero coverage
+    and is why the caller checks for the reading before drawing anything.
+    """
+    budget, worst = row.get("budget"), row.get("worst_case")
+    if not budget or worst is None:
+        return 0.0
+    if worst <= 0:
+        return 1.0
+    return min(budget / worst, 1.0)
+
+
+def _coverage_bars(
+    series: list[dict],
     points: list[tuple[float, float]],
-    i: int,
     left: float,
     right: float,
     top: float,
-    floor: float,
 ) -> str:
-    """A tint behind the days the promise was not held.
+    """A column per day: how much of that day's risk the promise covered.
 
-    This replaced a segmented bar under the axis. The bar was a second picture
-    of the same days drawn in a second place, so a reader had to align the two
-    by eye to learn anything -- and it drew a coloured segment for every
-    ordinary day, spending the page's loudest signal on the state that is
-    supposed to be normal.
+    This is the second reading of the chart, and it is a different question
+    from the line above it. The line is what the account was worth. This is
+    whether the client was inside the number they were given, and by how far --
+    which is the thing the agent is actually for.
 
-    A wash says it where it happened, and marks only the exception: where the
-    chart is tinted, the client had risk outside the number they agreed to.
-
-    A day spans the halfway points to its neighbours, so the edge of the tint
-    is the moment the promise changed, and the first and last days own only the
-    half of the interval that exists.
+    Drawn as filled columns rather than as a two-colour strip. A strip could
+    only say held or not held, so the morning the book was twelve percent
+    covered looked the same as the morning it was ninety-nine percent covered,
+    and those are not the same morning.
     """
-    start = left if i == 0 else (points[i - 1][0] + points[i][0]) / 2
-    end = right if i == len(points) - 1 else (points[i][0] + points[i + 1][0]) / 2
-    return (
-        f'<rect x="{start:.1f}" y="{top - 28:.1f}" '
-        f'width="{max(end - start, 1):.1f}" height="{floor - top + 28:.1f}" '
-        f'fill="#fbbf24" opacity=".07"/>'
-    )
+    if not series:
+        return ""
+    height = 46.0
+    slot = (right - left) / len(series)
+    bar = min(slot * 0.62, 78.0)
+    out = ""
+    for i, row in enumerate(series):
+        share = covered_share(row)
+        if row.get("budget") is None:
+            continue
+        # Clamped to the drawing. The first and last points sit on the plot's
+        # edges, so a column centred on them hangs half outside it and is cut
+        # off by the viewport.
+        px = min(max(points[i][0], left + bar / 2), right - bar / 2)
+        full = share >= 0.999
+        colour = "#4ade80" if full else "#fbbf24"
+        filled = max(height * share, 2.0)
+        out += (
+            # The track first: the whole promise, at the height it would be if
+            # it were kept. Without it a short column reads as a small number
+            # rather than as a shortfall.
+            f'<rect x="{px - bar / 2:.1f}" y="{top - height:.1f}" '
+            f'width="{bar:.1f}" height="{height:.1f}" rx="3" '
+            f'fill="#ffffff" opacity=".05"/>'
+            f'<rect x="{px - bar / 2:.1f}" y="{top - filled:.1f}" '
+            f'width="{bar:.1f}" height="{filled:.1f}" rx="3" '
+            f'fill="{colour}" opacity=".85"/>'
+            f'<text x="{px:.1f}" y="{top - height - 10:.1f}" '
+            f'text-anchor="middle" font-size="12" font-weight="500" '
+            f'fill="{colour}">{share * 100:.0f}%</text>'
+        )
+    return out
 
 
 def _evolution(entries: list[dict]) -> str:
@@ -562,7 +620,7 @@ def _evolution(entries: list[dict]) -> str:
         )
 
     labels = _events_by_date(entries)
-    width, height = 1000.0, 300.0
+    width, height = 1000.0, 404.0
     left, right, top, floor = 24.0, 24.0, 58.0, 214.0
     values = [row["equity"] for row in series]
     low, high = min(values), max(values)
@@ -581,13 +639,6 @@ def _evolution(entries: list[dict]) -> str:
     points = [(x(i), y(v)) for i, v in enumerate(values)]
     line = " ".join(f"{px:.1f},{py:.1f}" for px, py in points)
     area = f"{points[0][0]:.1f},{floor:.1f} {line} {points[-1][0]:.1f},{floor:.1f}"
-
-    # Drawn before the line so the tint sits behind it rather than over it.
-    wash = "".join(
-        _uncovered_wash(points, i, left, width - right, top, floor)
-        for i, row in enumerate(series)
-        if (row["uncovered"] or 0) > 0
-    )
 
     marks = ""
     for i, (px, py) in enumerate(points):
@@ -627,15 +678,18 @@ def _evolution(entries: list[dict]) -> str:
 <stop offset="0%" stop-color="#4ade80" stop-opacity=".16"/>
 <stop offset="100%" stop-color="#4ade80" stop-opacity="0"/>
 </linearGradient></defs>
-{wash}
 <polygon points="{area}" fill="url(#fade)"/>
 <polyline points="{line}" fill="none" stroke="#4ade80" stroke-width="2"
           stroke-linejoin="round" stroke-linecap="round"/>
 {marks}
+<text x="{left:.0f}" y="316" font-size="11" fill="#8b8b86"
+      letter-spacing=".16em">HOW MUCH OF THAT DAY&#39;S RISK THE PROMISE COVERED</text>
+{_coverage_bars(series, points, left, width - right, 390.0)}
 </svg>
 </div>
-<p class="legend"><span class="u"><i></i>shaded: risk outside the promise</span>
-</p>"""
+<p class="legend"><span class="c"><i></i>the whole worst case is inside the
+promise</span>
+<span class="u"><i></i>part of it is not</span></p>"""
 
 
 # --- what was decided -------------------------------------------------------
@@ -651,28 +705,35 @@ _CLIENT_EVENTS = {"portfolio.established"}
 # The old page printed the raw payload here -- a wall of JSON in a table cell,
 # which is the record and not a reading of it. The record is still one click
 # away under every row.
+# Each of these is the sentence a client would say about the day, not the name
+# the program gives the event. The test was reading them aloud: "priced the
+# protection this portfolio needs" is what a developer calls `protection.plan`,
+# and it tells the reader nothing they could act on.
 _SAYS = {
-    "order.submitted": "order sent to the broker",
-    "order.filled": "hedge bought",
-    "order.partial": "part of the hedge bought",
-    "order.working": "order accepted, not yet bought",
-    "order.still_working": "order from earlier today still live",
-    "order.refused": "refused by the risk gate",
-    "order.simulated": "dry run, nothing sent",
-    "protection.released": "hedge handed back, no longer needed",
-    "protection.recommended_release": "hedge redundant, could not be priced",
-    "protection.plan": "priced the protection this portfolio needs",
-    "protection.unplaceable": "nothing tradable today covers this",
-    "protection.no_underlying": "risk with no shares behind it",
-    "protection.explained": "wrote the note for the client",
-    "protection.chain_unreadable": "could not read the option prices",
-    "mandate.stress": "measured the portfolio against the promise",
-    "mandate.period_opened": "opened the promise",
-    "mandate.unreadable": "could not read the positions",
-    "book.reviewed": "checked the portfolio",
-    "review.unaddressed": "flagged something the cycle did not act on",
+    "order.submitted": "placed an order to buy protection",
+    "order.filled": "bought protection",
+    "order.partial": "bought part of the protection; the rest is still trying",
+    "order.working": "the order is waiting at our price; nothing bought yet",
+    "order.still_working": "the same order is still waiting; not sent twice",
+    "order.refused": "the safety checks stopped this order",
+    "order.simulated": "test run only; nothing was sent",
+    "protection.released": "sold protection back; it was no longer needed",
+    "protection.recommended_release": (
+        "this protection is no longer needed, but could not be sold today"
+    ),
+    "protection.plan": "worked out what protection this portfolio needs",
+    "protection.unplaceable": "nothing on the market today would cover this",
+    "protection.no_underlying": "found risk with no shares behind it",
+    "protection.explained": "wrote today's note to the client",
+    "protection.chain_unreadable": "option prices were unavailable",
+    "mandate.stress": "checked the portfolio against the promise",
+    "mandate.period_opened": "the twelve-month promise starts here",
+    "mandate.unreadable": "could not read the portfolio",
+    "book.reviewed": "looked at what the client holds",
+    "review.unaddressed": "raised something today's checks did not cover",
     "cycle.complete": "finished the check",
-    "reconcile.discrepancy": "took the broker's version of the position",
+    "reconcile.discrepancy": "our records and the broker disagreed; the broker won",
+    "portfolio.established": "the client bought this holding",
 }
 
 # Events that say nothing a reader wants. Filtering the chain-liquidity line is
@@ -715,15 +776,60 @@ def _says(entry: dict) -> str:
     if event == "book.reviewed":
         changes = payload.get("changes") or []
         if changes:
-            return "; ".join(str(c) for c in changes[:2])
-        return "nothing moved"
+            return "; ".join(_plainly(str(c)) for c in changes[:2])
+        return "nothing in the portfolio changed"
     if event == "order.filled":
+        count = payload.get("contracts", "")
         price = payload.get("fill_price")
-        detail = f"{payload.get('contracts', '')} contracts"
-        return f"hedge bought, {detail}" + (f" at {price}" if price else "")
+        return f"bought protection: {_plural(count, 'contract')}" + (
+            f" at ${price} each" if price else ""
+        )
     if event == "protection.released":
-        return f"hedge handed back, {payload.get('contracts', '')} contracts"
+        return (
+            f"sold {_plural(payload.get('contracts'), 'contract')} of protection "
+            "back; no longer needed"
+        )
     return _SAYS.get(event, event.replace(".", " "))
+
+
+def _plural(count, noun: str) -> str:
+    """`1 contract`, `9 contracts`. A page that says "1 contracts" was written
+    by a program and reads like one."""
+    try:
+        n = abs(int(count))
+    except (TypeError, ValueError):
+        return f"{count} {noun}s"
+    return f"{n} {noun}" + ("" if n == 1 else "s")
+
+
+def _plainly(change: str) -> str:
+    """One line of the portfolio diff, said the way a person would say it.
+
+    The diff is written for arithmetic -- "opened +9 contracts of XLF P56" is
+    exact and is not a sentence. A client reading their own account should not
+    have to work out that P56 is a put struck at 56, or that "opened" is the
+    word for having bought one.
+    """
+    parts = change.split()
+    if "of" not in parts:
+        return change
+    symbol = parts[parts.index("of") + 1]
+    tail = parts[parts.index("of") + 2 :]
+    if "contracts" in change:
+        strike = tail[0][1:] if tail and tail[0][:1] in ("P", "C") else ""
+        kind = "put" if tail and tail[0][:1] == "P" else "call"
+        raw = parts[1].rstrip("x")
+        count = abs(int(raw)) if raw.lstrip("+-").isdigit() else ""
+        struck = f" struck at {strike}" if strike else ""
+        leg = _plural(count, f"{symbol} {kind}")
+        if change.startswith("closed"):
+            return f"gave back {leg}{struck}"
+        return f"took on {leg}{struck}"
+    if change.startswith("closed"):
+        return f"sold the whole {symbol} position, {parts[2]} shares"
+    if change.startswith("opened"):
+        return f"bought {parts[1].lstrip('+')} shares of {symbol}"
+    return change
 
 
 def _decision_rows(entries: list[dict]) -> str:

@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from drawdownguard.journal import writer
 from drawdownguard.journal.site import (
     build_site,
+    covered_share,
     daily_series,
     entry_from_journal,
     render_site,
@@ -251,16 +252,28 @@ def test_a_day_with_no_completed_cycle_is_not_a_point_on_the_line():
     assert daily_series(entries) == []
 
 
-def test_only_the_days_the_promise_was_not_held_are_marked():
-    """The exception is drawn; the ordinary day is left alone.
+def test_each_day_says_how_much_of_its_risk_the_promise_covered():
+    """A percentage, not a pass mark.
 
-    A strip that coloured every day spent the loudest signal on the state that
-    is supposed to be normal, and put a second picture of the same days in a
-    second place for the reader to align by eye.
+    A two-colour strip could only say held or not held, so the morning the book
+    was twelve percent covered looked the same as the morning it was
+    ninety-nine percent covered. Those are not the same morning.
     """
     page = _page(_week())
-    assert page.count('opacity=".07"') == 2, "two days opened outside the promise"
-    assert "shaded: risk outside the promise" in page
+    assert ">12%<" in page, "9,998 of an 81,885 worst case"
+    assert ">100%<" in page, "and the day the second put filled"
+
+
+def test_a_covered_day_is_a_full_column_and_an_uncovered_one_is_not():
+    covered = {"budget": 9997.84, "worst_case": 2795.0}
+    breached = {"budget": 9997.84, "worst_case": 81885.0}
+    assert covered_share(covered) == 1.0
+    assert 0.12 < covered_share(breached) < 0.13
+
+
+def test_a_day_that_was_never_measured_draws_no_column():
+    """Zero coverage and no reading are different, and only one is a fact."""
+    assert covered_share({"budget": None, "worst_case": None}) == 0.0
 
 
 def test_one_close_is_not_a_line():
@@ -321,7 +334,7 @@ def test_a_row_says_what_happened_rather_than_dumping_the_payload():
         )
     ]
     page = _page(entries)
-    assert "hedge bought, 9 contracts at 3.5" in page
+    assert "bought protection: 9 contracts at $3.5 each" in page
 
 
 def test_no_raw_payload_is_offered_as_evidence():
@@ -351,7 +364,7 @@ def test_the_same_finding_repeated_every_cycle_is_shown_once():
             "2026-09-01T13:45:00Z",
         )
     ]
-    assert _page(entries).count("took the broker's version of the position") == 1
+    assert _page(entries).count("the broker won") == 1
 
 
 def test_a_breach_row_is_findable_and_filterable():
