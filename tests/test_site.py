@@ -8,9 +8,12 @@ and that nothing on the page was computed by the page.
 
 from datetime import UTC, datetime
 
+import pytest
+
 from drawdownguard.journal import writer
 from drawdownguard.journal.site import (
     build_site,
+    closed_share,
     daily_series,
     entry_from_journal,
     promise_held,
@@ -250,6 +253,55 @@ def test_a_day_with_no_completed_cycle_is_not_a_point_on_the_line():
     """A halted day has no closing value, and inventing one would be a lie."""
     entries = [_line("mandate.stress", _stress(), "2026-09-01T13:45:00Z")]
     assert daily_series(entries) == []
+
+
+def test_a_closed_promise_is_a_hundred_per_cent_and_matches_the_verdict():
+    """The track and the verdict at the top answer the same question.
+
+    A day whose gap is shut is a hundred per cent closed and is drawn in the
+    same green as "inside the promise"; a day with protection still to buy is
+    not.
+    """
+    done = {
+        "worst_case_unhedged": 80530.0,
+        "remaining_budget": 8175.11,
+        "uncovered": 0.0,
+    }
+    assert closed_share(done) == 1.0
+    assert promise_held(done) is True
+
+
+def test_buying_nothing_closes_nothing():
+    """Not a fraction of the possible loss.
+
+    Measuring the share of the loss that fits inside the promise gave 12% on a
+    day with no hedge at all, which reads as though an eighth of the work were
+    done when none of it was.
+    """
+    unhedged = {
+        "worst_case_unhedged": 81885.0,
+        "remaining_budget": 9997.84,
+        "uncovered": 71887.16,
+    }
+    assert closed_share(unhedged) == pytest.approx(0.0, abs=1e-9)
+    assert promise_held(unhedged) is False
+
+
+def test_a_book_that_needed_nothing_is_already_closed():
+    """Not a divide by zero, and not nought per cent."""
+    idle = {
+        "worst_case_unhedged": 4000.0,
+        "remaining_budget": 9997.84,
+        "uncovered": 0.0,
+    }
+    assert closed_share(idle) == 1.0
+
+
+def test_a_day_recorded_before_the_finer_reading_prints_no_number():
+    """The colour is still known -- whether the promise held is a fact about
+    every measured day -- but the share is not, and a figure we did not record
+    is not a figure to invent."""
+    assert closed_share({"budget": 9997.84, "worst_case": 2795.0}) is None
 
 
 def test_the_track_says_held_or_not_held_for_every_measured_day():

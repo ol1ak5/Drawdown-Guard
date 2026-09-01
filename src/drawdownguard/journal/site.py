@@ -540,17 +540,38 @@ def _events_by_date(entries: list[dict]) -> dict[str, str]:
 def promise_held(row: dict) -> bool:
     """Whether the client was inside the number they were given that day.
 
-    A percentage lived here for a while -- how much of the day's required
-    protection was actually in place -- and it was more information than the
-    line beneath a chart can carry. It needed a label to explain it, a
-    denominator a reader had to trust, and a third state for the days recorded
-    before it existed.
-
-    This is the question the page exists to answer, and the answer is available
-    for every day the book was measured, including the ones written before any
-    of this was thought about.
+    The colour of the track, and the same question the verdict at the top of
+    the page answers. Available for every day the book was measured, including
+    the ones recorded before the finer reading below existed.
     """
     return (row.get("uncovered") or 0.0) <= 0
+
+
+def closed_share(row: dict) -> float | None:
+    """How much of the day's required protection is closed, 0 to 1.
+
+    The denominator is what the day needed: the loss the book would take with
+    its options removed, less what the promise still allows. The numerator is
+    how much of that no longer stands open. Buy nothing and this is nought;
+    close the gap and it is one, which is the day the verdict above turns
+    green.
+
+    None where the reading cannot be made -- days journalled before
+    `worst_case_unhedged` existed. The track still draws those in the right
+    colour, because whether the promise held is known for every day; it just
+    prints no number, which is honest about the difference between a figure we
+    did not record and one we did.
+    """
+    unhedged = row.get("worst_case_unhedged")
+    remaining = row.get("remaining_budget")
+    if unhedged is None or remaining is None:
+        return None
+    required = unhedged - remaining
+    if required <= 0:
+        # The book fits inside the promise with no options at all.
+        return 1.0
+    still_open = row.get("uncovered") or 0.0
+    return min(max(1.0 - still_open / required, 0.0), 1.0)
 
 
 def _coverage_track(
@@ -560,8 +581,7 @@ def _coverage_track(
     right: float,
     y: float,
 ) -> str:
-    """One track under the line: green where the promise held, amber where it
-    did not.
+    """One track under the line: how much of each day's risk is closed.
 
     A track rather than columns. The chart above is a line across time, and a
     row of vertical bars underneath is a second kind of picture asking the
@@ -576,24 +596,36 @@ def _coverage_track(
     ]
     if not measured:
         return ""
-    height = 14.0
+    height = 22.0
     out = ""
     for i, row in measured:
         start = left if i == 0 else (points[i - 1][0] + points[i][0]) / 2
         end = right if i == len(series) - 1 else (points[i][0] + points[i + 1][0]) / 2
-        colour = "#4ade80" if promise_held(row) else "#fbbf24"
+        held = promise_held(row)
+        colour = "#4ade80" if held else "#fbbf24"
+        share = closed_share(row)
+        # Where the share is unknown the day is still drawn full width in its
+        # own colour: whether the promise held is a fact about every day, and
+        # leaving a gap would read as a day the agent did not run.
+        width = max((end - start) * (1.0 if share is None else share), 3.0)
         out += (
-            f'<rect x="{start:.1f}" y="{y:.1f}" width="{max(end - start, 1):.1f}" '
+            f'<rect x="{start:.1f}" y="{y:.1f}" width="{width:.1f}" '
             f'height="{height:.1f}" fill="{colour}" opacity=".85"/>'
         )
-    # Rounded at the two outer ends only, so the run reads as one bar rather
-    # than as a row of separate pills with the changes lost between them.
+        if share is not None:
+            out += (
+                f'<text x="{start + 11:.1f}" y="{y + height / 2 + 4:.1f}" '
+                f'font-size="12" font-weight="600" fill="#0b1220">'
+                f"{share * 100:.0f}% closed</text>"
+            )
     first = left if measured[0][0] == 0 else 0.0
     return (
         f'<clipPath id="trackclip"><rect x="{first:.1f}" y="{y:.1f}" '
         f'width="{right - first:.1f}" height="{height:.1f}" '
         f'rx="{height / 2:.1f}"/></clipPath>'
-        f'<g clip-path="url(#trackclip)">{out}</g>'
+        f'<g clip-path="url(#trackclip)">'
+        f'<rect x="{first:.1f}" y="{y:.1f}" width="{right - first:.1f}" '
+        f'height="{height:.1f}" fill="#ffffff" opacity=".05"/>{out}</g>'
     )
 
 
@@ -685,8 +717,8 @@ def _evolution(entries: list[dict]) -> str:
 {_coverage_track(series, points, left, width - right, 316.0)}
 </svg>
 </div>
-<p class="legend"><span class="c"><i></i>inside the promise</span>
-<span class="u"><i></i>risk outside it</span></p>"""
+<p class="legend"><span class="c"><i></i>the promise is fully closed</span>
+<span class="u"><i></i>protection still to buy</span></p>"""
 
 
 # --- what was decided -------------------------------------------------------
