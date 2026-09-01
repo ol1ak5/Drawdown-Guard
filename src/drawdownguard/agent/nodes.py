@@ -277,6 +277,35 @@ async def mandate_node(state: GuardState) -> GuardState:
             ),
             "complete": book.complete,
             "unpriced": book.unpriced,
+            # The book itself, position by position. Written here rather than
+            # derived by the status page from `sleeves`, because sleeves are
+            # only the symbols that can be hedged -- bills and cash are held
+            # and are not sleeves, so a portfolio table built from them would
+            # quietly omit a tenth of the account. The page reads the journal
+            # and recomputes nothing; that only works if the journal carries
+            # what the page has to show.
+            "holdings": [
+                {
+                    "symbol": holding.symbol,
+                    "shares": holding.shares,
+                    "price": round(holding.price, 4),
+                    "value": round(holding.value, 2),
+                    # False for bills and cash: held, and not exposure. The
+                    # distinction is the mandate's, not a formatting choice.
+                    "shocked": holding.shocked,
+                }
+                for holding in sorted(book.holdings, key=lambda h: -h.value)
+            ],
+            "legs": [
+                {
+                    "symbol": leg.symbol,
+                    "right": leg.right,
+                    "strike": str(leg.strike),
+                    "contracts": leg.contracts,
+                    "expiry": leg.expiry.isoformat() if leg.expiry else None,
+                }
+                for leg in book.legs
+            ],
             "ladder": [
                 {
                     "shock": r.shock,

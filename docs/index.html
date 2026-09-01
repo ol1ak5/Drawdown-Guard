@@ -3,1277 +3,273 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Drawdown-Guard &mdash; the loss a client named, kept</title>
+<title>Drawdown Guard &mdash; the loss a client named, kept</title>
 <style>
-/* Ethereal Glass. Committed to one look rather than tracking the reader's
-   theme: a trading console is read as an instrument, and an instrument does
-   not change colour depending on who picks it up.
+/* Soft structuralism: near-white ground, one violet accent, no hard edges.
+   Hierarchy comes from size, weight and air -- the only rules left on the page
+   are the ones separating one section from the next, and even those are a
+   quarter-opacity hairline rather than a border.
 
-   NOTE ON TYPE. Every reference for this aesthetic reaches for a licensed
-   grotesk. This page loads nothing remote — no CDN, no font file — because a
-   judge's click must not depend on anyone else's uptime. So the stack is
-   system-first, and the character comes from scale, spacing and rhythm
-   instead. Constraint first, taste within it. */
-:root {
-  --ink: #f4f4f2;
-  --dim: #8b8b86;
-  --void: #050505;
-  --shell: rgba(255,255,255,.035);
-  --hair: rgba(255,255,255,.09);
-  --core: #0b0b0c;
-  --ok: #4ade80;
-  --no: #fb7185;
-  --alarm: #fbbf24;
-  --ease: cubic-bezier(.32,.72,0,1);
-  --r: 1.75rem;
+   The type stack is the system's own. SF Pro on Apple hardware, Segoe UI
+   Variable on Windows: the faces these operating systems were designed around,
+   and they load nothing. A page that fetched a font would make a judge's click
+   depend on somebody else's uptime, which is the one thing this document
+   refuses to do. */
+:root{
+  --ink:#0b0b0f; --body:#4a4a55; --muted:#8b8b98; --faint:#c2c2cd;
+  --line:rgba(11,11,15,.07); --bg:#fbfafc; --shell:rgba(124,58,237,.035);
+  --violet:#6d3aed; --violet-soft:rgba(109,58,237,.09);
+  --held:#3f9573; --open:#c4863a;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  --ease:cubic-bezier(.32,.72,0,1);
 }
-* { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
-body {
-  margin: 0; background: var(--void); color: var(--ink);
-  font: 400 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-feature-settings: "cv05" 1, "ss01" 1; letter-spacing: -.006em;
-  min-height: 100dvh; overflow-x: hidden;
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:400 17px/1.65 -apple-system,BlinkMacSystemFont,"SF Pro Display",
+    "SF Pro Text","Segoe UI Variable Text","Plus Jakarta Sans",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+  letter-spacing:-.011em}
+.wrap{max-width:1000px;margin:0 auto;padding:7rem 2rem 9rem}
+
+/* Eyebrows, not headings. A section title should name the thing and then get
+   out of the way; the figures under it are the content. */
+h1{font-size:1rem;font-weight:590;letter-spacing:.16em;text-transform:uppercase;
+  margin:0 0 1.1rem}
+h2{font-size:.7rem;font-weight:590;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 2.6rem;
+  display:inline-block;padding:.35rem .8rem;border-radius:999px;
+  background:var(--shell)}
+p{margin:0 0 1rem}
+a{color:var(--violet);text-decoration:none}
+a:hover{text-decoration:underline}
+section{padding:7rem 0 0}
+section+section{border-top:1px solid var(--line);margin-top:0}
+.lede{color:var(--body);max-width:34ch;font-size:1.15rem;line-height:1.5;margin:0}
+
+/* the verdict */
+.verdict{display:inline-flex;align-items:center;gap:.65rem;
+  font-size:.72rem;font-weight:590;letter-spacing:.2em;text-transform:uppercase;
+  margin:3.5rem 0 2.6rem;padding:.5rem 1rem .5rem .85rem;border-radius:999px}
+.verdict .dot{width:.5rem;height:.5rem;border-radius:50%}
+.held{color:var(--held);background:rgba(63,149,115,.08)}
+.held .dot{background:var(--held);box-shadow:0 0 0 4px rgba(63,149,115,.14)}
+.open{color:var(--open);background:rgba(196,134,58,.09)}
+.open .dot{background:var(--open);box-shadow:0 0 0 4px rgba(196,134,58,.16)}
+
+/* One figure size everywhere. A page that shouts three numbers and murmurs
+   four more is ranking them for the reader; these seven are one statement. */
+.figures{display:flex;flex-wrap:wrap;gap:2.8rem 4.5rem;margin:0}
+.fig{min-width:7.5rem}
+.fig .n{display:block;font-size:2.4rem;line-height:1.05;font-weight:300;
+  letter-spacing:-.035em;font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum" 1}
+.fig .k{display:block;font-size:.66rem;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--muted);margin-top:.75rem;font-weight:510}
+
+/* tables on air */
+table{width:100%;border-collapse:collapse;font-size:.95rem}
+th{text-align:left;font-size:.63rem;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--faint);font-weight:590;padding:0 1.1rem 1rem 0;white-space:nowrap}
+td{padding:.85rem 1.1rem .85rem 0;border-top:1px solid var(--line);
+  vertical-align:baseline;color:var(--body)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;padding-right:0}
+td.sym{font-weight:590;color:var(--ink);letter-spacing:-.005em}
+tbody tr:last-child td{font-weight:510;color:var(--ink)}
+.who{font-size:.85rem;color:var(--muted);white-space:nowrap}
+.opt{font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+#decisions tbody tr:last-child td{font-weight:400;color:var(--body)}
+
+/* The chart sits in a shell, the way a plate sits in a tray. */
+.plate{background:var(--shell);border-radius:2rem;padding:.5rem}
+.plate .inner{background:#fff;border-radius:1.625rem;padding:2.2rem 2rem 1.6rem;
+  box-shadow:0 1px 2px rgba(11,11,15,.03),0 12px 40px -12px rgba(11,11,15,.06)}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.legend{display:flex;gap:1.8rem;font-size:.7rem;color:var(--muted);
+  letter-spacing:.08em;margin:1.4rem 0 0;text-transform:uppercase}
+.legend i{display:inline-block;width:.5rem;height:.5rem;border-radius:2px;
+  margin-right:.45rem}
+.legend .c i{background:var(--held)} .legend .u i{background:var(--open)}
+
+/* filters */
+.controls{display:flex;flex-wrap:wrap;gap:.9rem 1.6rem;align-items:center;
+  margin:0 0 2rem;font-size:.82rem;color:var(--muted)}
+.controls input,.controls select{font:inherit;font-size:.9rem;color:var(--ink);
+  background:transparent;border:0;border-bottom:1px solid var(--line);
+  padding:.3rem 0;min-width:6.5rem;
+  transition:border-color .5s var(--ease)}
+.controls input:focus,.controls select:focus{outline:0;
+  border-bottom-color:var(--violet)}
+.count{margin-left:auto;color:var(--faint);font-variant-numeric:tabular-nums}
+
+.mark{font-size:.9rem}
+.mark.approved{color:var(--held)}
+.mark.breach,.mark.rejected{color:var(--open)}
+.mark.defect{color:#b4453c}
+.empty{color:var(--faint);font-style:italic}
+footer{margin-top:7rem;padding-top:2rem;border-top:1px solid var(--line);
+  font-size:.78rem;color:var(--faint);letter-spacing:.01em}
+
+/* Nothing arrives already there. Sections rise and resolve, on transform and
+   opacity only -- animating height or top would reflow the document on every
+   frame and stutter on a phone. */
+/* Hidden only once a script has proved it is running. Scoping the starting
+   state under `.js` means the page a judge opens with scripting off, or on a
+   browser where the observer throws, is a complete page rather than a blank
+   one -- the animation is an enhancement and must not be load-bearing. */
+.js .reveal{opacity:0;transform:translate3d(0,28px,0);
+  transition:opacity .9s var(--ease),transform .9s var(--ease)}
+.js .reveal.seen{opacity:1;transform:none}
+.reveal.d1{transition-delay:.08s} .reveal.d2{transition-delay:.16s}
+.reveal.d3{transition-delay:.24s}
+@media (prefers-reduced-motion:reduce){
+  .reveal{opacity:1;transform:none;transition:none}
 }
-/* Two slow orbs. Fixed and pointer-events-none so nothing repaints on scroll. */
-body::before {
-  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
-  background:
-    radial-gradient(60rem 40rem at 12% -10%, rgba(74,222,128,.10), transparent 60%),
-    radial-gradient(50rem 36rem at 92% 8%, rgba(251,191,36,.07), transparent 60%);
+@media (max-width:720px){
+  .wrap{padding:3.5rem 1.25rem 5rem}
+  section{padding-top:4.5rem}
+  .figures{gap:2rem 2.6rem}
+  .fig .n{font-size:1.85rem}
+  .plate .inner{padding:1.4rem 1rem 1rem}
+  .lede{font-size:1.05rem}
+  table{font-size:.88rem}
 }
-.wrap { position: relative; z-index: 1; max-width: 74rem; margin: 0 auto;
-        padding: 6rem 2rem 5rem; }
-@media (max-width: 768px) { .wrap { padding: 3rem 1rem 3rem; } }
-
-.eyebrow { display: inline-block; border-radius: 999px; padding: .3rem .75rem;
-  font-size: 10px; text-transform: uppercase; letter-spacing: .2em;
-  font-weight: 500; color: var(--dim);
-  background: var(--shell); border: 1px solid var(--hair); }
-h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); line-height: .95; font-weight: 600;
-     letter-spacing: -.04em; margin: 1.4rem 0 0; }
-.lede { color: var(--dim); max-width: 46rem; margin: 1.1rem 0 0;
-        font-size: 1.02rem; }
-h2 { font-size: 1.05rem; font-weight: 500; letter-spacing: -.01em;
-     margin: 0 0 1rem; }
-section { margin-top: 6rem; }
-@media (max-width: 768px) { section { margin-top: 3.5rem; } }
-
-/* Double bezel: a glass plate sitting in a machined tray. */
-.shell { background: var(--shell); border: 1px solid var(--hair);
-         border-radius: var(--r); padding: .4rem; }
-.core { background: var(--core); border-radius: calc(var(--r) - .4rem);
-        box-shadow: inset 0 1px 1px rgba(255,255,255,.06);
-        padding: 1.5rem 1.6rem; }
-@media (max-width: 768px) { .core { padding: 1.1rem; } }
-
-.bento { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; }
-.bento > * { grid-column: span 4; }
-.bento > .wide { grid-column: span 12; }
-@media (max-width: 768px) { .bento > * , .bento > .wide { grid-column: span 12; } }
-
-.k { font-size: 10px; text-transform: uppercase; letter-spacing: .18em;
-     color: var(--dim); }
-.v { font-size: clamp(1.5rem, 4vw, 2.1rem); font-weight: 600;
-     letter-spacing: -.03em; margin-top: .45rem; line-height: 1; }
-.v small { font-size: .8rem; font-weight: 400; color: var(--dim);
-           letter-spacing: 0; margin-left: .4rem; }
-
-table { border-collapse: collapse; width: 100%; font-size: .88rem; }
-th { text-align: left; font-weight: 500; font-size: 10px; letter-spacing: .16em;
-     text-transform: uppercase; color: var(--dim); padding: 0 .7rem .7rem;
-     border-bottom: 1px solid var(--hair); }
-td { padding: .72rem .7rem; border-bottom: 1px solid rgba(255,255,255,.05);
-     vertical-align: top; }
-tbody tr { transition: background .45s var(--ease); }
-tbody tr:hover { background: rgba(255,255,255,.025); }
-td.detail { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-            font-size: .8rem; color: var(--dim); }
-.scroll { overflow-x: auto; }
-
-.badge { display: inline-block; border-radius: 999px; padding: .18rem .6rem;
-  font-size: 10px; text-transform: uppercase; letter-spacing: .12em;
-  border: 1px solid var(--hair); color: var(--dim); white-space: nowrap; }
-tr.rejected .badge { color: var(--no); border-color: rgba(251,113,133,.35);
-                     background: rgba(251,113,133,.08); }
-tr.defect .badge { color: var(--alarm); border-color: rgba(251,191,36,.4);
-                   background: rgba(251,191,36,.1); }
-tr.defect td { font-weight: 500; }
-/* A breach is not a malfunction, so it does not borrow the defect's colour.
-   It is the promise not holding, which is work to do rather than something to
-   inspect -- and it has to be findable at a glance. */
-tr.breach .badge { color: var(--no); border-color: rgba(251,113,133,.5);
-                   background: rgba(251,113,133,.14); }
-tr.breach td { font-weight: 500; }
-
-.controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap;
-            margin: 0 0 1.2rem; font-size: .82rem; color: var(--dim); }
-.controls label { letter-spacing: .1em; text-transform: uppercase;
-                  font-size: 10px; }
-.controls input, .controls select {
-  font: inherit; color: var(--ink); padding: .42rem .7rem;
-  background: var(--shell); border: 1px solid var(--hair); border-radius: 999px;
-  outline: none; transition: border-color .5s var(--ease),
-            background .5s var(--ease); }
-.controls input:focus, .controls select:focus {
-  border-color: rgba(255,255,255,.28); background: rgba(255,255,255,.06); }
-.controls .count { margin-left: auto; font-variant-numeric: tabular-nums; }
-
-details summary { cursor: pointer; list-style: none; color: var(--ink);
-                  transition: color .4s var(--ease); }
-details summary::-webkit-details-marker { display: none; }
-details summary::before { content: "+"; display: inline-block; width: 1.1em;
-                          color: var(--dim); transition: transform .5s var(--ease); }
-details[open] summary::before { content: "2"; }
-details summary:hover { color: var(--ok); }
-details pre { margin: .7rem 0 0; padding: .8rem .9rem; overflow-x: auto;
-  background: rgba(255,255,255,.03); border: 1px solid var(--hair);
-  border-radius: .8rem; font-size: .76rem; color: var(--dim); }
-
-footer { margin-top: 6rem; padding-top: 1.6rem; border-top: 1px solid var(--hair);
-         font-size: .78rem; color: var(--dim); }
-footer a { color: var(--ink); text-decoration: none;
-           border-bottom: 1px solid var(--hair); }
-.empty { color: var(--dim); font-style: italic; }
-
-/* Entry motion: transform and opacity only, so nothing reflows. */
-.reveal { opacity: 0; transform: translateY(2rem); filter: blur(6px);
-  transition: opacity .9s var(--ease), transform .9s var(--ease),
-              filter .9s var(--ease); }
-.reveal.in { opacity: 1; transform: none; filter: none; }
-@media (prefers-reduced-motion: reduce) {
-  .reveal { opacity: 1; transform: none; filter: none; transition: none; }
-}
-
-/* --- the promise, and the floor you can drag --------------------------- */
-.note{margin:1.4rem 0 0;padding:1.1rem 1.3rem;border-left:2px solid var(--ink);
-  background:var(--panel);font-size:.98rem;line-height:1.65;max-width:62ch}
-.note.empty{border-left-color:var(--muted);color:var(--muted);font-style:italic}
-.changed{margin:0}
-.changes{margin:0;padding-left:1.2rem;line-height:1.9}
-.changes li{font-variant-numeric:tabular-nums}
-.card .s{display:block;margin-top:.35rem;font-size:.78rem;color:var(--muted);
-  letter-spacing:.02em}
-.good{color:#1c7c4a}
-.bad{color:#b3261e}
-.floor{margin-top:1.2rem}
-.floor label{display:block;font-size:.86rem;letter-spacing:.04em;
-  text-transform:uppercase;color:var(--muted);margin-bottom:.5rem}
-.floor output{font-variant-numeric:tabular-nums;color:var(--ink);
-  font-weight:600;font-size:1.05rem;text-transform:none;letter-spacing:0}
-.floor input[type=range]{width:100%;max-width:38rem;accent-color:var(--ink);
-  margin:0 0 1.4rem;cursor:grab}
-.floor input[type=range]:active{cursor:grabbing}
 </style>
+<script>document.documentElement.className+=" js";</script>
 </head>
 <body>
 <div class="wrap">
 
-<header class="reveal">
-<span class="eyebrow">Alpaca paper trading &middot; live</span>
-<h1>Drawdown-Guard</h1>
-<p class="lede">An investor can say how much they are willing to lose. A
-portfolio cannot keep that promise on its own. Every weekday this agent
-measures the client&rsquo;s book against the loss they agreed to, and when the
-promise stops holding it buys back the difference &mdash; the cheapest
-structure that floors the loss at every depth, never a view on where the market
-is going.</p>
+<header>
+<h1 class="reveal">&#128737; Drawdown Guard</h1>
+<p class="lede reveal d1">An autonomous AI agent that keeps a portfolio within a
+client-defined downside limit, through an option overlay.</p>
+<div class="reveal d2"><p class="verdict held"><span class="dot"></span>Inside the promise</p>
+<div class="figures">
+<div class="fig lead"><span class="n">$9,998</span>
+<span class="k">Loss limit</span></div>
+<div class="fig lead"><span class="n">$2,795</span>
+<span class="k">Worst case</span></div>
+<div class="fig lead"><span class="n">$7,203</span>
+<span class="k">Remaining headroom</span></div>
+</div></div>
 </header>
 
 <section class="reveal">
-<h2>What changed this morning</h2>
-<p class="lede">The list is arithmetic &mdash; the book against yesterday&rsquo;s
-snapshot. Below it, a language model is handed the holdings, the promise, the
-protection held and the four stress rungs, and asked which positions carry a
-risk issue. It is not given the answer; finding it is the question. Nothing it
-says reaches an order &mdash; the hedge is sized from the ladder below, and a
-finding the cycle did not act on is recorded as a disagreement rather than
-resolved.</p>
-<div class="changed">Nothing moved in the book since the last cycle.<p class="note empty">The analyst did not answer this cycle.</p></div>
-</section>
-
-<section class="reveal">
-<h2>The promise, and where the book stands</h2>
-<div class="bento">
-<div class="card"><span class="k">The promise</span>
-<span class="v">10.0%</span>
-<span class="s">of the account, at most, over 12 months</span></div>
-<div class="card"><span class="k">In dollars</span>
-<span class="v">$9,998</span>
-<span class="s">the whole downside budget</span></div>
-<div class="card"><span class="k">Equity at risk</span>
-<span class="v">$80,695</span>
-<span class="s">what a fall would move</span></div>
-<div class="card"><span class="k">Against the promise</span>
-<span class="v"><span class="good">the promise holds</span></span>
-<span class="s">mandate: balanced</span></div>
-</div>
-<p class="note empty">No note was written for the last decision.</p>
-</section>
-
-<section class="reveal">
-<h2>The floor holds at every depth</h2>
-<p class="lede">Four rungs are measured every cycle and the line between them is
-straight &mdash; the payoff bends only at a strike, so this is the exact answer
-between the points, not a curve fitted to them. Drag it. Nothing here predicts
-a fall; it answers what this book would be worth if one happened.</p>
-<div class="floor" data-rungs='[{"shock": -0.05, "loss": 2669.0}, {"shock": -0.1, "loss": 2795.0}, {"shock": -0.2, "loss": 2795.0}, {"shock": -0.35, "loss": 2795.0}]' data-budget="9997.84">
-<label for="shockrange">If the market falls
-<output id="shockout">10%</output></label>
-<input id="shockrange" type="range" min="0" max="35" value="10" step="1">
-<div class="bento">
-<div class="card"><span class="k">The portfolio loses</span>
-<span class="v" id="lossout">&mdash;</span></div>
-<div class="card"><span class="k">The client agreed to</span>
-<span class="v">$9,998</span></div>
-<div class="card"><span class="k">Verdict</span>
-<span class="v" id="verdictout">&mdash;</span></div>
-</div>
+<h2>The promise</h2>
+<div class="figures tight">
+<div class="fig"><span class="n">$99,978</span>
+<span class="k">Reference portfolio</span></div>
+<div class="fig"><span class="n">10.0%</span>
+<span class="k">Maximum drawdown</span></div>
+<div class="fig"><span class="n">$9,998</span>
+<span class="k">Loss budget</span></div>
+<div class="fig"><span class="n">12 months</span>
+<span class="k">Mandate window &middot; 2026-08-28 &rarr; 2027-08-28</span></div>
 </div>
 </section>
 
 <section class="reveal">
-<h2>The book</h2>
-<div class="bento">
-<div class="shell"><div class="core"><div class="k">Equity at risk</div><div class="v">$80,695</div></div></div>
-<div class="shell"><div class="core"><div class="k">Worst case</div><div class="v">$2,795<small>anywhere on the way down</small></div></div></div>
-<div class="shell"><div class="core"><div class="k">The promise</div><div class="v">$9,998<small>what the client agreed to</small></div></div></div>
-<div class="shell"><div class="core"><div class="k">Spent on protection</div><div class="v">$3,177<small>this cycle</small></div></div></div>
-</div>
+<h2>The portfolio</h2>
+<p class="empty">No book has been read yet.</p>
 </section>
 
 <section class="reveal">
-<h2>What is holding the promise up</h2>
-<p class="lede">One row per holding. Each is hedged on its own underlying with
-its own share of the budget &mdash; a put on one index pays nothing for a fall
-in another, and the three implied volatilities are why a single hedge could
-never have been right.</p>
-<div class="shell"><div class="core"><div class="scroll">
-<table>
-<thead><tr><th>Holding</th><th>Exposure</th><th>Its budget</th>
-<th>Protection</th><th>Cost</th></tr></thead>
-<tbody>
-<tr><td>XLF</td><td>$51,880</td><td>$6,403</td><td>buy 9x XLF 56 put at 3.53</td><td>$3,177 <small>21.4%</small></td></tr>
-<tr><td>IWM</td><td>$29,131</td><td>$3,595</td><td>&mdash; nothing needed</td><td>&mdash; <small>&mdash;</small></td></tr>
-</tbody>
-</table>
-</div></div></div>
-</section>
-
-<section class="reveal">
-<h2>Decisions</h2>
-<p class="lede">Refusals are listed alongside fills. A gate that never says no
-is not a gate, so the rejections are the evidence, not the omissions. Filter to
-<em>rejected</em> to read only the trades this agent talked itself out of, and
-expand any row for the record it decided from.</p>
-<div class="shell"><div class="core">
-<div class="controls"><label for="f-symbol">Symbol</label><input id="f-symbol" type="text" size="8" autocomplete="off" title="filter by symbol, for example SPY"><label for="f-verdict">Verdict</label><select id="f-verdict"><option value="all">all</option><option value="approved">approved</option><option value="rejected">rejected</option><option value="breach">breach</option><option value="defect">defect</option></select><span class="count">showing <span id="f-count"></span></span></div>
-<div class="scroll">
-<table>
-<thead><tr><th>Time (UTC)</th><th>Symbol</th><th>Action</th><th>Verdict</th>
-<th>Detail</th></tr></thead>
-<tbody>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T17:48:59.290416+00:00</td><td></td><td>cycle.complete</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;regime_rationale&quot;: &quot;&quot;, &quot;halted&quot;: false, &quot;halt_reason&quot;: &quot;&quot;, &quot;equity&quot;: &quot;98319.7&quot;, &quot;net_delta&quot;: 771.2219377070205, &quot;net_delta_value&quot;: 63986.696955652, &quot;vega&quot;: -316.27532255183564, &quot;submitted&quot;: 0, &quot;refused&quot;: 0, &quot;uncovered_risk&quot;: 0.0, &quot;book_complete&quot;: true, &quot;protection&quot;: [], &quot;released&quot;: 0, &quot;discrepancies&quot;: [&quot;BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;, &quot;IWM: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;, &quot;XLF: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;], &quot;dry_run&quot;: false}</summary><pre>{
-  &quot;book_complete&quot;: true,
-  &quot;discrepancies&quot;: [
-    &quot;BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;,
-    &quot;IWM: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;,
-    &quot;XLF: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-  ],
-  &quot;dry_run&quot;: false,
-  &quot;equity&quot;: &quot;98319.7&quot;,
-  &quot;halt_reason&quot;: &quot;&quot;,
-  &quot;halted&quot;: false,
-  &quot;net_delta&quot;: 771.2219377070205,
-  &quot;net_delta_value&quot;: 63986.696955652,
-  &quot;protection&quot;: [],
-  &quot;refused&quot;: 0,
-  &quot;regime&quot;: null,
-  &quot;regime_rationale&quot;: &quot;&quot;,
-  &quot;released&quot;: 0,
-  &quot;submitted&quot;: 0,
-  &quot;uncovered_risk&quot;: 0.0,
-  &quot;vega&quot;: -316.27532255183564
-}</pre></details></td></tr>
-<tr class="" data-symbol="XLF" data-verdict="approved"><td>2026-09-01T17:48:59.286849+00:00</td><td>XLF</td><td>protection.chain_filtered</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;puts&quot;: {&quot;offered&quot;: 67, &quot;tradable&quot;: 5}, &quot;calls&quot;: {&quot;offered&quot;: 61, &quot;tradable&quot;: 6}, &quot;min_open_interest&quot;: 500, &quot;max_spread_pct&quot;: 5.0}</summary><pre>{
-  &quot;calls&quot;: {
-    &quot;offered&quot;: 61,
-    &quot;tradable&quot;: 6
-  },
-  &quot;max_spread_pct&quot;: 5.0,
-  &quot;min_open_interest&quot;: 500,
-  &quot;puts&quot;: {
-    &quot;offered&quot;: 67,
-    &quot;tradable&quot;: 5
-  },
-  &quot;symbol&quot;: &quot;XLF&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="IWM" data-verdict="approved"><td>2026-09-01T17:48:54.103609+00:00</td><td>IWM</td><td>protection.chain_filtered</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;puts&quot;: {&quot;offered&quot;: 266, &quot;tradable&quot;: 28}, &quot;calls&quot;: {&quot;offered&quot;: 204, &quot;tradable&quot;: 24}, &quot;min_open_interest&quot;: 500, &quot;max_spread_pct&quot;: 5.0}</summary><pre>{
-  &quot;calls&quot;: {
-    &quot;offered&quot;: 204,
-    &quot;tradable&quot;: 24
-  },
-  &quot;max_spread_pct&quot;: 5.0,
-  &quot;min_open_interest&quot;: 500,
-  &quot;puts&quot;: {
-    &quot;offered&quot;: 266,
-    &quot;tradable&quot;: 28
-  },
-  &quot;symbol&quot;: &quot;IWM&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T17:48:51.120110+00:00</td><td></td><td>book.reviewed</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;first&quot;: false, &quot;moved&quot;: false, &quot;changes&quot;: [], &quot;answered&quot;: false, &quot;findings&quot;: []}</summary><pre>{
-  &quot;answered&quot;: false,
-  &quot;changes&quot;: [],
-  &quot;findings&quot;: [],
-  &quot;first&quot;: false,
-  &quot;moved&quot;: false
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T17:48:16.268485+00:00</td><td></td><td>mandate.stress</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;mandate&quot;: &quot;balanced&quot;, &quot;downside_budget_pct&quot;: 10.0, &quot;budget&quot;: 9997.84, &quot;equity_exposure&quot;: 80695.0, &quot;binding_shock&quot;: -0.2, &quot;uncovered_risk&quot;: 0.0, &quot;worst_case&quot;: 2795.0, &quot;shortfall_at_shock&quot;: 0.0, &quot;period_started&quot;: &quot;2026-08-28&quot;, &quot;period_ends&quot;: &quot;2027-08-28&quot;, &quot;reference&quot;: 99978.43, &quot;unprotected_limit&quot;: 49989.21, &quot;complete&quot;: true, &quot;unpriced&quot;: [], &quot;ladder&quot;: [{&quot;shock&quot;: -0.05, &quot;loss&quot;: -2669.0, &quot;from_options&quot;: 1365.75, &quot;shortfall&quot;: 0.0}, {&quot;shock&quot;: -0.1, &quot;loss&quot;: -2795.0, &quot;from_options&quot;: 5274.5, &quot;shortfall&quot;: 0.0}, {&quot;shock&quot;: -0.2, &quot;loss&quot;: -2795.0, &quot;from_options&quot;: 13344.0, &quot;shortfall&quot;: 0.0}, {&quot;shock&quot;: -0.35, &quot;loss&quot;: -2795.0, &quot;from_options&quot;: 25448.25, &quot;shortfall&quot;: 0.0}], &quot;worst_shortfall&quot;: 0.0, &quot;worst_shock&quot;: null}</summary><pre>{
-  &quot;binding_shock&quot;: -0.2,
-  &quot;budget&quot;: 9997.84,
-  &quot;complete&quot;: true,
-  &quot;downside_budget_pct&quot;: 10.0,
-  &quot;equity_exposure&quot;: 80695.0,
-  &quot;ladder&quot;: [
-    {
-      &quot;from_options&quot;: 1365.75,
-      &quot;loss&quot;: -2669.0,
-      &quot;shock&quot;: -0.05,
-      &quot;shortfall&quot;: 0.0
-    },
-    {
-      &quot;from_options&quot;: 5274.5,
-      &quot;loss&quot;: -2795.0,
-      &quot;shock&quot;: -0.1,
-      &quot;shortfall&quot;: 0.0
-    },
-    {
-      &quot;from_options&quot;: 13344.0,
-      &quot;loss&quot;: -2795.0,
-      &quot;shock&quot;: -0.2,
-      &quot;shortfall&quot;: 0.0
-    },
-    {
-      &quot;from_options&quot;: 25448.25,
-      &quot;loss&quot;: -2795.0,
-      &quot;shock&quot;: -0.35,
-      &quot;shortfall&quot;: 0.0
-    }
-  ],
-  &quot;mandate&quot;: &quot;balanced&quot;,
-  &quot;period_ends&quot;: &quot;2027-08-28&quot;,
-  &quot;period_started&quot;: &quot;2026-08-28&quot;,
-  &quot;reference&quot;: 99978.43,
-  &quot;shortfall_at_shock&quot;: 0.0,
-  &quot;uncovered_risk&quot;: 0.0,
-  &quot;unpriced&quot;: [],
-  &quot;unprotected_limit&quot;: 49989.21,
-  &quot;worst_case&quot;: 2795.0,
-  &quot;worst_shock&quot;: null,
-  &quot;worst_shortfall&quot;: 0.0
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T17:48:14.701991+00:00</td><td></td><td>reconcile.discrepancy</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>XLF: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position</summary><pre>{
-  &quot;detail&quot;: &quot;XLF: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T17:48:14.701912+00:00</td><td></td><td>reconcile.discrepancy</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>IWM: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position</summary><pre>{
-  &quot;detail&quot;: &quot;IWM: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T17:48:14.701714+00:00</td><td></td><td>reconcile.discrepancy</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position</summary><pre>{
-  &quot;detail&quot;: &quot;BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T17:27:42.890474+00:00</td><td></td><td>cycle.complete</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;regime_rationale&quot;: &quot;&quot;, &quot;halted&quot;: false, &quot;halt_reason&quot;: &quot;&quot;, &quot;equity&quot;: &quot;98200.47&quot;, &quot;net_delta&quot;: 769.1065878606532, &quot;net_delta_value&quot;: 63755.12588288958, &quot;vega&quot;: -316.59218067737663, &quot;submitted&quot;: 0, &quot;refused&quot;: 0, &quot;uncovered_risk&quot;: 0.0, &quot;book_complete&quot;: true, &quot;protection&quot;: [], &quot;released&quot;: 0, &quot;discrepancies&quot;: [&quot;BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;, &quot;IWM: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;, &quot;XLF: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;], &quot;dry_run&quot;: false}</summary><pre>{
-  &quot;book_complete&quot;: true,
-  &quot;discrepancies&quot;: [
-    &quot;BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;,
-    &quot;IWM: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;,
-    &quot;XLF: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-  ],
-  &quot;dry_run&quot;: false,
-  &quot;equity&quot;: &quot;98200.47&quot;,
-  &quot;halt_reason&quot;: &quot;&quot;,
-  &quot;halted&quot;: false,
-  &quot;net_delta&quot;: 769.1065878606532,
-  &quot;net_delta_value&quot;: 63755.12588288958,
-  &quot;protection&quot;: [],
-  &quot;refused&quot;: 0,
-  &quot;regime&quot;: null,
-  &quot;regime_rationale&quot;: &quot;&quot;,
-  &quot;released&quot;: 0,
-  &quot;submitted&quot;: 0,
-  &quot;uncovered_risk&quot;: 0.0,
-  &quot;vega&quot;: -316.59218067737663
-}</pre></details></td></tr>
-<tr class="" data-symbol="XLF" data-verdict="approved"><td>2026-09-01T17:27:42.887005+00:00</td><td>XLF</td><td>protection.chain_filtered</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;puts&quot;: {&quot;offered&quot;: 67, &quot;tradable&quot;: 5}, &quot;calls&quot;: {&quot;offered&quot;: 63, &quot;tradable&quot;: 8}, &quot;min_open_interest&quot;: 500, &quot;max_spread_pct&quot;: 5.0}</summary><pre>{
-  &quot;calls&quot;: {
-    &quot;offered&quot;: 63,
-    &quot;tradable&quot;: 8
-  },
-  &quot;max_spread_pct&quot;: 5.0,
-  &quot;min_open_interest&quot;: 500,
-  &quot;puts&quot;: {
-    &quot;offered&quot;: 67,
-    &quot;tradable&quot;: 5
-  },
-  &quot;symbol&quot;: &quot;XLF&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="IWM" data-verdict="approved"><td>2026-09-01T17:27:39.621963+00:00</td><td>IWM</td><td>protection.chain_filtered</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;puts&quot;: {&quot;offered&quot;: 267, &quot;tradable&quot;: 20}, &quot;calls&quot;: {&quot;offered&quot;: 207, &quot;tradable&quot;: 23}, &quot;min_open_interest&quot;: 500, &quot;max_spread_pct&quot;: 5.0}</summary><pre>{
-  &quot;calls&quot;: {
-    &quot;offered&quot;: 207,
-    &quot;tradable&quot;: 23
-  },
-  &quot;max_spread_pct&quot;: 5.0,
-  &quot;min_open_interest&quot;: 500,
-  &quot;puts&quot;: {
-    &quot;offered&quot;: 267,
-    &quot;tradable&quot;: 20
-  },
-  &quot;symbol&quot;: &quot;IWM&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T17:27:35.692323+00:00</td><td></td><td>book.reviewed</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;first&quot;: false, &quot;moved&quot;: true, &quot;changes&quot;: [&quot;opened +9 contracts of XLF P56&quot;], &quot;answered&quot;: false, &quot;findings&quot;: []}</summary><pre>{
-  &quot;answered&quot;: false,
-  &quot;changes&quot;: [
-    &quot;opened +9 contracts of XLF P56&quot;
-  ],
-  &quot;findings&quot;: [],
-  &quot;first&quot;: false,
-  &quot;moved&quot;: true
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T17:27:00.663937+00:00</td><td></td><td>mandate.stress</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;mandate&quot;: &quot;balanced&quot;, &quot;downside_budget_pct&quot;: 10.0, &quot;budget&quot;: 9997.84, &quot;equity_exposure&quot;: 80577.0, &quot;binding_shock&quot;: -0.2, &quot;uncovered_risk&quot;: 0.0, &quot;worst_case&quot;: 2677.0, &quot;shortfall_at_shock&quot;: 0.0, &quot;period_started&quot;: &quot;2026-08-28&quot;, &quot;period_ends&quot;: &quot;2027-08-28&quot;, &quot;reference&quot;: 99978.43, &quot;unprotected_limit&quot;: 49989.21, &quot;complete&quot;: true, &quot;unpriced&quot;: [], &quot;ladder&quot;: [{&quot;shock&quot;: -0.05, &quot;loss&quot;: -2564.78, &quot;from_options&quot;: 1464.08, &quot;shortfall&quot;: 0.0}, {&quot;shock&quot;: -0.1, &quot;loss&quot;: -2677.0, &quot;from_options&quot;: 5380.7, &quot;shortfall&quot;: 0.0}, {&quot;shock&quot;: -0.2, &quot;loss&quot;: -2677.0, &quot;from_options&quot;: 13438.4, &quot;shortfall&quot;: 0.0}, {&quot;shock&quot;: -0.35, &quot;loss&quot;: -2677.0, &quot;from_options&quot;: 25524.95, &quot;shortfall&quot;: 0.0}], &quot;worst_shortfall&quot;: 0.0, &quot;worst_shock&quot;: null}</summary><pre>{
-  &quot;binding_shock&quot;: -0.2,
-  &quot;budget&quot;: 9997.84,
-  &quot;complete&quot;: true,
-  &quot;downside_budget_pct&quot;: 10.0,
-  &quot;equity_exposure&quot;: 80577.0,
-  &quot;ladder&quot;: [
-    {
-      &quot;from_options&quot;: 1464.08,
-      &quot;loss&quot;: -2564.78,
-      &quot;shock&quot;: -0.05,
-      &quot;shortfall&quot;: 0.0
-    },
-    {
-      &quot;from_options&quot;: 5380.7,
-      &quot;loss&quot;: -2677.0,
-      &quot;shock&quot;: -0.1,
-      &quot;shortfall&quot;: 0.0
-    },
-    {
-      &quot;from_options&quot;: 13438.4,
-      &quot;loss&quot;: -2677.0,
-      &quot;shock&quot;: -0.2,
-      &quot;shortfall&quot;: 0.0
-    },
-    {
-      &quot;from_options&quot;: 25524.95,
-      &quot;loss&quot;: -2677.0,
-      &quot;shock&quot;: -0.35,
-      &quot;shortfall&quot;: 0.0
-    }
-  ],
-  &quot;mandate&quot;: &quot;balanced&quot;,
-  &quot;period_ends&quot;: &quot;2027-08-28&quot;,
-  &quot;period_started&quot;: &quot;2026-08-28&quot;,
-  &quot;reference&quot;: 99978.43,
-  &quot;shortfall_at_shock&quot;: 0.0,
-  &quot;uncovered_risk&quot;: 0.0,
-  &quot;unpriced&quot;: [],
-  &quot;unprotected_limit&quot;: 49989.21,
-  &quot;worst_case&quot;: 2677.0,
-  &quot;worst_shock&quot;: null,
-  &quot;worst_shortfall&quot;: 0.0
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T17:26:59.255137+00:00</td><td></td><td>reconcile.discrepancy</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>XLF: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position</summary><pre>{
-  &quot;detail&quot;: &quot;XLF: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T17:26:59.255070+00:00</td><td></td><td>reconcile.discrepancy</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>IWM: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position</summary><pre>{
-  &quot;detail&quot;: &quot;IWM: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T17:26:59.254857+00:00</td><td></td><td>reconcile.discrepancy</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position</summary><pre>{
-  &quot;detail&quot;: &quot;BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T13:47:32.267898+00:00</td><td></td><td>cycle.complete</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;regime_rationale&quot;: &quot;&quot;, &quot;halted&quot;: false, &quot;halt_reason&quot;: &quot;&quot;, &quot;equity&quot;: &quot;98804.93&quot;, &quot;net_delta&quot;: 1070.217093648215, &quot;net_delta_value&quot;: 81483.59046519331, &quot;vega&quot;: -103.13988094655542, &quot;submitted&quot;: 1, &quot;refused&quot;: 0, &quot;uncovered_risk&quot;: 43513.657, &quot;book_complete&quot;: true, &quot;protection&quot;: [&quot;protective_put&quot;], &quot;released&quot;: 0, &quot;discrepancies&quot;: [&quot;BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;, &quot;IWM: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;, &quot;XLF: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;], &quot;dry_run&quot;: false}</summary><pre>{
-  &quot;book_complete&quot;: true,
-  &quot;discrepancies&quot;: [
-    &quot;BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;,
-    &quot;IWM: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;,
-    &quot;XLF: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-  ],
-  &quot;dry_run&quot;: false,
-  &quot;equity&quot;: &quot;98804.93&quot;,
-  &quot;halt_reason&quot;: &quot;&quot;,
-  &quot;halted&quot;: false,
-  &quot;net_delta&quot;: 1070.217093648215,
-  &quot;net_delta_value&quot;: 81483.59046519331,
-  &quot;protection&quot;: [
-    &quot;protective_put&quot;
-  ],
-  &quot;refused&quot;: 0,
-  &quot;regime&quot;: null,
-  &quot;regime_rationale&quot;: &quot;&quot;,
-  &quot;released&quot;: 0,
-  &quot;submitted&quot;: 1,
-  &quot;uncovered_risk&quot;: 43513.657,
-  &quot;vega&quot;: -103.13988094655542
-}</pre></details></td></tr>
-<tr class="" data-symbol="XLF" data-verdict="approved"><td>2026-09-01T13:46:57.776694+00:00</td><td>XLF</td><td>order.filled</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>submitted</summary><pre>{
-  &quot;assignment_prob&quot;: 0.4167278316440354,
-  &quot;broker_order_id&quot;: &quot;4f0db6d7-0a5b-4bdb-bb86-e287388d8ea8&quot;,
-  &quot;broker_status&quot;: &quot;filled&quot;,
-  &quot;contracts&quot;: 9,
-  &quot;delta&quot;: -0.3251310414611158,
-  &quot;fill_price&quot;: &quot;3.5&quot;,
-  &quot;filled&quot;: 9,
-  &quot;limit_price&quot;: &quot;3.53&quot;,
-  &quot;occ_symbol&quot;: &quot;XLF271217P00056000&quot;,
-  &quot;of&quot;: 9,
-  &quot;reason&quot;: &quot;submitted&quot;,
-  &quot;symbol&quot;: &quot;XLF&quot;
-}</pre></details></td></tr>
-<tr class="breach" data-symbol="" data-verdict="breach"><td>2026-09-01T13:46:53.289381+00:00</td><td></td><td>protection.plan</td><td><span class="badge">breach</span></td><td class="detail"><details><summary>{&quot;mandate&quot;: &quot;balanced&quot;, &quot;uncovered_risk&quot;: 43513.66, &quot;book_complete&quot;: true, &quot;excluded&quot;: [&quot;reduce_exposure&quot;], &quot;sleeves&quot;: [{&quot;symbol&quot;: &quot;XLF&quot;, &quot;spot&quot;: 57.645, &quot;exposure&quot;: 51880.5, &quot;budget&quot;: 6402.71, &quot;offers&quot;: [{&quot;kind&quot;: &quot;protective_put&quot;, &quot;detail&quot;: &quot;buy 9x XLF 56 put at 3.53&quot;, &quot;premium_cost&quot;: 3177.0, &quot;forgone_upside&quot;: 0.0, &quot;upside_measured_at&quot;: 0.0, &quot;upside_price&quot;: null, &quot;cash_per_1k&quot;: 69.86, &quot;permanent&quot;: false, &quot;protection_iv&quot;: 0.2138, &quot;financing_iv&quot;: null, &quot;financed_fairly&quot;: null, &quot;uncovered_after&quot;: 0.0, &quot;covers_the_risk&quot;: true}, {&quot;kind&quot;: &quot;collar&quot;, &quot;detail&quot;: &quot;buy 9x 56 put, sell 9x 61 call at 4.22&quot;, &quot;premium_cost&quot;: -621.0, &quot;forgone_upside&quot;: 2168.55, &quot;upside_measured_at&quot;: 0.1, &quot;upside_price&quot;: 652.57, &quot;cash_per_1k&quot;: null, &quot;permanent&quot;: false, &quot;protection_iv&quot;: 0.2138, &quot;financing_iv&quot;: 0.1697, &quot;financed_fairly&quot;: false, &quot;uncovered_after&quot;: 0.0, &quot;covers_the_risk&quot;: true}], &quot;chosen&quot;: &quot;protective_put&quot;, &quot;because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 17.0% vol against a put at 21.4% -- so the 3,798 saved would come out of underpriced upside&quot;, &quot;decided_by&quot;: &quot;rule&quot;, &quot;rule_would_have&quot;: &quot;protective_put&quot;, &quot;rule_because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 17.0% vol against a put at 21.4% -- so the 3,798 saved would come out of underpriced upside&quot;}, {&quot;symbol&quot;: &quot;IWM&quot;, &quot;spot&quot;: 291.31, &quot;exposure&quot;: 29131.0, &quot;budget&quot;: 3595.13, &quot;offers&quot;: [], &quot;chosen&quot;: null, &quot;because&quot;: &quot;nothing on today&#x27;s chain closes the gap&quot;, &quot;decided_by&quot;: &quot;rule&quot;, &quot;rule_would_have&quot;: null, &quot;rule_because&quot;: &quot;nothing on today&#x27;s chain closes the gap&quot;}], &quot;total_premium&quot;: 3177.0}</summary><pre>{
-  &quot;book_complete&quot;: true,
-  &quot;excluded&quot;: [
-    &quot;reduce_exposure&quot;
-  ],
-  &quot;mandate&quot;: &quot;balanced&quot;,
-  &quot;sleeves&quot;: [
-    {
-      &quot;because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 17.0% vol against a put at 21.4% -- so the 3,798 saved would come out of underpriced upside&quot;,
-      &quot;budget&quot;: 6402.71,
-      &quot;chosen&quot;: &quot;protective_put&quot;,
-      &quot;decided_by&quot;: &quot;rule&quot;,
-      &quot;exposure&quot;: 51880.5,
-      &quot;offers&quot;: [
-        {
-          &quot;cash_per_1k&quot;: 69.86,
-          &quot;covers_the_risk&quot;: true,
-          &quot;detail&quot;: &quot;buy 9x XLF 56 put at 3.53&quot;,
-          &quot;financed_fairly&quot;: null,
-          &quot;financing_iv&quot;: null,
-          &quot;forgone_upside&quot;: 0.0,
-          &quot;kind&quot;: &quot;protective_put&quot;,
-          &quot;permanent&quot;: false,
-          &quot;premium_cost&quot;: 3177.0,
-          &quot;protection_iv&quot;: 0.2138,
-          &quot;uncovered_after&quot;: 0.0,
-          &quot;upside_measured_at&quot;: 0.0,
-          &quot;upside_price&quot;: null
-        },
-        {
-          &quot;cash_per_1k&quot;: null,
-          &quot;covers_the_risk&quot;: true,
-          &quot;detail&quot;: &quot;buy 9x 56 put, sell 9x 61 call at 4.22&quot;,
-          &quot;financed_fairly&quot;: false,
-          &quot;financing_iv&quot;: 0.1697,
-          &quot;forgone_upside&quot;: 2168.55,
-          &quot;kind&quot;: &quot;collar&quot;,
-          &quot;permanent&quot;: false,
-          &quot;premium_cost&quot;: -621.0,
-          &quot;protection_iv&quot;: 0.2138,
-          &quot;uncovered_after&quot;: 0.0,
-          &quot;upside_measured_at&quot;: 0.1,
-          &quot;upside_price&quot;: 652.57
-        }
-      ],
-      &quot;rule_because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 17.0% vol against a put at 21.4% -- so the 3,798 saved would come out of underpriced upside&quot;,
-      &quot;rule_would_have&quot;: &quot;protective_put&quot;,
-      &quot;spot&quot;: 57.645,
-      &quot;symbol&quot;: &quot;XLF&quot;
-    },
-    {
-      &quot;because&quot;: &quot;nothing on today&#x27;s chain closes the gap&quot;,
-      &quot;budget&quot;: 3595.13,
-      &quot;chosen&quot;: null,
-      &quot;decided_by&quot;: &quot;rule&quot;,
-      &quot;exposure&quot;: 29131.0,
-      &quot;offers&quot;: [],
-      &quot;rule_because&quot;: &quot;nothing on today&#x27;s chain closes the gap&quot;,
-      &quot;rule_would_have&quot;: null,
-      &quot;spot&quot;: 291.31,
-      &quot;symbol&quot;: &quot;IWM&quot;
-    }
-  ],
-  &quot;total_premium&quot;: 3177.0,
-  &quot;uncovered_risk&quot;: 43513.66
-}</pre></details></td></tr>
-<tr class="" data-symbol="XLF" data-verdict="approved"><td>2026-09-01T13:46:20.039297+00:00</td><td>XLF</td><td>protection.chain_filtered</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;puts&quot;: {&quot;offered&quot;: 67, &quot;tradable&quot;: 4}, &quot;calls&quot;: {&quot;offered&quot;: 57, &quot;tradable&quot;: 8}, &quot;min_open_interest&quot;: 500, &quot;max_spread_pct&quot;: 5.0}</summary><pre>{
-  &quot;calls&quot;: {
-    &quot;offered&quot;: 57,
-    &quot;tradable&quot;: 8
-  },
-  &quot;max_spread_pct&quot;: 5.0,
-  &quot;min_open_interest&quot;: 500,
-  &quot;puts&quot;: {
-    &quot;offered&quot;: 67,
-    &quot;tradable&quot;: 4
-  },
-  &quot;symbol&quot;: &quot;XLF&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="IWM" data-verdict="approved"><td>2026-09-01T13:46:17.067718+00:00</td><td>IWM</td><td>protection.chain_filtered</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;puts&quot;: {&quot;offered&quot;: 265, &quot;tradable&quot;: 15}, &quot;calls&quot;: {&quot;offered&quot;: 204, &quot;tradable&quot;: 20}, &quot;min_open_interest&quot;: 500, &quot;max_spread_pct&quot;: 5.0}</summary><pre>{
-  &quot;calls&quot;: {
-    &quot;offered&quot;: 204,
-    &quot;tradable&quot;: 20
-  },
-  &quot;max_spread_pct&quot;: 5.0,
-  &quot;min_open_interest&quot;: 500,
-  &quot;puts&quot;: {
-    &quot;offered&quot;: 265,
-    &quot;tradable&quot;: 15
-  },
-  &quot;symbol&quot;: &quot;IWM&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T13:46:13.824611+00:00</td><td></td><td>book.reviewed</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;first&quot;: false, &quot;moved&quot;: true, &quot;changes&quot;: [&quot;opened +1 contracts of IWM P275&quot;], &quot;answered&quot;: false, &quot;findings&quot;: []}</summary><pre>{
-  &quot;answered&quot;: false,
-  &quot;changes&quot;: [
-    &quot;opened +1 contracts of IWM P275&quot;
-  ],
-  &quot;findings&quot;: [],
-  &quot;first&quot;: false,
-  &quot;moved&quot;: true
-}</pre></details></td></tr>
-<tr class="breach" data-symbol="" data-verdict="breach"><td>2026-09-01T13:45:39.224593+00:00</td><td></td><td>mandate.stress</td><td><span class="badge">breach</span></td><td class="detail"><details><summary>{&quot;mandate&quot;: &quot;balanced&quot;, &quot;downside_budget_pct&quot;: 10.0, &quot;budget&quot;: 9997.84, &quot;equity_exposure&quot;: 81011.5, &quot;binding_shock&quot;: -0.2, &quot;uncovered_risk&quot;: 43513.66, &quot;worst_case&quot;: 53511.5, &quot;shortfall_at_shock&quot;: 2009.26, &quot;period_started&quot;: &quot;2026-08-28&quot;, &quot;period_ends&quot;: &quot;2027-08-28&quot;, &quot;reference&quot;: 99978.43, &quot;unprotected_limit&quot;: 49989.21, &quot;complete&quot;: true, &quot;unpriced&quot;: [], &quot;ladder&quot;: [{&quot;shock&quot;: -0.05, &quot;loss&quot;: -4050.58, &quot;from_options&quot;: 0.0, &quot;shortfall&quot;: 0.0}, {&quot;shock&quot;: -0.1, &quot;loss&quot;: -6819.05, &quot;from_options&quot;: 1282.1, &quot;shortfall&quot;: 0.0}, {&quot;shock&quot;: -0.2, &quot;loss&quot;: -12007.1, &quot;from_options&quot;: 4195.2, &quot;shortfall&quot;: 2009.26}, {&quot;shock&quot;: -0.35, &quot;loss&quot;: -19789.17, &quot;from_options&quot;: 8564.85, &quot;shortfall&quot;: 9791.33}], &quot;worst_shortfall&quot;: 9791.33, &quot;worst_shock&quot;: -0.35}</summary><pre>{
-  &quot;binding_shock&quot;: -0.2,
-  &quot;budget&quot;: 9997.84,
-  &quot;complete&quot;: true,
-  &quot;downside_budget_pct&quot;: 10.0,
-  &quot;equity_exposure&quot;: 81011.5,
-  &quot;ladder&quot;: [
-    {
-      &quot;from_options&quot;: 0.0,
-      &quot;loss&quot;: -4050.58,
-      &quot;shock&quot;: -0.05,
-      &quot;shortfall&quot;: 0.0
-    },
-    {
-      &quot;from_options&quot;: 1282.1,
-      &quot;loss&quot;: -6819.05,
-      &quot;shock&quot;: -0.1,
-      &quot;shortfall&quot;: 0.0
-    },
-    {
-      &quot;from_options&quot;: 4195.2,
-      &quot;loss&quot;: -12007.1,
-      &quot;shock&quot;: -0.2,
-      &quot;shortfall&quot;: 2009.26
-    },
-    {
-      &quot;from_options&quot;: 8564.85,
-      &quot;loss&quot;: -19789.17,
-      &quot;shock&quot;: -0.35,
-      &quot;shortfall&quot;: 9791.33
-    }
-  ],
-  &quot;mandate&quot;: &quot;balanced&quot;,
-  &quot;period_ends&quot;: &quot;2027-08-28&quot;,
-  &quot;period_started&quot;: &quot;2026-08-28&quot;,
-  &quot;reference&quot;: 99978.43,
-  &quot;shortfall_at_shock&quot;: 2009.26,
-  &quot;uncovered_risk&quot;: 43513.66,
-  &quot;unpriced&quot;: [],
-  &quot;unprotected_limit&quot;: 49989.21,
-  &quot;worst_case&quot;: 53511.5,
-  &quot;worst_shock&quot;: -0.35,
-  &quot;worst_shortfall&quot;: 9791.33
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T13:45:37.825308+00:00</td><td></td><td>reconcile.discrepancy</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>XLF: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position</summary><pre>{
-  &quot;detail&quot;: &quot;XLF: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T13:45:37.825238+00:00</td><td></td><td>reconcile.discrepancy</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>IWM: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position</summary><pre>{
-  &quot;detail&quot;: &quot;IWM: local CASH but broker shows PUT_OPEN; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-09-01T13:45:37.824978+00:00</td><td></td><td>reconcile.discrepancy</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position</summary><pre>{
-  &quot;detail&quot;: &quot;BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-08-31T14:20:03.744774+00:00</td><td></td><td>cycle.complete</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;regime_rationale&quot;: &quot;&quot;, &quot;halted&quot;: false, &quot;halt_reason&quot;: &quot;&quot;, &quot;equity&quot;: &quot;99183.49&quot;, &quot;net_delta&quot;: 1100.0, &quot;net_delta_value&quot;: 0.0, &quot;vega&quot;: 0.0, &quot;submitted&quot;: 2, &quot;refused&quot;: 0, &quot;uncovered_risk&quot;: 71339.157, &quot;book_complete&quot;: true, &quot;protection&quot;: [&quot;protective_put&quot;, &quot;protective_put&quot;], &quot;released&quot;: 0, &quot;discrepancies&quot;: [&quot;BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;, &quot;IWM: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;, &quot;XLF: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;], &quot;dry_run&quot;: false}</summary><pre>{
-  &quot;book_complete&quot;: true,
-  &quot;discrepancies&quot;: [
-    &quot;BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;,
-    &quot;IWM: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;,
-    &quot;XLF: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-  ],
-  &quot;dry_run&quot;: false,
-  &quot;equity&quot;: &quot;99183.49&quot;,
-  &quot;halt_reason&quot;: &quot;&quot;,
-  &quot;halted&quot;: false,
-  &quot;net_delta&quot;: 1100.0,
-  &quot;net_delta_value&quot;: 0.0,
-  &quot;protection&quot;: [
-    &quot;protective_put&quot;,
-    &quot;protective_put&quot;
-  ],
-  &quot;refused&quot;: 0,
-  &quot;regime&quot;: null,
-  &quot;regime_rationale&quot;: &quot;&quot;,
-  &quot;released&quot;: 0,
-  &quot;submitted&quot;: 2,
-  &quot;uncovered_risk&quot;: 71339.157,
-  &quot;vega&quot;: 0.0
-}</pre></details></td></tr>
-<tr class="" data-symbol="IWM" data-verdict="approved"><td>2026-08-31T14:19:30.737988+00:00</td><td>IWM</td><td>order.filled</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>submitted</summary><pre>{
-  &quot;assignment_prob&quot;: 0.3784576617466224,
-  &quot;broker_order_id&quot;: &quot;abe09b61-70fc-4e5e-af2b-066330cff2f9&quot;,
-  &quot;broker_status&quot;: &quot;filled&quot;,
-  &quot;contracts&quot;: 1,
-  &quot;delta&quot;: -0.28904226468050487,
-  &quot;fill_price&quot;: &quot;15.06&quot;,
-  &quot;filled&quot;: 1,
-  &quot;limit_price&quot;: &quot;15.22&quot;,
-  &quot;occ_symbol&quot;: &quot;IWM270917P00275000&quot;,
-  &quot;of&quot;: 1,
-  &quot;reason&quot;: &quot;submitted&quot;,
-  &quot;symbol&quot;: &quot;IWM&quot;
-}</pre></details></td></tr>
-<tr class="breach" data-symbol="XLF" data-verdict="breach"><td>2026-08-31T14:19:27.458911+00:00</td><td>XLF</td><td>order.working</td><td><span class="badge">breach</span></td><td class="detail"><details><summary>submitted</summary><pre>{
-  &quot;assignment_prob&quot;: 0.3609578271109523,
-  &quot;broker_order_id&quot;: &quot;9c1ae4a5-30f0-40dd-80f0-ebf815163ebc&quot;,
-  &quot;broker_status&quot;: &quot;new&quot;,
-  &quot;contracts&quot;: 9,
-  &quot;delta&quot;: -0.27278677268138396,
-  &quot;fill_price&quot;: null,
-  &quot;filled&quot;: 0,
-  &quot;limit_price&quot;: &quot;2.78&quot;,
-  &quot;occ_symbol&quot;: &quot;XLF271217P00054000&quot;,
-  &quot;of&quot;: 9,
-  &quot;reason&quot;: &quot;submitted&quot;,
-  &quot;symbol&quot;: &quot;XLF&quot;
-}</pre></details></td></tr>
-<tr class="breach" data-symbol="" data-verdict="breach"><td>2026-08-31T14:19:24.263263+00:00</td><td></td><td>protection.plan</td><td><span class="badge">breach</span></td><td class="detail"><details><summary>{&quot;mandate&quot;: &quot;balanced&quot;, &quot;uncovered_risk&quot;: 71339.16, &quot;book_complete&quot;: true, &quot;excluded&quot;: [&quot;reduce_exposure&quot;], &quot;sleeves&quot;: [{&quot;symbol&quot;: &quot;XLF&quot;, &quot;spot&quot;: 57.77, &quot;exposure&quot;: 51993.0, &quot;budget&quot;: 6390.91, &quot;offers&quot;: [{&quot;kind&quot;: &quot;protective_put&quot;, &quot;detail&quot;: &quot;buy 9x XLF 54 put at 2.78&quot;, &quot;premium_cost&quot;: 2502.0, &quot;forgone_upside&quot;: 0.0, &quot;upside_measured_at&quot;: 0.0, &quot;upside_price&quot;: null, &quot;cash_per_1k&quot;: 54.87, &quot;permanent&quot;: false, &quot;protection_iv&quot;: 0.2183, &quot;financing_iv&quot;: null, &quot;financed_fairly&quot;: null, &quot;uncovered_after&quot;: 0.0, &quot;covers_the_risk&quot;: true}, {&quot;kind&quot;: &quot;collar&quot;, &quot;detail&quot;: &quot;buy 9x 54 put, sell 9x 62 call at 4.08&quot;, &quot;premium_cost&quot;: -1170.0, &quot;forgone_upside&quot;: 1392.3, &quot;upside_measured_at&quot;: 0.1, &quot;upside_price&quot;: 501.49, &quot;cash_per_1k&quot;: null, &quot;permanent&quot;: false, &quot;protection_iv&quot;: 0.2183, &quot;financing_iv&quot;: 0.1667, &quot;financed_fairly&quot;: false, &quot;uncovered_after&quot;: 0.0, &quot;covers_the_risk&quot;: true}], &quot;chosen&quot;: &quot;protective_put&quot;, &quot;because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 16.7% vol against a put at 21.8% -- so the 3,672 saved would come out of underpriced upside&quot;, &quot;decided_by&quot;: &quot;rule&quot;, &quot;rule_would_have&quot;: &quot;protective_put&quot;, &quot;rule_because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 16.7% vol against a put at 21.8% -- so the 3,672 saved would come out of underpriced upside&quot;}, {&quot;symbol&quot;: &quot;IWM&quot;, &quot;spot&quot;: 293.44, &quot;exposure&quot;: 29344.0, &quot;budget&quot;: 3606.93, &quot;offers&quot;: [{&quot;kind&quot;: &quot;protective_put&quot;, &quot;detail&quot;: &quot;buy 1x IWM 275 put at 15.22&quot;, &quot;premium_cost&quot;: 1522.0, &quot;forgone_upside&quot;: 0.0, &quot;upside_measured_at&quot;: 0.0, &quot;upside_price&quot;: null, &quot;cash_per_1k&quot;: 59.14, &quot;permanent&quot;: false, &quot;protection_iv&quot;: 0.2411, &quot;financing_iv&quot;: null, &quot;financed_fairly&quot;: null, &quot;uncovered_after&quot;: 0.0, &quot;covers_the_risk&quot;: true}, {&quot;kind&quot;: &quot;collar&quot;, &quot;detail&quot;: &quot;buy 1x 275 put, sell 1x 330 call at 17.33&quot;, &quot;premium_cost&quot;: -211.0, &quot;forgone_upside&quot;: 0.0, &quot;upside_measured_at&quot;: 0.1, &quot;upside_price&quot;: 139.1, &quot;cash_per_1k&quot;: null, &quot;permanent&quot;: false, &quot;protection_iv&quot;: 0.2411, &quot;financing_iv&quot;: 0.1913, &quot;financed_fairly&quot;: false, &quot;uncovered_after&quot;: 0.0, &quot;covers_the_risk&quot;: true}], &quot;chosen&quot;: &quot;protective_put&quot;, &quot;because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 19.1% vol against a put at 24.1% -- so the 1,733 saved would come out of underpriced upside&quot;, &quot;decided_by&quot;: &quot;rule&quot;, &quot;rule_would_have&quot;: &quot;protective_put&quot;, &quot;rule_because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 19.1% vol against a put at 24.1% -- so the 1,733 saved would come out of underpriced upside&quot;}], &quot;total_premium&quot;: 4024.0}</summary><pre>{
-  &quot;book_complete&quot;: true,
-  &quot;excluded&quot;: [
-    &quot;reduce_exposure&quot;
-  ],
-  &quot;mandate&quot;: &quot;balanced&quot;,
-  &quot;sleeves&quot;: [
-    {
-      &quot;because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 16.7% vol against a put at 21.8% -- so the 3,672 saved would come out of underpriced upside&quot;,
-      &quot;budget&quot;: 6390.91,
-      &quot;chosen&quot;: &quot;protective_put&quot;,
-      &quot;decided_by&quot;: &quot;rule&quot;,
-      &quot;exposure&quot;: 51993.0,
-      &quot;offers&quot;: [
-        {
-          &quot;cash_per_1k&quot;: 54.87,
-          &quot;covers_the_risk&quot;: true,
-          &quot;detail&quot;: &quot;buy 9x XLF 54 put at 2.78&quot;,
-          &quot;financed_fairly&quot;: null,
-          &quot;financing_iv&quot;: null,
-          &quot;forgone_upside&quot;: 0.0,
-          &quot;kind&quot;: &quot;protective_put&quot;,
-          &quot;permanent&quot;: false,
-          &quot;premium_cost&quot;: 2502.0,
-          &quot;protection_iv&quot;: 0.2183,
-          &quot;uncovered_after&quot;: 0.0,
-          &quot;upside_measured_at&quot;: 0.0,
-          &quot;upside_price&quot;: null
-        },
-        {
-          &quot;cash_per_1k&quot;: null,
-          &quot;covers_the_risk&quot;: true,
-          &quot;detail&quot;: &quot;buy 9x 54 put, sell 9x 62 call at 4.08&quot;,
-          &quot;financed_fairly&quot;: false,
-          &quot;financing_iv&quot;: 0.1667,
-          &quot;forgone_upside&quot;: 1392.3,
-          &quot;kind&quot;: &quot;collar&quot;,
-          &quot;permanent&quot;: false,
-          &quot;premium_cost&quot;: -1170.0,
-          &quot;protection_iv&quot;: 0.2183,
-          &quot;uncovered_after&quot;: 0.0,
-          &quot;upside_measured_at&quot;: 0.1,
-          &quot;upside_price&quot;: 501.49
-        }
-      ],
-      &quot;rule_because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 16.7% vol against a put at 21.8% -- so the 3,672 saved would come out of underpriced upside&quot;,
-      &quot;rule_would_have&quot;: &quot;protective_put&quot;,
-      &quot;spot&quot;: 57.77,
-      &quot;symbol&quot;: &quot;XLF&quot;
-    },
-    {
-      &quot;because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 19.1% vol against a put at 24.1% -- so the 1,733 saved would come out of underpriced upside&quot;,
-      &quot;budget&quot;: 3606.93,
-      &quot;chosen&quot;: &quot;protective_put&quot;,
-      &quot;decided_by&quot;: &quot;rule&quot;,
-      &quot;exposure&quot;: 29344.0,
-      &quot;offers&quot;: [
-        {
-          &quot;cash_per_1k&quot;: 59.14,
-          &quot;covers_the_risk&quot;: true,
-          &quot;detail&quot;: &quot;buy 1x IWM 275 put at 15.22&quot;,
-          &quot;financed_fairly&quot;: null,
-          &quot;financing_iv&quot;: null,
-          &quot;forgone_upside&quot;: 0.0,
-          &quot;kind&quot;: &quot;protective_put&quot;,
-          &quot;permanent&quot;: false,
-          &quot;premium_cost&quot;: 1522.0,
-          &quot;protection_iv&quot;: 0.2411,
-          &quot;uncovered_after&quot;: 0.0,
-          &quot;upside_measured_at&quot;: 0.0,
-          &quot;upside_price&quot;: null
-        },
-        {
-          &quot;cash_per_1k&quot;: null,
-          &quot;covers_the_risk&quot;: true,
-          &quot;detail&quot;: &quot;buy 1x 275 put, sell 1x 330 call at 17.33&quot;,
-          &quot;financed_fairly&quot;: false,
-          &quot;financing_iv&quot;: 0.1913,
-          &quot;forgone_upside&quot;: 0.0,
-          &quot;kind&quot;: &quot;collar&quot;,
-          &quot;permanent&quot;: false,
-          &quot;premium_cost&quot;: -211.0,
-          &quot;protection_iv&quot;: 0.2411,
-          &quot;uncovered_after&quot;: 0.0,
-          &quot;upside_measured_at&quot;: 0.1,
-          &quot;upside_price&quot;: 139.1
-        }
-      ],
-      &quot;rule_because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 19.1% vol against a put at 24.1% -- so the 1,733 saved would come out of underpriced upside&quot;,
-      &quot;rule_would_have&quot;: &quot;protective_put&quot;,
-      &quot;spot&quot;: 293.44,
-      &quot;symbol&quot;: &quot;IWM&quot;
-    }
-  ],
-  &quot;total_premium&quot;: 4024.0,
-  &quot;uncovered_risk&quot;: 71339.16
-}</pre></details></td></tr>
-<tr class="" data-symbol="XLF" data-verdict="approved"><td>2026-08-31T14:18:49.886689+00:00</td><td>XLF</td><td>protection.chain_filtered</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;puts&quot;: {&quot;offered&quot;: 68, &quot;tradable&quot;: 7}, &quot;calls&quot;: {&quot;offered&quot;: 54, &quot;tradable&quot;: 17}, &quot;min_open_interest&quot;: 500, &quot;max_spread_pct&quot;: 5.0}</summary><pre>{
-  &quot;calls&quot;: {
-    &quot;offered&quot;: 54,
-    &quot;tradable&quot;: 17
-  },
-  &quot;max_spread_pct&quot;: 5.0,
-  &quot;min_open_interest&quot;: 500,
-  &quot;puts&quot;: {
-    &quot;offered&quot;: 68,
-    &quot;tradable&quot;: 7
-  },
-  &quot;symbol&quot;: &quot;XLF&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="IWM" data-verdict="approved"><td>2026-08-31T14:18:46.255066+00:00</td><td>IWM</td><td>protection.chain_filtered</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;puts&quot;: {&quot;offered&quot;: 273, &quot;tradable&quot;: 16}, &quot;calls&quot;: {&quot;offered&quot;: 199, &quot;tradable&quot;: 23}, &quot;min_open_interest&quot;: 500, &quot;max_spread_pct&quot;: 5.0}</summary><pre>{
-  &quot;calls&quot;: {
-    &quot;offered&quot;: 199,
-    &quot;tradable&quot;: 23
-  },
-  &quot;max_spread_pct&quot;: 5.0,
-  &quot;min_open_interest&quot;: 500,
-  &quot;puts&quot;: {
-    &quot;offered&quot;: 273,
-    &quot;tradable&quot;: 16
-  },
-  &quot;symbol&quot;: &quot;IWM&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-08-31T14:18:42.020464+00:00</td><td></td><td>book.reviewed</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;first&quot;: true, &quot;moved&quot;: false, &quot;changes&quot;: [], &quot;answered&quot;: false, &quot;findings&quot;: []}</summary><pre>{
-  &quot;answered&quot;: false,
-  &quot;changes&quot;: [],
-  &quot;findings&quot;: [],
-  &quot;first&quot;: true,
-  &quot;moved&quot;: false
-}</pre></details></td></tr>
-<tr class="breach" data-symbol="" data-verdict="breach"><td>2026-08-31T14:18:07.087318+00:00</td><td></td><td>mandate.stress</td><td><span class="badge">breach</span></td><td class="detail"><details><summary>{&quot;mandate&quot;: &quot;balanced&quot;, &quot;downside_budget_pct&quot;: 10.0, &quot;budget&quot;: 9997.84, &quot;equity_exposure&quot;: 81337.0, &quot;binding_shock&quot;: -0.2, &quot;uncovered_risk&quot;: 71339.16, &quot;worst_case&quot;: 81337.0, &quot;shortfall_at_shock&quot;: 6269.56, &quot;period_started&quot;: &quot;2026-08-28&quot;, &quot;period_ends&quot;: &quot;2027-08-28&quot;, &quot;reference&quot;: 99978.43, &quot;unprotected_limit&quot;: 49989.21, &quot;complete&quot;: true, &quot;unpriced&quot;: [], &quot;ladder&quot;: [{&quot;shock&quot;: -0.05, &quot;loss&quot;: -4066.85, &quot;from_options&quot;: 0, &quot;shortfall&quot;: 0.0}, {&quot;shock&quot;: -0.1, &quot;loss&quot;: -8133.7, &quot;from_options&quot;: 0, &quot;shortfall&quot;: 0.0}, {&quot;shock&quot;: -0.2, &quot;loss&quot;: -16267.4, &quot;from_options&quot;: 0, &quot;shortfall&quot;: 6269.56}, {&quot;shock&quot;: -0.35, &quot;loss&quot;: -28467.95, &quot;from_options&quot;: 0, &quot;shortfall&quot;: 18470.11}], &quot;worst_shortfall&quot;: 18470.11, &quot;worst_shock&quot;: -0.35}</summary><pre>{
-  &quot;binding_shock&quot;: -0.2,
-  &quot;budget&quot;: 9997.84,
-  &quot;complete&quot;: true,
-  &quot;downside_budget_pct&quot;: 10.0,
-  &quot;equity_exposure&quot;: 81337.0,
-  &quot;ladder&quot;: [
-    {
-      &quot;from_options&quot;: 0,
-      &quot;loss&quot;: -4066.85,
-      &quot;shock&quot;: -0.05,
-      &quot;shortfall&quot;: 0.0
-    },
-    {
-      &quot;from_options&quot;: 0,
-      &quot;loss&quot;: -8133.7,
-      &quot;shock&quot;: -0.1,
-      &quot;shortfall&quot;: 0.0
-    },
-    {
-      &quot;from_options&quot;: 0,
-      &quot;loss&quot;: -16267.4,
-      &quot;shock&quot;: -0.2,
-      &quot;shortfall&quot;: 6269.56
-    },
-    {
-      &quot;from_options&quot;: 0,
-      &quot;loss&quot;: -28467.95,
-      &quot;shock&quot;: -0.35,
-      &quot;shortfall&quot;: 18470.11
-    }
-  ],
-  &quot;mandate&quot;: &quot;balanced&quot;,
-  &quot;period_ends&quot;: &quot;2027-08-28&quot;,
-  &quot;period_started&quot;: &quot;2026-08-28&quot;,
-  &quot;reference&quot;: 99978.43,
-  &quot;shortfall_at_shock&quot;: 6269.56,
-  &quot;uncovered_risk&quot;: 71339.16,
-  &quot;unpriced&quot;: [],
-  &quot;unprotected_limit&quot;: 49989.21,
-  &quot;worst_case&quot;: 81337.0,
-  &quot;worst_shock&quot;: -0.35,
-  &quot;worst_shortfall&quot;: 18470.11
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-08-31T14:18:05.509336+00:00</td><td></td><td>reconcile.discrepancy</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>XLF: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position</summary><pre>{
-  &quot;detail&quot;: &quot;XLF: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-08-31T14:18:05.509246+00:00</td><td></td><td>reconcile.discrepancy</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>IWM: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position</summary><pre>{
-  &quot;detail&quot;: &quot;IWM: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-08-31T14:18:05.508998+00:00</td><td></td><td>reconcile.discrepancy</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position</summary><pre>{
-  &quot;detail&quot;: &quot;BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-08-28T17:07:55.710606+00:00</td><td></td><td>cycle.complete</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;regime_rationale&quot;: &quot;&quot;, &quot;halted&quot;: false, &quot;halt_reason&quot;: &quot;&quot;, &quot;equity&quot;: &quot;99726.5&quot;, &quot;net_delta&quot;: 1100.0, &quot;net_delta_value&quot;: 0.0, &quot;vega&quot;: 0.0, &quot;submitted&quot;: 2, &quot;refused&quot;: 0, &quot;uncovered_risk&quot;: 71887.157, &quot;book_complete&quot;: true, &quot;protection&quot;: [&quot;protective_put&quot;, &quot;protective_put&quot;], &quot;released&quot;: 0, &quot;discrepancies&quot;: [&quot;BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;, &quot;IWM: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;, &quot;XLF: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;], &quot;dry_run&quot;: false}</summary><pre>{
-  &quot;book_complete&quot;: true,
-  &quot;discrepancies&quot;: [
-    &quot;BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;,
-    &quot;IWM: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;,
-    &quot;XLF: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-  ],
-  &quot;dry_run&quot;: false,
-  &quot;equity&quot;: &quot;99726.5&quot;,
-  &quot;halt_reason&quot;: &quot;&quot;,
-  &quot;halted&quot;: false,
-  &quot;net_delta&quot;: 1100.0,
-  &quot;net_delta_value&quot;: 0.0,
-  &quot;protection&quot;: [
-    &quot;protective_put&quot;,
-    &quot;protective_put&quot;
-  ],
-  &quot;refused&quot;: 0,
-  &quot;regime&quot;: null,
-  &quot;regime_rationale&quot;: &quot;&quot;,
-  &quot;released&quot;: 0,
-  &quot;submitted&quot;: 2,
-  &quot;uncovered_risk&quot;: 71887.157,
-  &quot;vega&quot;: 0.0
-}</pre></details></td></tr>
-<tr class="" data-symbol="IWM" data-verdict="approved"><td>2026-08-28T17:07:55.707314+00:00</td><td>IWM</td><td>order.submitted</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>submitted</summary><pre>{
-  &quot;assignment_prob&quot;: 0.364145773837827,
-  &quot;broker_order_id&quot;: null,
-  &quot;contracts&quot;: 1,
-  &quot;delta&quot;: -0.2766031659829469,
-  &quot;limit_price&quot;: &quot;14.48&quot;,
-  &quot;occ_symbol&quot;: &quot;IWM270917P00275000&quot;,
-  &quot;reason&quot;: &quot;submitted&quot;,
-  &quot;symbol&quot;: &quot;IWM&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="XLF" data-verdict="approved"><td>2026-08-28T17:07:52.800840+00:00</td><td>XLF</td><td>order.submitted</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>submitted</summary><pre>{
-  &quot;assignment_prob&quot;: 0.3525282495225611,
-  &quot;broker_order_id&quot;: null,
-  &quot;contracts&quot;: 9,
-  &quot;delta&quot;: -0.2650684567805479,
-  &quot;limit_price&quot;: &quot;2.71&quot;,
-  &quot;occ_symbol&quot;: &quot;XLF271217P00054000&quot;,
-  &quot;reason&quot;: &quot;submitted&quot;,
-  &quot;symbol&quot;: &quot;XLF&quot;
-}</pre></details></td></tr>
-<tr class="breach" data-symbol="" data-verdict="breach"><td>2026-08-28T17:07:12.799553+00:00</td><td></td><td>protection.plan</td><td><span class="badge">breach</span></td><td class="detail"><details><summary>{&quot;mandate&quot;: &quot;balanced&quot;, &quot;uncovered_risk&quot;: 71887.16, &quot;book_complete&quot;: true, &quot;excluded&quot;: [&quot;reduce_exposure&quot;], &quot;sleeves&quot;: [{&quot;symbol&quot;: &quot;XLF&quot;, &quot;spot&quot;: 58.105, &quot;exposure&quot;: 52294.5, &quot;budget&quot;: 6384.96, &quot;offers&quot;: [{&quot;kind&quot;: &quot;protective_put&quot;, &quot;detail&quot;: &quot;buy 9x XLF 54 put at 2.71&quot;, &quot;premium_cost&quot;: 2439.0, &quot;forgone_upside&quot;: 0.0, &quot;upside_measured_at&quot;: 0.0, &quot;upside_price&quot;: null, &quot;cash_per_1k&quot;: 53.13, &quot;permanent&quot;: false, &quot;protection_iv&quot;: 0.2183, &quot;financing_iv&quot;: null, &quot;financed_fairly&quot;: null, &quot;uncovered_after&quot;: 0.0, &quot;covers_the_risk&quot;: true}, {&quot;kind&quot;: &quot;collar&quot;, &quot;detail&quot;: &quot;buy 9x 54 put, sell 9x 62 call at 4.00&quot;, &quot;premium_cost&quot;: -1161.0, &quot;forgone_upside&quot;: 1723.95, &quot;upside_measured_at&quot;: 0.1, &quot;upside_price&quot;: 537.04, &quot;cash_per_1k&quot;: null, &quot;permanent&quot;: false, &quot;protection_iv&quot;: 0.2183, &quot;financing_iv&quot;: 0.1681, &quot;financed_fairly&quot;: false, &quot;uncovered_after&quot;: 0.0, &quot;covers_the_risk&quot;: true}], &quot;chosen&quot;: &quot;protective_put&quot;, &quot;because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 16.8% vol against a put at 21.8% -- so the 3,600 saved would come out of underpriced upside&quot;}, {&quot;symbol&quot;: &quot;IWM&quot;, &quot;spot&quot;: 295.905, &quot;exposure&quot;: 29590.5, &quot;budget&quot;: 3612.89, &quot;offers&quot;: [{&quot;kind&quot;: &quot;protective_put&quot;, &quot;detail&quot;: &quot;buy 1x IWM 275 put at 14.48&quot;, &quot;premium_cost&quot;: 1448.0, &quot;forgone_upside&quot;: 0.0, &quot;upside_measured_at&quot;: 0.0, &quot;upside_price&quot;: null, &quot;cash_per_1k&quot;: 55.74, &quot;permanent&quot;: false, &quot;protection_iv&quot;: 0.2391, &quot;financing_iv&quot;: null, &quot;financed_fairly&quot;: null, &quot;uncovered_after&quot;: 0.0, &quot;covers_the_risk&quot;: true}, {&quot;kind&quot;: &quot;collar&quot;, &quot;detail&quot;: &quot;buy 1x 275 put, sell 1x 340 call at 15.40&quot;, &quot;premium_cost&quot;: -92.0, &quot;forgone_upside&quot;: 0.0, &quot;upside_measured_at&quot;: 0.1, &quot;upside_price&quot;: 103.34, &quot;cash_per_1k&quot;: null, &quot;permanent&quot;: false, &quot;protection_iv&quot;: 0.2391, &quot;financing_iv&quot;: 0.1911, &quot;financed_fairly&quot;: false, &quot;uncovered_after&quot;: 0.0, &quot;covers_the_risk&quot;: true}], &quot;chosen&quot;: &quot;protective_put&quot;, &quot;because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 19.1% vol against a put at 23.9% -- so the 1,540 saved would come out of underpriced upside&quot;}], &quot;total_premium&quot;: 3887.0}</summary><pre>{
-  &quot;book_complete&quot;: true,
-  &quot;excluded&quot;: [
-    &quot;reduce_exposure&quot;
-  ],
-  &quot;mandate&quot;: &quot;balanced&quot;,
-  &quot;sleeves&quot;: [
-    {
-      &quot;because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 16.8% vol against a put at 21.8% -- so the 3,600 saved would come out of underpriced upside&quot;,
-      &quot;budget&quot;: 6384.96,
-      &quot;chosen&quot;: &quot;protective_put&quot;,
-      &quot;exposure&quot;: 52294.5,
-      &quot;offers&quot;: [
-        {
-          &quot;cash_per_1k&quot;: 53.13,
-          &quot;covers_the_risk&quot;: true,
-          &quot;detail&quot;: &quot;buy 9x XLF 54 put at 2.71&quot;,
-          &quot;financed_fairly&quot;: null,
-          &quot;financing_iv&quot;: null,
-          &quot;forgone_upside&quot;: 0.0,
-          &quot;kind&quot;: &quot;protective_put&quot;,
-          &quot;permanent&quot;: false,
-          &quot;premium_cost&quot;: 2439.0,
-          &quot;protection_iv&quot;: 0.2183,
-          &quot;uncovered_after&quot;: 0.0,
-          &quot;upside_measured_at&quot;: 0.0,
-          &quot;upside_price&quot;: null
-        },
-        {
-          &quot;cash_per_1k&quot;: null,
-          &quot;covers_the_risk&quot;: true,
-          &quot;detail&quot;: &quot;buy 9x 54 put, sell 9x 62 call at 4.00&quot;,
-          &quot;financed_fairly&quot;: false,
-          &quot;financing_iv&quot;: 0.1681,
-          &quot;forgone_upside&quot;: 1723.95,
-          &quot;kind&quot;: &quot;collar&quot;,
-          &quot;permanent&quot;: false,
-          &quot;premium_cost&quot;: -1161.0,
-          &quot;protection_iv&quot;: 0.2183,
-          &quot;uncovered_after&quot;: 0.0,
-          &quot;upside_measured_at&quot;: 0.1,
-          &quot;upside_price&quot;: 537.04
-        }
-      ],
-      &quot;spot&quot;: 58.105,
-      &quot;symbol&quot;: &quot;XLF&quot;
-    },
-    {
-      &quot;because&quot;: &quot;bought outright: the call would be sold below the put&#x27;s price per unit of risk -- call at 19.1% vol against a put at 23.9% -- so the 1,540 saved would come out of underpriced upside&quot;,
-      &quot;budget&quot;: 3612.89,
-      &quot;chosen&quot;: &quot;protective_put&quot;,
-      &quot;exposure&quot;: 29590.5,
-      &quot;offers&quot;: [
-        {
-          &quot;cash_per_1k&quot;: 55.74,
-          &quot;covers_the_risk&quot;: true,
-          &quot;detail&quot;: &quot;buy 1x IWM 275 put at 14.48&quot;,
-          &quot;financed_fairly&quot;: null,
-          &quot;financing_iv&quot;: null,
-          &quot;forgone_upside&quot;: 0.0,
-          &quot;kind&quot;: &quot;protective_put&quot;,
-          &quot;permanent&quot;: false,
-          &quot;premium_cost&quot;: 1448.0,
-          &quot;protection_iv&quot;: 0.2391,
-          &quot;uncovered_after&quot;: 0.0,
-          &quot;upside_measured_at&quot;: 0.0,
-          &quot;upside_price&quot;: null
-        },
-        {
-          &quot;cash_per_1k&quot;: null,
-          &quot;covers_the_risk&quot;: true,
-          &quot;detail&quot;: &quot;buy 1x 275 put, sell 1x 340 call at 15.40&quot;,
-          &quot;financed_fairly&quot;: false,
-          &quot;financing_iv&quot;: 0.1911,
-          &quot;forgone_upside&quot;: 0.0,
-          &quot;kind&quot;: &quot;collar&quot;,
-          &quot;permanent&quot;: false,
-          &quot;premium_cost&quot;: -92.0,
-          &quot;protection_iv&quot;: 0.2391,
-          &quot;uncovered_after&quot;: 0.0,
-          &quot;upside_measured_at&quot;: 0.1,
-          &quot;upside_price&quot;: 103.34
-        }
-      ],
-      &quot;spot&quot;: 295.905,
-      &quot;symbol&quot;: &quot;IWM&quot;
-    }
-  ],
-  &quot;total_premium&quot;: 3887.0,
-  &quot;uncovered_risk&quot;: 71887.16
-}</pre></details></td></tr>
-<tr class="" data-symbol="XLF" data-verdict="approved"><td>2026-08-28T17:07:12.784738+00:00</td><td>XLF</td><td>protection.chain_filtered</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;puts&quot;: {&quot;offered&quot;: 67, &quot;tradable&quot;: 6}, &quot;calls&quot;: {&quot;offered&quot;: 60, &quot;tradable&quot;: 14}, &quot;min_open_interest&quot;: 500, &quot;max_spread_pct&quot;: 5.0}</summary><pre>{
-  &quot;calls&quot;: {
-    &quot;offered&quot;: 60,
-    &quot;tradable&quot;: 14
-  },
-  &quot;max_spread_pct&quot;: 5.0,
-  &quot;min_open_interest&quot;: 500,
-  &quot;puts&quot;: {
-    &quot;offered&quot;: 67,
-    &quot;tradable&quot;: 6
-  },
-  &quot;symbol&quot;: &quot;XLF&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="IWM" data-verdict="approved"><td>2026-08-28T17:07:06.778942+00:00</td><td>IWM</td><td>protection.chain_filtered</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;puts&quot;: {&quot;offered&quot;: 270, &quot;tradable&quot;: 24}, &quot;calls&quot;: {&quot;offered&quot;: 214, &quot;tradable&quot;: 30}, &quot;min_open_interest&quot;: 500, &quot;max_spread_pct&quot;: 5.0}</summary><pre>{
-  &quot;calls&quot;: {
-    &quot;offered&quot;: 214,
-    &quot;tradable&quot;: 30
-  },
-  &quot;max_spread_pct&quot;: 5.0,
-  &quot;min_open_interest&quot;: 500,
-  &quot;puts&quot;: {
-    &quot;offered&quot;: 270,
-    &quot;tradable&quot;: 24
-  },
-  &quot;symbol&quot;: &quot;IWM&quot;
-}</pre></details></td></tr>
-<tr class="breach" data-symbol="" data-verdict="breach"><td>2026-08-28T17:06:59.237251+00:00</td><td></td><td>mandate.stress</td><td><span class="badge">breach</span></td><td class="detail"><details><summary>{&quot;mandate&quot;: &quot;balanced&quot;, &quot;downside_budget_pct&quot;: 10.0, &quot;budget&quot;: 9997.84, &quot;equity_exposure&quot;: 81885.0, &quot;binding_shock&quot;: -0.2, &quot;uncovered_risk&quot;: 71887.16, &quot;worst_case&quot;: 81885.0, &quot;shortfall_at_shock&quot;: 6379.16, &quot;period_started&quot;: &quot;2026-08-28&quot;, &quot;period_ends&quot;: &quot;2027-08-28&quot;, &quot;reference&quot;: 99978.43, &quot;unprotected_limit&quot;: 49989.21, &quot;complete&quot;: true, &quot;unpriced&quot;: [], &quot;ladder&quot;: [{&quot;shock&quot;: -0.05, &quot;loss&quot;: -4094.25, &quot;from_options&quot;: 0, &quot;shortfall&quot;: 0.0}, {&quot;shock&quot;: -0.1, &quot;loss&quot;: -8188.5, &quot;from_options&quot;: 0, &quot;shortfall&quot;: 0.0}, {&quot;shock&quot;: -0.2, &quot;loss&quot;: -16377.0, &quot;from_options&quot;: 0, &quot;shortfall&quot;: 6379.16}, {&quot;shock&quot;: -0.35, &quot;loss&quot;: -28659.75, &quot;from_options&quot;: 0, &quot;shortfall&quot;: 18661.91}], &quot;worst_shortfall&quot;: 18661.91, &quot;worst_shock&quot;: -0.35}</summary><pre>{
-  &quot;binding_shock&quot;: -0.2,
-  &quot;budget&quot;: 9997.84,
-  &quot;complete&quot;: true,
-  &quot;downside_budget_pct&quot;: 10.0,
-  &quot;equity_exposure&quot;: 81885.0,
-  &quot;ladder&quot;: [
-    {
-      &quot;from_options&quot;: 0,
-      &quot;loss&quot;: -4094.25,
-      &quot;shock&quot;: -0.05,
-      &quot;shortfall&quot;: 0.0
-    },
-    {
-      &quot;from_options&quot;: 0,
-      &quot;loss&quot;: -8188.5,
-      &quot;shock&quot;: -0.1,
-      &quot;shortfall&quot;: 0.0
-    },
-    {
-      &quot;from_options&quot;: 0,
-      &quot;loss&quot;: -16377.0,
-      &quot;shock&quot;: -0.2,
-      &quot;shortfall&quot;: 6379.16
-    },
-    {
-      &quot;from_options&quot;: 0,
-      &quot;loss&quot;: -28659.75,
-      &quot;shock&quot;: -0.35,
-      &quot;shortfall&quot;: 18661.91
-    }
-  ],
-  &quot;mandate&quot;: &quot;balanced&quot;,
-  &quot;period_ends&quot;: &quot;2027-08-28&quot;,
-  &quot;period_started&quot;: &quot;2026-08-28&quot;,
-  &quot;reference&quot;: 99978.43,
-  &quot;shortfall_at_shock&quot;: 6379.16,
-  &quot;uncovered_risk&quot;: 71887.16,
-  &quot;unpriced&quot;: [],
-  &quot;unprotected_limit&quot;: 49989.21,
-  &quot;worst_case&quot;: 81885.0,
-  &quot;worst_shock&quot;: -0.35,
-  &quot;worst_shortfall&quot;: 18661.91
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-08-28T17:06:56.201708+00:00</td><td></td><td>reconcile.discrepancy</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>XLF: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position</summary><pre>{
-  &quot;detail&quot;: &quot;XLF: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-08-28T17:06:56.201200+00:00</td><td></td><td>reconcile.discrepancy</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>IWM: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position</summary><pre>{
-  &quot;detail&quot;: &quot;IWM: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="" data-verdict="approved"><td>2026-08-28T17:06:56.197684+00:00</td><td></td><td>reconcile.discrepancy</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position</summary><pre>{
-  &quot;detail&quot;: &quot;BIL: local CASH but broker shows SHARES; adopted the broker&#x27;s view with no basis, which cannot be recovered from a position&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="BIL" data-verdict="approved"><td>2026-08-28T15:44:41.313653+00:00</td><td>BIL</td><td>portfolio.established</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;role&quot;: &quot;ballast \u2014 not protection&quot;, &quot;shares&quot;: 100, &quot;reference_price&quot;: 91.66, &quot;value&quot;: &quot;9166.00&quot;, &quot;broker_order_id&quot;: &quot;7e574f1e-599c-436b-a0d1-29073141675a&quot;}</summary><pre>{
-  &quot;broker_order_id&quot;: &quot;7e574f1e-599c-436b-a0d1-29073141675a&quot;,
-  &quot;reference_price&quot;: 91.66,
-  &quot;role&quot;: &quot;ballast \u2014 not protection&quot;,
-  &quot;shares&quot;: 100,
-  &quot;symbol&quot;: &quot;BIL&quot;,
-  &quot;value&quot;: &quot;9166.00&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="XLF" data-verdict="approved"><td>2026-08-28T15:44:41.213909+00:00</td><td>XLF</td><td>portfolio.established</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;role&quot;: &quot;equity exposure&quot;, &quot;shares&quot;: 900, &quot;reference_price&quot;: 58.239999999999995, &quot;value&quot;: &quot;52415.999999999995500&quot;, &quot;broker_order_id&quot;: &quot;bd38ed35-5a48-45e4-9bee-49c095d99928&quot;}</summary><pre>{
-  &quot;broker_order_id&quot;: &quot;bd38ed35-5a48-45e4-9bee-49c095d99928&quot;,
-  &quot;reference_price&quot;: 58.239999999999995,
-  &quot;role&quot;: &quot;equity exposure&quot;,
-  &quot;shares&quot;: 900,
-  &quot;symbol&quot;: &quot;XLF&quot;,
-  &quot;value&quot;: &quot;52415.999999999995500&quot;
-}</pre></details></td></tr>
-<tr class="" data-symbol="IWM" data-verdict="approved"><td>2026-08-28T15:44:41.107609+00:00</td><td>IWM</td><td>portfolio.established</td><td><span class="badge">approved</span></td><td class="detail"><details><summary>{&quot;role&quot;: &quot;equity exposure&quot;, &quot;shares&quot;: 100, &quot;reference_price&quot;: 297.33, &quot;value&quot;: &quot;29733.00&quot;, &quot;broker_order_id&quot;: &quot;83953289-e801-462f-b762-ad6d77eebd04&quot;}</summary><pre>{
-  &quot;broker_order_id&quot;: &quot;83953289-e801-462f-b762-ad6d77eebd04&quot;,
-  &quot;reference_price&quot;: 297.33,
-  &quot;role&quot;: &quot;equity exposure&quot;,
-  &quot;shares&quot;: 100,
-  &quot;symbol&quot;: &quot;IWM&quot;,
-  &quot;value&quot;: &quot;29733.00&quot;
-}</pre></details></td></tr>
-<tr id="f-nomatch" hidden><td colspan="5" class="empty">Nothing matches that
-filter.</td></tr>
-</tbody>
-</table>
+<h2>Portfolio evolution</h2>
+<div class="plate"><div class="inner">
+<div class="chart">
+<svg viewBox="0 0 1000 300" role="img"
+     aria-label="closing account value, one point per trading day">
+<defs><linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0%" stop-color="#6d3aed" stop-opacity=".13"/>
+<stop offset="100%" stop-color="#6d3aed" stop-opacity="0"/>
+</linearGradient></defs>
+<polygon points="24.0,214.0 24.0,93.1 500.0,123.2 976.0,171.1 976.0,214.0" fill="url(#fade)"/>
+<polyline points="24.0,93.1 500.0,123.2 976.0,171.1" fill="none" stroke="#6d3aed" stroke-width="2.5"
+          stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="24.0" cy="93.1" r="5" fill="#fff" stroke="#6d3aed" stroke-width="2"/><text x="24.0" y="75.1" text-anchor="middle" font-size="15" font-weight="500" fill="#0b0b0f" letter-spacing="-.3">$99,726</text><text x="24.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b98" letter-spacing=".08em">08 / 28</text><rect x="25.5" y="284.0" width="235.0" height="8" rx="4" fill="#c4863a" opacity=".9"/><circle cx="500.0" cy="123.2" r="5" fill="#fff" stroke="#6d3aed" stroke-width="2"/><text x="500.0" y="105.2" text-anchor="middle" font-size="15" font-weight="500" fill="#0b0b0f" letter-spacing="-.3">$99,183</text><text x="500.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b98" letter-spacing=".08em">08 / 31</text><text x="500.0" y="266.0" text-anchor="middle" font-size="11.5" font-weight="500" fill="#6d3aed" letter-spacing=".03em">IWM hedged</text><rect x="263.5" y="284.0" width="473.0" height="8" rx="4" fill="#c4863a" opacity=".9"/><circle cx="976.0" cy="171.1" r="5" fill="#6d3aed" stroke="#6d3aed" stroke-width="2"/><text x="976.0" y="153.1" text-anchor="middle" font-size="15" font-weight="500" fill="#0b0b0f" letter-spacing="-.3">$98,320</text><text x="976.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b98" letter-spacing=".08em">09 / 01</text><text x="976.0" y="266.0" text-anchor="middle" font-size="11.5" font-weight="500" fill="#6d3aed" letter-spacing=".03em">XLF hedged</text><rect x="739.5" y="284.0" width="235.0" height="8" rx="4" fill="#3f9573" opacity=".9"/>
+</svg>
 </div>
+<p class="legend"><span class="c"><i></i>promise held</span>
+<span class="u"><i></i>risk outside the promise</span></p>
 </div></div>
 </section>
 
-<footer>
-Generated 2026-09-01 20:59 UTC &middot;
-paper trading only &middot; this page loads
-nothing remote
+<section id="decisions" class="reveal">
+<h2>Decisions</h2>
+<div class="controls"><label for="f-date">Date</label><select id="f-date"><option value="all">all</option><option value="2026-09-01">2026-09-01</option><option value="2026-08-31">2026-08-31</option><option value="2026-08-28">2026-08-28</option></select><label for="f-symbol">Instrument</label><input id="f-symbol" type="text" size="8" autocomplete="off" title="filter by symbol, for example XLF"><label for="f-who">Who</label><select id="f-who"><option value="all">all</option><option value="agent">agent</option><option value="client">client</option></select><label for="f-verdict">Verdict</label><select id="f-verdict"><option value="all">all</option><option value="approved">approved</option><option value="rejected">rejected</option><option value="breach">breach</option><option value="defect">defect</option></select><span class="count">showing <span id="f-count"></span></span></div>
+<table>
+<thead><tr><th>When</th><th>Who</th><th>Instrument</th><th>What happened</th>
+<th class="n">&nbsp;</th></tr></thead>
+<tbody><tr data-symbol="" data-verdict="approved" data-who="client" data-date="2026-09-01"><td class="opt">2026-09-01 17:48</td><td class="who">&#128100; client</td><td class="sym">&mdash;</td><td>nothing moved</td><td class="n mark approved">&check;</td></tr><tr data-symbol="" data-verdict="approved" data-who="agent" data-date="2026-09-01"><td class="opt">2026-09-01 17:48</td><td class="who">&#129302; agent</td><td class="sym">&mdash;</td><td>took the broker's version of the position</td><td class="n mark approved">&check;</td></tr><tr data-symbol="" data-verdict="approved" data-who="agent" data-date="2026-09-01"><td class="opt">2026-09-01 17:27</td><td class="who">&#129302; agent</td><td class="sym">&mdash;</td><td>opened +9 contracts of XLF P56</td><td class="n mark approved">&check;</td></tr><tr data-symbol="XLF" data-verdict="approved" data-who="agent" data-date="2026-09-01"><td class="opt">2026-09-01 13:46</td><td class="who">&#129302; agent</td><td class="sym">XLF</td><td>hedge bought, 9 contracts at 3.5</td><td class="n mark approved">&check;</td></tr><tr data-symbol="" data-verdict="breach" data-who="agent" data-date="2026-09-01"><td class="opt">2026-09-01 13:46</td><td class="who">&#129302; agent</td><td class="sym">&mdash;</td><td>priced the protection this portfolio needs</td><td class="n mark breach">!</td></tr><tr data-symbol="" data-verdict="approved" data-who="agent" data-date="2026-09-01"><td class="opt">2026-09-01 13:46</td><td class="who">&#129302; agent</td><td class="sym">&mdash;</td><td>opened +1 contracts of IWM P275</td><td class="n mark approved">&check;</td></tr><tr data-symbol="IWM" data-verdict="approved" data-who="agent" data-date="2026-08-31"><td class="opt">2026-08-31 14:19</td><td class="who">&#129302; agent</td><td class="sym">IWM</td><td>hedge bought, 1 contracts at 15.06</td><td class="n mark approved">&check;</td></tr><tr data-symbol="XLF" data-verdict="breach" data-who="agent" data-date="2026-08-31"><td class="opt">2026-08-31 14:19</td><td class="who">&#129302; agent</td><td class="sym">XLF</td><td>order accepted, not yet bought</td><td class="n mark breach">!</td></tr><tr data-symbol="IWM" data-verdict="approved" data-who="agent" data-date="2026-08-28"><td class="opt">2026-08-28 17:07</td><td class="who">&#129302; agent</td><td class="sym">IWM</td><td>order sent to the broker</td><td class="n mark approved">&check;</td></tr><tr data-symbol="XLF" data-verdict="approved" data-who="agent" data-date="2026-08-28"><td class="opt">2026-08-28 17:07</td><td class="who">&#129302; agent</td><td class="sym">XLF</td><td>order sent to the broker</td><td class="n mark approved">&check;</td></tr><tr data-symbol="BIL" data-verdict="approved" data-who="client" data-date="2026-08-28"><td class="opt">2026-08-28 15:44</td><td class="who">&#128100; client</td><td class="sym">BIL</td><td>portfolio established</td><td class="n mark approved">&check;</td></tr><tr data-symbol="XLF" data-verdict="approved" data-who="client" data-date="2026-08-28"><td class="opt">2026-08-28 15:44</td><td class="who">&#128100; client</td><td class="sym">XLF</td><td>portfolio established</td><td class="n mark approved">&check;</td></tr><tr data-symbol="IWM" data-verdict="approved" data-who="client" data-date="2026-08-28"><td class="opt">2026-08-28 15:44</td><td class="who">&#128100; client</td><td class="sym">IWM</td><td>portfolio established</td><td class="n mark approved">&check;</td></tr></tbody>
+</table>
+</section>
+
+<footer class="reveal">
+Rebuilt from the journal after every cycle &middot;
+2026-09-01 20:41 UTC &middot;
+Alpaca paper trading. This has never traded real money.
 </footer>
 
 </div>
 <script>
-/* The floor, interpolated between the rungs the agent measured.
-   Straight lines between measured points, because the payoff bends only at a
-   strike -- so this is the exact answer between them rather than a fit. */
 (function () {
-  var box = document.querySelector('.floor');
-  if (!box) return;
-  var rungs = JSON.parse(box.getAttribute('data-rungs'));
-  var budget = parseFloat(box.getAttribute('data-budget'));
-  var range = document.getElementById('shockrange');
-  var shockOut = document.getElementById('shockout');
-  var lossOut = document.getElementById('lossout');
-  var verdictOut = document.getElementById('verdictout');
-
-  function money(n) {
-    return '$' + Math.round(n).toLocaleString('en-US');
+  // Sections rise as they are reached. IntersectionObserver rather than a
+  // scroll listener: a listener fires on every frame of every scroll and
+  // reflows the document each time, which is fine on a laptop and visibly
+  // stutters on a phone. This fires once per element.
+  //
+  // `seen` is added and never removed, so a section does not re-animate when
+  // the reader scrolls back up -- movement that repeats stops reading as
+  // arrival and starts reading as a glitch.
+  var revealed = document.querySelectorAll('.reveal');
+  if (!('IntersectionObserver' in window)) {
+    Array.prototype.forEach.call(revealed, function (el) {
+      el.classList.add('seen');
+    });
+  } else {
+    var watcher = new IntersectionObserver(function (rows) {
+      rows.forEach(function (row) {
+        if (row.isIntersecting) {
+          row.target.classList.add('seen');
+          watcher.unobserve(row.target);
+        }
+      });
+    }, { rootMargin: '0px 0px -12% 0px', threshold: 0.05 });
+    Array.prototype.forEach.call(revealed, function (el) {
+      watcher.observe(el);
+    });
   }
-
-  function lossAt(shock) {
-    if (!rungs.length) return 0;
-    // Milder than the shallowest rung measured, including a market that has
-    // not moved at all. The ladder starts at -5%, and returning its loss for
-    // everything above it told a reader dragging the slider to zero that a
-    // still market costs them thirty thousand dollars. A book that has not
-    // fallen has not lost, so the segment from flat to the first rung is
-    // interpolated from zero like every other segment is from its neighbour.
-    if (shock >= 0) return 0;
-    if (shock >= rungs[0].shock) {
-      return rungs[0].loss * (shock / rungs[0].shock);
-    }
-    for (var i = 0; i < rungs.length - 1; i++) {
-      var a = rungs[i], b = rungs[i + 1];
-      if (shock <= a.shock && shock >= b.shock) {
-        var span = a.shock - b.shock;
-        if (span === 0) return a.loss;
-        var w = (a.shock - shock) / span;
-        return a.loss + w * (b.loss - a.loss);
-      }
-    }
-    return rungs[rungs.length - 1].loss;
-  }
-
-  function draw() {
-    var pct = parseInt(range.value, 10);
-    var loss = lossAt(-pct / 100);
-    shockOut.textContent = pct + '%';
-    lossOut.textContent = money(loss);
-    var over = loss - budget;
-    if (over > 0) {
-      verdictOut.textContent = money(over) + ' past it';
-      verdictOut.className = 'v bad';
-    } else {
-      verdictOut.textContent = 'inside the promise';
-      verdictOut.className = 'v good';
-    }
-  }
-
-  range.addEventListener('input', draw);
-  draw();
 })();
 
 (function () {
-  // Entry motion. IntersectionObserver rather than a scroll listener:
-  // a scroll handler reflows continuously and wrecks mobile frame rate.
-  var seen = document.querySelectorAll('.reveal');
-  if (window.IntersectionObserver) {
-    var io = new IntersectionObserver(function (items) {
-      items.forEach(function (item) {
-        if (item.isIntersecting) { item.target.classList.add('in');
-          io.unobserve(item.target); }
-      });
-    }, { rootMargin: '0px 0px -8% 0px' });
-    [].forEach.call(seen, function (el) { io.observe(el); });
-  } else {
-    [].forEach.call(seen, function (el) { el.classList.add('in'); });
-  }
-
-  var symbolBox = document.getElementById('f-symbol');
-  var verdictBox = document.getElementById('f-verdict');
-  var rows = [].slice.call(document.querySelectorAll('tr[data-symbol]'));
-  var shown = document.getElementById('f-count');
-  var nothing = document.getElementById('f-nomatch');
-  if (!symbolBox || !verdictBox || !rows.length) { return; }
+  var rows = Array.prototype.slice.call(
+    document.querySelectorAll('#decisions tbody tr[data-symbol]'));
+  var f = {
+    date: document.getElementById('f-date'),
+    symbol: document.getElementById('f-symbol'),
+    who: document.getElementById('f-who'),
+    verdict: document.getElementById('f-verdict')
+  };
+  var count = document.getElementById('f-count');
+  if (!count) { return; }
   function apply() {
-    var needle = symbolBox.value.trim().toUpperCase();
-    var verdict = verdictBox.value;
-    var visible = 0;
+    var sym = (f.symbol.value || '').trim().toUpperCase();
+    var shown = 0;
     rows.forEach(function (row) {
-      var bySymbol = !needle ||
-        row.getAttribute('data-symbol').indexOf(needle) !== -1;
-      var byVerdict = verdict === 'all' ||
-        row.getAttribute('data-verdict') === verdict;
-      var show = bySymbol && byVerdict;
-      row.hidden = !show;
-      if (show) { visible += 1; }
+      var ok =
+        (f.date.value === 'all' || row.dataset.date === f.date.value) &&
+        (f.who.value === 'all' || row.dataset.who === f.who.value) &&
+        (f.verdict.value === 'all' || row.dataset.verdict === f.verdict.value) &&
+        (sym === '' || (row.dataset.symbol || '').toUpperCase().indexOf(sym) === 0);
+      row.style.display = ok ? '' : 'none';
+      if (ok) { shown++; }
     });
-    shown.textContent = visible + ' of ' + rows.length;
-    nothing.hidden = visible !== 0;
+    count.textContent = shown + ' of ' + rows.length;
   }
-  symbolBox.addEventListener('input', apply);
-  verdictBox.addEventListener('change', apply);
+  Object.keys(f).forEach(function (k) {
+    f[k].addEventListener(f[k].tagName === 'INPUT' ? 'input' : 'change', apply);
+  });
   apply();
 })();
 </script>

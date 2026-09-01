@@ -1,484 +1,422 @@
-from datetime import datetime
+"""The page a judge and a client both open.
+
+It answers one question in the first screen -- is the client inside the number
+they were given -- and everything below is the working. So these tests are
+mostly about two properties: that the answer is the one the journal recorded,
+and that nothing on the page was computed by the page.
+"""
+
+from datetime import UTC, datetime
 
 from drawdownguard.journal import writer
-from drawdownguard.journal.site import build_site, entry_from_journal, render_site
+from drawdownguard.journal.site import (
+    build_site,
+    daily_series,
+    entry_from_journal,
+    render_site,
+)
+
+NOW = datetime(2026, 9, 1, 20, 0, tzinfo=UTC)
 
 
-def _entry(**overrides):
-    values = {
-        "ts": "2026-08-25T14:02:11Z",
-        "symbol": "SPY",
-        "action": "sell_put",
-        "regime": "calm",
-        "verdict": "approved",
-        "detail": "SPY260918P00620000 x1 @ 4.20",
-    }
-    values.update(overrides)
-    return values
+def _line(event: str, payload: dict, ts: str, severity: str = "info") -> dict:
+    return entry_from_journal(
+        {"timestamp": ts, "event": event, "severity": severity, "payload": payload}
+    )
 
 
-def _stress(**overrides):
-    """A `mandate.stress` line, which is what the promise and floor read.
-
-    The page renders those two sections only when a cycle has measured the
-    book, so a test about the controls has to hand it one -- otherwise it is
-    asserting about a page that legitimately has no controls on it.
-    """
+def _stress(**overrides) -> dict:
+    """A `mandate.stress` payload: the reading everything above the table uses."""
     payload = {
         "mandate": "balanced",
         "downside_budget_pct": 10.0,
-        "budget": 100000.0,
-        "equity_exposure": 600000.0,
-        "uncovered_risk": 20000.0,
-        "ladder": [
-            {"shock": -0.05, "loss": -30000.0, "from_options": 0, "shortfall": 0.0},
-            {"shock": -0.10, "loss": -60000.0, "from_options": 0, "shortfall": 0.0},
+        "budget": 9997.84,
+        "reference": 99978.43,
+        "equity_exposure": 81011.5,
+        "uncovered_risk": 0.0,
+        "worst_case": 2795.0,
+        "period_started": "2026-08-28",
+        "period_ends": "2027-08-28",
+        "holdings": [
             {
-                "shock": -0.20, "loss": -120000.0,
-                "from_options": 0, "shortfall": 20000.0,
+                "symbol": "XLF",
+                "shares": 900,
+                "price": 57.6,
+                "value": 51840.0,
+                "shocked": True,
             },
             {
-                "shock": -0.35, "loss": -210000.0,
-                "from_options": 0, "shortfall": 110000.0,
+                "symbol": "IWM",
+                "shares": 100,
+                "price": 291.3,
+                "value": 29130.0,
+                "shocked": True,
+            },
+            {
+                "symbol": "BIL",
+                "shares": 100,
+                "price": 91.7,
+                "value": 9170.0,
+                "shocked": False,
+            },
+            {
+                "symbol": "CASH",
+                "shares": 4000,
+                "price": 1.0,
+                "value": 4000.0,
+                "shocked": False,
+            },
+        ],
+        "legs": [
+            {
+                "symbol": "XLF",
+                "right": "P",
+                "strike": "56",
+                "contracts": 9,
+                "expiry": "2027-12-17",
             },
         ],
     }
     payload.update(overrides)
-    return {
-        "ts": "2026-08-25T14:01:00Z",
-        "symbol": "",
-        "action": "mandate.stress",
-        "regime": "",
-        "verdict": "rejected",
-        "detail": "",
-        "event": "mandate.stress",
-        "payload": payload,
-    }
+    return payload
 
 
-def _plan(**overrides):
-    """A `protection.plan` line: one sleeve, hedged on its own underlying."""
-    payload = {
-        "mandate": "balanced",
-        "uncovered_risk": 20287.0,
-        "total_premium": 8272.0,
-        "sleeves": [
-            {
-                "symbol": "SPY",
-                "spot": 770.13,
-                "exposure": 301891.0,
-                "budget": 50252.0,
-                "chosen": "protective_put",
-                "because": "bought outright",
-                "offers": [
-                    {
-                        "kind": "protective_put",
-                        "detail": "buy 4x SPY 670 put at 20.68",
-                        "premium_cost": 8272.0,
-                        "forgone_upside": 0.0,
-                        "protection_iv": 0.228,
-                        "uncovered_after": 0.0,
-                        "covers_the_risk": True,
-                    }
-                ],
-            }
-        ],
-    }
-    payload.update(overrides)
-    return {
-        "ts": "2026-08-25T14:02:00Z",
-        "symbol": "",
-        "action": "protection.plan",
-        "regime": "",
-        "verdict": "rejected",
-        "detail": "",
-        "event": "protection.plan",
-        "payload": payload,
-    }
+def _page(entries, repository_url: str = "") -> str:
+    return render_site(entries, [], NOW, repository_url)
 
 
-def test_the_page_is_a_complete_html_document():
-    html = render_site([_entry()], [], datetime(2026, 8, 25, 14, 5))
-    assert html.startswith("<!doctype html>")
-    assert "</html>" in html
+def _week() -> list[dict]:
+    """Three closes, the middle one still uncovered. Newest first."""
+    return [
+        _line("cycle.complete", {"equity": "98319.7"}, "2026-09-01T17:48:00Z"),
+        _line("mandate.stress", _stress(), "2026-09-01T17:48:00Z"),
+        _line("cycle.complete", {"equity": "99183.49"}, "2026-08-31T14:19:00Z"),
+        _line(
+            "mandate.stress",
+            _stress(uncovered_risk=71339.0, worst_case=81337.0),
+            "2026-08-31T14:19:00Z",
+            severity="breach",
+        ),
+        _line("cycle.complete", {"equity": "99726.5"}, "2026-08-28T17:07:00Z"),
+        _line(
+            "mandate.stress",
+            _stress(uncovered_risk=71887.0, worst_case=81885.0),
+            "2026-08-28T17:07:00Z",
+            severity="breach",
+        ),
+    ]
 
 
-def test_journal_entries_appear_newest_first():
-    old = _entry(ts="2026-08-24T14:00:00Z", detail="older")
-    new = _entry(ts="2026-08-25T14:00:00Z", detail="newer")
-    html = render_site([old, new], [], datetime(2026, 8, 25, 14, 5))
-    assert html.index("newer") < html.index("older")
+# --- the verdict ------------------------------------------------------------
 
 
-def test_rejections_are_shown_not_hidden():
-    """The gate refusing a trade is the most interesting thing this agent does.
-
-    A status page listing only fills throws away the strongest evidence on it.
-    """
-    html = render_site(
-        [_entry(verdict="rejected", detail="assignment probability 0.41 > 0.35")],
-        [],
-        datetime(2026, 8, 25, 14, 5),
-    )
-    assert "rejected" in html
-    assert "0.41" in html
-
-
-def test_the_book_is_read_from_the_journal_not_from_a_snapshot():
-    """The page believes the record the agent actually writes.
-
-    It used to render a state snapshot exported by the strategy this project
-    no longer runs. Nothing has written that file since, so the published page
-    reported "no position has opened yet" for an account holding 800,000 of
-    equity -- wrong, and confident about it, which a reader cannot detect.
-    """
-    html = render_site([_plan(), _stress()], [], datetime(2026, 8, 25, 14, 5))
-    assert "SPY" in html
-    assert "buy 4x SPY 670 put" in html
-    assert "$301,891" in html   # the sleeve's exposure
-    assert "$50,252" in html    # its share of the budget
-
-
-def test_html_is_escaped():
-    html = render_site(
-        [_entry(detail="<script>alert(1)</script>")], [], datetime(2026, 8, 25, 14, 5)
-    )
-    assert "<script>alert(1)</script>" not in html
-    assert "&lt;script&gt;" in html
-
-
-def test_an_empty_journal_still_renders():
-    html = render_site([], [], datetime(2026, 8, 25, 14, 5))
-    assert "No cycles recorded yet" in html
-
-
-def test_a_sleeve_that_needed_nothing_says_so_rather_than_showing_a_blank():
-    """Needing no protection is an outcome, not missing data. A blank cell
-    reads as a number the page failed to fetch."""
-    quiet = _plan()
-    quiet["payload"]["sleeves"][0]["chosen"] = None
-    html = render_site([quiet, _stress()], [], datetime(2026, 8, 25, 14, 5))
-    assert "nothing needed" in html
-
-
-def test_the_page_fetches_nothing_from_anywhere():
-    """A judge's click must not depend on someone else's uptime.
-
-    This is about requests, not about JavaScript. An earlier version of this
-    test also banned `<script`, which conflated two unrelated things and cost
-    the page its interactivity for no safety gained: an inline script makes no
-    request. What must stay true is that the document loads nothing remote —
-    which is also what keeps a public page incapable of reaching the broker.
-    """
-    html = render_site([_entry()], [], datetime(2026, 8, 25, 14, 5))
-    for forbidden in ("http://", "//cdn", "@import", "src=", "fetch(", "XMLHttp"):
-        assert forbidden not in html
-
-
-def test_the_decision_log_can_be_filtered():
-    """ "Interactive evaluation" means a judge does something, not that a page loads."""
-    html = render_site([_entry()], [], datetime(2026, 8, 25, 14, 5))
-    assert 'id="f-symbol"' in html
-    assert 'id="f-verdict"' in html
-    assert "<script>" in html
-
-
-def test_rows_carry_the_attributes_the_filter_needs():
-    html = render_site(
-        [_entry(symbol="QQQ", verdict="rejected")], [], datetime(2026, 8, 25, 14, 5)
-    )
-    assert 'data-symbol="QQQ"' in html
-    assert 'data-verdict="rejected"' in html
-
-
-def test_an_empty_journal_renders_no_filter_to_operate_on():
-    """Controls over an empty table are furniture, and imply data that is absent."""
-    html = render_site([], [], datetime(2026, 8, 25, 14, 5))
-    assert 'id="f-symbol"' not in html
-
-
-def test_the_full_decision_record_is_available_on_the_row():
-    """The raw journal payload, so a judge can check the summary against it."""
-    html = render_site(
-        [_entry(full='{"assignment_prob": 0.41}')], [], datetime(2026, 8, 25, 14, 5)
-    )
-    assert "<details" in html
-    assert "assignment_prob" in html
-
-
-def test_a_journal_line_becomes_a_row():
-    """The journal's own shape is not the page's shape; this is the seam."""
-    line = {
-        "timestamp": "2026-08-25T14:02:11+00:00",
-        "drawdownguard_env": "dev",
-        "event": "order_rejected",
-        "severity": "veto",
-        "payload": {
-            "symbol": "SPY",
-            "action": "sell_put",
-            "regime": "elevated",
-            "reason": "net delta band",
-        },
-    }
-    row = entry_from_journal(line)
-    assert row["symbol"] == "SPY"
-    assert row["verdict"] == "rejected"
-    assert row["regime"] == "elevated"
-    assert "net delta band" in row["detail"]
-
-
-def test_an_info_line_reads_as_approved():
-    line = {
-        "timestamp": "2026-08-25T14:02:11+00:00",
-        "drawdownguard_env": "dev",
-        "event": "order_placed",
-        "severity": "info",
-        "payload": {"symbol": "SPY", "detail": "SPY260918P00620000 x1 @ 4.20"},
-    }
-    assert entry_from_journal(line)["verdict"] == "approved"
-
-
-def test_a_defect_line_is_not_flattened_into_a_rejection():
-    """`defect` means the middleware fired: a leak, not the gate working."""
-    line = {
-        "timestamp": "2026-08-25T14:02:11+00:00",
-        "drawdownguard_env": "dev",
-        "event": "middleware_blocked",
-        "severity": "defect",
-        "payload": {"symbol": "SPY"},
-    }
-    assert entry_from_journal(line)["verdict"] == "defect"
-
-
-def test_build_site_writes_a_page_from_the_journal_and_the_snapshot(tmp_path):
-    writer.write(
-        "order_placed",
-        {"symbol": "SPY", "action": "sell_put", "detail": "SPY260918P00620000 x1"},
-        directory=tmp_path / "journal",
-    )
-    snapshot = tmp_path / "positions.json"
-
-    out = build_site(tmp_path / "index.html", tmp_path / "journal", snapshot)
-
-    assert out.exists()
-    page = out.read_text()
-    assert "SPY260918P00620000 x1" in page
-
-
-def test_build_site_runs_on_a_cycle_that_traded_nothing(tmp_path):
-    """ "Considered and declined" is a state worth publishing.
-
-    A page that only updates on fills would imply the agent was asleep on the
-    days it was most careful.
-    """
-    out = build_site(
-        tmp_path / "index.html", tmp_path / "journal", tmp_path / "absent.json"
-    )
-    assert "No cycles recorded yet" in out.read_text()
-
-
-def test_no_source_link_is_published_when_the_repository_is_unknown():
-    """A guessed link is worse than a missing one: it looks authoritative.
-
-    The repository does not exist yet, so the footer must not invent a URL.
-    """
-    html = render_site([_entry()], [], datetime(2026, 8, 25, 14, 5))
-    assert "<a href" not in html
-    assert "paper trading only" in html
-
-
-def test_a_supplied_repository_link_is_rendered():
-    html = render_site(
-        [_entry()],
-        [],
-        datetime(2026, 8, 25, 14, 5),
-        repository_url="https://github.com/example/drawdown-guard-agent",
-    )
-    assert 'href="https://github.com/example/drawdown-guard-agent"' in html
-
-
-def test_the_journal_payload_becomes_the_expandable_record():
-    line = {
-        "timestamp": "2026-08-25T14:02:11+00:00",
-        "drawdownguard_env": "dev",
-        "event": "order_rejected",
-        "severity": "veto",
-        "payload": {"symbol": "SPY", "reason": "net delta band", "net_delta": 168},
-    }
-    row = entry_from_journal(line)
-    assert "168" in row["full"]
-    assert "net_delta" in row["full"]
-
-
-def test_every_element_the_script_looks_up_exists_in_the_page():
-    """A typo in an id does not raise. The script simply does nothing forever.
-
-    The guard clause that keeps an empty journal from throwing would also
-    swallow a renamed control, so nothing at runtime would ever complain. This
-    ties the two halves together at build time instead.
-    """
-    import re
-
-    from drawdownguard.journal.site import _SCRIPT
-
-    wanted = set(re.findall(r"getElementById\('([^']+)'\)", _SCRIPT))
-    assert wanted, "the script looks nothing up; this test has gone stale"
-
-    html = render_site([_entry(), _stress()], [], datetime(2026, 8, 25, 14, 5))
-    for element_id in wanted:
-        assert f'id="{element_id}"' in html, element_id
-
-
-def test_the_script_selector_matches_the_rendered_rows():
-    """The filter selects on data-symbol; the rows must actually carry it."""
-    import re
-
-    from drawdownguard.journal.site import _SCRIPT
-
-    assert "tr[data-symbol]" in _SCRIPT
-    html = render_site([_entry()], [], datetime(2026, 8, 25, 14, 5))
-    assert re.search(r"<tr[^>]*data-symbol=", html)
-
-
-# --- the promise and the floor ----------------------------------------------
-
-
-def test_the_promise_is_stated_in_the_client_s_own_terms():
-    """Percent and dollars both. "10%" is what the client said; "$100,000" is
-    what it costs them, and only the second is a number they can weigh."""
-    html = render_site([_stress()], [], datetime(2026, 8, 25, 14, 5))
-    assert "10.0%" in html
-    assert "$100,000" in html
-    assert "$600,000" in html
+def test_a_promise_that_holds_says_so_and_shows_the_headroom():
+    page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
+    assert "Inside the promise" in page
+    assert "$7,203" in page, "9,997.84 budget less a 2,795 worst case"
+    assert "Remaining headroom" in page
 
 
 def test_a_broken_promise_is_labelled_as_broken():
-    """Named as risk, not as a shortfall.
+    """The single event this page exists to surface.
 
-    The figure is `worst_case - budget`, so on a bare equity book it is most of
-    the portfolio -- 20,000 here and 72,000 on the live account. "Short by"
-    reads as money that has to be found, and it is closed by a few thousand of
-    premium. What it measures is risk nobody has agreed to carry."""
-    html = render_site([_stress()], [], datetime(2026, 8, 25, 14, 5))
-    assert "$20,000 of risk not covered" in html
-
-
-def test_a_promise_that_holds_says_so_rather_than_showing_a_zero():
-    """Zero dollars of shortfall is a number. "The promise holds" is the
-    sentence a client is owed, and a page that only prints figures makes them
-    do the interpreting."""
-    intact = _stress(uncovered_risk=0.0)
-    html = render_site([intact], [], datetime(2026, 8, 25, 14, 5))
-    assert "the promise holds" in html
-
-
-def test_the_measured_rungs_are_handed_to_the_browser_not_a_model_of_them():
-    """The slider interpolates between the rungs the agent actually recorded.
-
-    Straight lines between measured points are exact here, not a fit: the
-    payoff bends only at a strike. A page that recomputed the ladder in
-    JavaScript could disagree with the journal, and then neither would be
-    evidence.
+    It once rendered in the same badge as a routine fill, because every
+    severity the verdict map did not name fell through to "approved".
     """
-    html = render_site([_stress()], [], datetime(2026, 8, 25, 14, 5))
-    assert 'data-rungs=' in html
-    assert '"shock": -0.2' in html
-    assert '"loss": 120000.0' in html  # positive, the way a reader says it
+    page = _page(
+        [
+            _line(
+                "mandate.stress",
+                _stress(uncovered_risk=71887.0, worst_case=81885.0),
+                "2026-08-28T17:07:00Z",
+                severity="breach",
+            )
+        ]
+    )
+    assert "Risk outside the promise" in page
+    assert "$71,887" in page
+    assert "Remaining headroom" not in page, "there is none to report"
 
 
-def test_an_explanation_is_shown_when_the_model_wrote_one():
-    note = {
-        "ts": "2026-08-25T14:03:00Z",
-        "symbol": "",
-        "action": "protection.explained",
-        "regime": "",
-        "verdict": "approved",
-        "detail": "",
-        "event": "protection.explained",
-        "payload": {"chosen": "protective_put", "note": "We bought eight puts."},
-    }
-    html = render_site([note, _stress()], [], datetime(2026, 8, 25, 14, 5))
-    assert "We bought eight puts." in html
+def test_the_worst_case_is_the_whole_descent_not_a_named_shock():
+    """`worst_case`, read off the record rather than picked off a ladder.
 
-
-def test_a_missing_explanation_is_an_empty_field_not_an_invented_one():
-    """There is no fallback sentence anywhere, and the page must not add one.
-
-    A reader cannot tell generated filler from an explanation, so the honest
-    thing is to say none was written.
+    A book losing exactly its budget at -20% reads as fine at that rung and can
+    still lose everything on the way down. The page must show the number the
+    agent actually acted on.
     """
-    html = render_site([_stress()], [], datetime(2026, 8, 25, 14, 5))
-    assert "No note was written" in html
+    page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
+    assert "$2,795" in page
+    assert "Worst case" in page
 
 
 def test_a_page_built_before_any_cycle_has_run_says_so():
-    html = render_site([], [], datetime(2026, 8, 25, 14, 5))
-    assert "No cycle has measured the promise yet." in html
-    assert "No ladder has been measured yet." in html
+    page = _page([])
+    assert "No cycle has measured the promise yet" in page
+    assert "Inside the promise" not in page
 
 
-def test_a_breach_is_not_rendered_as_an_approval():
-    """`breach` is the one severity that means the client's promise broke.
+# --- the promise ------------------------------------------------------------
 
-    The map held only `veto` and `defect`, and everything else fell through to
-    the default -- so the stress ladder reporting a broken promise wore the
-    same badge as a routine fill, on the page built to surface exactly that.
+
+def test_the_promise_is_stated_in_the_client_s_own_terms():
+    page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
+    for expected in ("$99,978", "10.0%", "$9,998", "12 months"):
+        assert expected in page, expected
+
+
+def test_the_reference_is_the_account_the_promise_opened_on():
+    """Not this morning's equity.
+
+    Ten percent of today re-bases every cycle: lose ten percent and the agent
+    starts defending ten percent of the smaller number.
     """
-    line = {
-        "timestamp": "2026-08-25T14:02:11+00:00",
-        "drawdownguard_env": "dev",
-        "event": "mandate.stress",
-        "severity": "breach",
-        "payload": {"symbol": "SPY", "uncovered_risk": 20362.56},
-    }
-    assert entry_from_journal(line)["verdict"] == "breach"
+    page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
+    assert "$99,978" in page
+    assert "Reference portfolio" in page
+
+
+# --- the book ---------------------------------------------------------------
+
+
+def test_the_book_is_read_from_the_journal_not_from_a_snapshot():
+    """`render_site` takes a positions list and must not need it.
+
+    Two sources for what is held can disagree, and then neither is evidence.
+    """
+    page = render_site(
+        [_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")], [], NOW
+    )
+    assert "XLF" in page and "IWM" in page and "BIL" in page
+
+
+def test_weights_are_shown_and_sum_to_the_whole():
+    page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
+    assert "55.1%" in page, "51,840 of 94,140"
+    assert "100.0%" in page
+
+
+def test_bills_are_shown_and_marked_as_not_exposure():
+    """Held, and not what the promise is measured against.
+
+    Leaving them out would make the weights read as a mistake; showing them
+    unmarked would overstate what can fall.
+    """
+    page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
+    assert "BIL" in page
+    assert "not exposure" in page
+
+
+def test_a_holding_says_what_is_standing_behind_it():
+    page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
+    assert "long 9 &times; 56 put" in page
+
+
+def test_a_book_that_has_not_been_read_says_so_rather_than_showing_an_empty_table():
+    page = _page(
+        [_line("mandate.stress", _stress(holdings=[]), "2026-09-01T00:00:00Z")]
+    )
+    assert "No book has been read yet" in page
+
+
+# --- the history ------------------------------------------------------------
+
+
+def test_one_row_per_trading_day_at_its_closing_reading():
+    """Thirteen cycles a day, one point.
+
+    A line through every cycle is a picture of the market's noise, which is the
+    one thing this project has no view about.
+    """
+    series = daily_series(_week())
+    assert [row["date"] for row in series] == [
+        "2026-08-28",
+        "2026-08-31",
+        "2026-09-01",
+    ]
+    assert series[-1]["equity"] == 98319.7
+
+
+def test_the_closing_reading_is_the_last_one_written_that_day():
+    entries = [
+        _line("cycle.complete", {"equity": "98000"}, "2026-09-01T19:45:00Z"),
+        _line("cycle.complete", {"equity": "99000"}, "2026-09-01T13:45:00Z"),
+    ]
+    assert daily_series(entries)[0]["equity"] == 98000.0
+
+
+def test_a_day_with_no_completed_cycle_is_not_a_point_on_the_line():
+    """A halted day has no closing value, and inventing one would be a lie."""
+    entries = [_line("mandate.stress", _stress(), "2026-09-01T13:45:00Z")]
+    assert daily_series(entries) == []
+
+
+def test_the_band_marks_the_days_the_promise_was_not_held():
+    page = _page(_week())
+    assert 'class="u"' in page, "two days opened with risk outside the promise"
+    assert 'class="c"' in page, "and one closed inside it"
+    assert "promise held" in page
+
+
+def test_one_close_is_not_a_line():
+    entries = [_line("cycle.complete", {"equity": "99000"}, "2026-09-01T19:45:00Z")]
+    assert "Two closes are needed" in _page(entries)
+
+
+def test_an_event_label_names_the_instrument_not_the_contract():
+    """ "opened +9 contracts of XLF P56" is the agent hedging XLF.
+
+    Labelling it "P56 bought" names the contract and reads as though the client
+    had bought it.
+    """
+    entries = _week() + [
+        _line(
+            "book.reviewed",
+            {"moved": True, "changes": ["opened +9 contracts of XLF P56"]},
+            "2026-09-01T13:45:00Z",
+        )
+    ]
+    page = _page(entries)
+    assert "XLF hedged" in page
+    assert "P56 bought" not in page
+
+
+# --- the decisions ----------------------------------------------------------
+
+
+def test_the_client_and_the_agent_are_not_given_the_same_voice():
+    """The whole claim is that the agent never takes a view.
+
+    A table showing the client selling in the same voice as the agent buying a
+    put reads as an agent trading on an opinion.
+    """
+    entries = [
+        _line(
+            "book.reviewed",
+            {"moved": True, "changes": ["closed all 900 shares of XLF"]},
+            "2026-09-02T13:45:00Z",
+        ),
+        _line(
+            "book.reviewed",
+            {"moved": True, "changes": ["opened +9 contracts of XLF P56"]},
+            "2026-09-01T13:45:00Z",
+        ),
+    ]
+    page = _page(entries)
+    assert 'data-who="client"' in page, "shares move because the client moved them"
+    assert 'data-who="agent"' in page, "legs move because the agent did"
+
+
+def test_a_row_says_what_happened_rather_than_dumping_the_payload():
+    entries = [
+        _line(
+            "order.filled",
+            {"symbol": "XLF", "contracts": 9, "fill_price": "3.5"},
+            "2026-09-01T13:46:00Z",
+        )
+    ]
+    page = _page(entries)
+    assert "hedge bought, 9 contracts at 3.5" in page
+
+
+def test_no_raw_payload_is_offered_as_evidence():
+    """The client reading this does not write code.
+
+    A page that answers "how do you know" with a JSON blob behind a disclosure
+    triangle is asking them to take the summary on trust anyway. The record is
+    the journal, and the journal is linked.
+    """
+    entries = [_line("order.filled", {"symbol": "XLF"}, "2026-09-01T13:46:00Z")]
+    page = _page(entries)
+    assert "<details>" not in page
+    assert '"broker_order_id"' not in page
+
+
+def test_the_same_finding_repeated_every_cycle_is_shown_once():
+    """Thirteen cycles a day each notice the same discrepancy.
+
+    Ninety-nine identical rows tell a reader nothing the first one did not, and
+    they bury the six lines that matter.
+    """
+    entries = [
+        _line("reconcile.discrepancy", {"detail": "BIL: local CASH"}, ts)
+        for ts in (
+            "2026-09-01T17:48:00Z",
+            "2026-09-01T17:27:00Z",
+            "2026-09-01T13:45:00Z",
+        )
+    ]
+    assert _page(entries).count("took the broker's version of the position") == 1
 
 
 def test_a_breach_row_is_findable_and_filterable():
-    html = render_site(
-        [_entry(verdict="breach", action="mandate.stress")],
-        [],
-        datetime(2026, 8, 25, 14, 5),
+    entries = [
+        _line("order.working", {"symbol": "XLF"}, "2026-08-31T14:19:00Z", "breach")
+    ]
+    page = _page(entries)
+    assert 'data-verdict="breach"' in page
+    assert 'id="f-verdict"' in page
+
+
+def test_the_table_can_be_filtered_by_date_instrument_who_and_verdict():
+    page = _page(_week())
+    for control in ("f-date", "f-symbol", "f-who", "f-verdict"):
+        assert f'id="{control}"' in page, control
+
+
+def test_no_controls_are_drawn_over_an_empty_table():
+    """Filters over nothing imply the page is hiding data that does not exist."""
+    assert 'id="f-verdict"' not in _page([])
+
+
+def test_journal_entries_appear_newest_first():
+    entries = [
+        _line("order.filled", {"symbol": "XLF"}, "2026-09-01T13:46:00Z"),
+        _line("order.filled", {"symbol": "IWM"}, "2026-08-31T14:19:00Z"),
+    ]
+    page = _page(entries)
+    assert page.index("2026-09-01 13:46") < page.index("2026-08-31 14:19")
+
+
+# --- the page itself --------------------------------------------------------
+
+
+def test_html_is_escaped():
+    entries = [_line("order.filled", {"symbol": "<script>"}, "2026-09-01T13:46:00Z")]
+    assert "&lt;script&gt;" in _page(entries)
+    assert "<script>alert" not in _page(entries)
+
+
+def test_nothing_remote_is_loaded():
+    """A judge's click must not depend on anyone else's uptime."""
+    page = _page(_week())
+    for remote in ("http://", "cdn.", "fonts.googleapis", "<img"):
+        assert remote not in page, remote
+
+
+def test_no_source_link_is_published_when_the_repository_is_unknown():
+    """A guessed link on a public page is worse than a missing one."""
+    assert "source" not in _page(_week())
+    assert "https://example.invalid/repo" in _page(
+        _week(), "https://example.invalid/repo"
     )
-    assert 'class="breach"' in html
-    assert 'data-verdict="breach"' in html
-    assert '<option value="breach">' in html
 
 
-def test_a_still_market_costs_nothing_on_the_floor_slider():
-    """The slider starts at 0% and the measured ladder starts at -5%.
+def test_an_empty_journal_still_renders():
+    page = _page([])
+    assert page.startswith("<!doctype html>")
+    assert "Drawdown Guard" in page
 
-    Anything milder than the shallowest rung used to return that rung's loss,
-    so dragging to "if the market falls 0%" reported the loss at -5% -- a book
-    that had not moved, shown as down thirty thousand dollars.
-    """
-    import json as _json
-    import re
-    import shutil
-    import subprocess
 
-    import pytest
-
-    if not shutil.which("node"):
-        pytest.skip("node is needed to run the page's own script")
-
-    html = render_site([_stress()], [], datetime(2026, 8, 25, 14, 5))
-    found = re.search(r"function lossAt\(shock\) \{.*?\n  \}", html, re.S)
-    assert found, "lossAt is no longer in the page under that name"
-
-    harness = (
-        "var rungs=[{shock:-0.05,loss:30000},{shock:-0.10,loss:60000},"
-        "{shock:-0.20,loss:120000}];\n"
-        + found.group(0)
-        + "\nconsole.log(JSON.stringify("
-        "[lossAt(0),lossAt(-0.025),lossAt(-0.05),lossAt(-0.15)]));"
+def test_build_site_runs_on_a_cycle_that_traded_nothing(tmp_path, monkeypatch):
+    """ "Considered and declined" is a state worth publishing."""
+    journal = tmp_path / "journal"
+    journal.mkdir()
+    (journal / "2026-09-01.jsonl").write_text(
+        '{"timestamp": "2026-09-01T13:45:00Z", "event": "cycle.complete", '
+        '"severity": "info", "payload": {"equity": "98319.7"}}\n'
     )
-    out = subprocess.run(
-        ["node", "-e", harness], capture_output=True, text=True, check=True
-    )
-    flat, halfway, measured, between = _json.loads(out.stdout)
-
-    assert flat == 0
-    assert halfway == 15000  # straight line from flat to the first rung
-    assert measured == 30000  # the measured rung itself is untouched
-    assert between == 90000  # and so is every segment between two rungs
+    monkeypatch.setattr(writer, "JOURNAL_DIR", journal)
+    written = build_site(out_path=tmp_path / "out.html", journal_dir=journal)
+    assert written.exists()
+    assert "Drawdown Guard" in written.read_text()

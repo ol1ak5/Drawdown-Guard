@@ -10,11 +10,33 @@ it also constrains the published artifact: a page generator that cannot open a
 socket cannot reach the broker.
 
 *Static and non-interactive are not the same constraint.* The document loads
-nothing remote — no CDN, no font, no fetch — so a judge's click never depends
+nothing remote -- no CDN, no font, no fetch -- so a judge's click never depends
 on anyone else's uptime. Within that, it carries an inline script and native
 `<details>` disclosure, because "interactive evaluation" means a judge does
 something, not that a page renders. A script that makes no request weakens
 nothing.
+
+WHAT THE PAGE IS FOR
+--------------------
+One question, answered in the first screen: **is the client inside the number
+they were given?** Everything below that exists to show how, and in what order
+somebody would want to ask.
+
+It used to open with an explanation and reach the answer four sections down. A
+judge reading forty projects does not get four sections, and neither does a
+client. So the verdict is first, the promise second, and the evidence after.
+
+The stress ladder that used to be the main visual is gone. It answered "what
+if the market fell 35%", which is a question nobody asked and which invited the
+reading that the agent had a view about a 35% fall. What replaced it is the
+history that actually happened, with a band underneath saying whether the
+promise was held on each of those days.
+
+EVERYTHING IS READ, NOTHING IS RECOMPUTED
+------------------------------------------
+Every number here comes off a journal entry. A page that did its own
+arithmetic could disagree with the record, and then neither would be evidence
+of anything -- so where the page needs a figure, the cycle writes it down.
 """
 
 import html
@@ -43,276 +65,147 @@ DEFAULT_SNAPSHOT = Path("data/state/positions.json")
 # rendered "approved", in the same badge as a routine fill.
 _VERDICT_BY_SEVERITY = {"veto": "rejected", "defect": "defect", "breach": "breach"}
 
+# How many decisions the table shows. The journal is the full record and is
+# linked; the page is a reading of it, and a reader who has scrolled past a
+# hundred rows has stopped reading.
+MAX_DECISIONS = 120
+
+
+# No boxes. Every figure on this page used to sit in a bordered card, and a
+# grid of bordered cards reads as a form to be filled in rather than a
+# statement of fact. Hierarchy here comes from size and spacing; the only rules
+# that remain are the ones separating one section from the next.
 _STYLE = """
-/* Ethereal Glass. Committed to one look rather than tracking the reader's
-   theme: a trading console is read as an instrument, and an instrument does
-   not change colour depending on who picks it up.
+/* Soft structuralism: near-white ground, one violet accent, no hard edges.
+   Hierarchy comes from size, weight and air -- the only rules left on the page
+   are the ones separating one section from the next, and even those are a
+   quarter-opacity hairline rather than a border.
 
-   NOTE ON TYPE. Every reference for this aesthetic reaches for a licensed
-   grotesk. This page loads nothing remote — no CDN, no font file — because a
-   judge's click must not depend on anyone else's uptime. So the stack is
-   system-first, and the character comes from scale, spacing and rhythm
-   instead. Constraint first, taste within it. */
-:root {
-  --ink: #f4f4f2;
-  --dim: #8b8b86;
-  --void: #050505;
-  --shell: rgba(255,255,255,.035);
-  --hair: rgba(255,255,255,.09);
-  --core: #0b0b0c;
-  --ok: #4ade80;
-  --no: #fb7185;
-  --alarm: #fbbf24;
-  --ease: cubic-bezier(.32,.72,0,1);
-  --r: 1.75rem;
+   The type stack is the system's own. SF Pro on Apple hardware, Segoe UI
+   Variable on Windows: the faces these operating systems were designed around,
+   and they load nothing. A page that fetched a font would make a judge's click
+   depend on somebody else's uptime, which is the one thing this document
+   refuses to do. */
+:root{
+  --ink:#0b0b0f; --body:#4a4a55; --muted:#8b8b98; --faint:#c2c2cd;
+  --line:rgba(11,11,15,.07); --bg:#fbfafc; --shell:rgba(124,58,237,.035);
+  --violet:#6d3aed; --violet-soft:rgba(109,58,237,.09);
+  --held:#3f9573; --open:#c4863a;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  --ease:cubic-bezier(.32,.72,0,1);
 }
-* { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
-body {
-  margin: 0; background: var(--void); color: var(--ink);
-  font: 400 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-feature-settings: "cv05" 1, "ss01" 1; letter-spacing: -.006em;
-  min-height: 100dvh; overflow-x: hidden;
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:400 17px/1.65 -apple-system,BlinkMacSystemFont,"SF Pro Display",
+    "SF Pro Text","Segoe UI Variable Text","Plus Jakarta Sans",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+  letter-spacing:-.011em}
+.wrap{max-width:1000px;margin:0 auto;padding:7rem 2rem 9rem}
+
+/* Eyebrows, not headings. A section title should name the thing and then get
+   out of the way; the figures under it are the content. */
+h1{font-size:1rem;font-weight:590;letter-spacing:.16em;text-transform:uppercase;
+  margin:0 0 1.1rem}
+h2{font-size:.7rem;font-weight:590;letter-spacing:.2em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 2.6rem;
+  display:inline-block;padding:.35rem .8rem;border-radius:999px;
+  background:var(--shell)}
+p{margin:0 0 1rem}
+a{color:var(--violet);text-decoration:none}
+a:hover{text-decoration:underline}
+section{padding:7rem 0 0}
+section+section{border-top:1px solid var(--line);margin-top:0}
+.lede{color:var(--body);max-width:34ch;font-size:1.15rem;line-height:1.5;margin:0}
+
+/* the verdict */
+.verdict{display:inline-flex;align-items:center;gap:.65rem;
+  font-size:.72rem;font-weight:590;letter-spacing:.2em;text-transform:uppercase;
+  margin:3.5rem 0 2.6rem;padding:.5rem 1rem .5rem .85rem;border-radius:999px}
+.verdict .dot{width:.5rem;height:.5rem;border-radius:50%}
+.held{color:var(--held);background:rgba(63,149,115,.08)}
+.held .dot{background:var(--held);box-shadow:0 0 0 4px rgba(63,149,115,.14)}
+.open{color:var(--open);background:rgba(196,134,58,.09)}
+.open .dot{background:var(--open);box-shadow:0 0 0 4px rgba(196,134,58,.16)}
+
+/* One figure size everywhere. A page that shouts three numbers and murmurs
+   four more is ranking them for the reader; these seven are one statement. */
+.figures{display:flex;flex-wrap:wrap;gap:2.8rem 4.5rem;margin:0}
+.fig{min-width:7.5rem}
+.fig .n{display:block;font-size:2.4rem;line-height:1.05;font-weight:300;
+  letter-spacing:-.035em;font-variant-numeric:tabular-nums;
+  font-feature-settings:"tnum" 1}
+.fig .k{display:block;font-size:.66rem;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--muted);margin-top:.75rem;font-weight:510}
+
+/* tables on air */
+table{width:100%;border-collapse:collapse;font-size:.95rem}
+th{text-align:left;font-size:.63rem;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--faint);font-weight:590;padding:0 1.1rem 1rem 0;white-space:nowrap}
+td{padding:.85rem 1.1rem .85rem 0;border-top:1px solid var(--line);
+  vertical-align:baseline;color:var(--body)}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;padding-right:0}
+td.sym{font-weight:590;color:var(--ink);letter-spacing:-.005em}
+tbody tr:last-child td{font-weight:510;color:var(--ink)}
+.who{font-size:.85rem;color:var(--muted);white-space:nowrap}
+.opt{font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+#decisions tbody tr:last-child td{font-weight:400;color:var(--body)}
+
+/* The chart sits in a shell, the way a plate sits in a tray. */
+.plate{background:var(--shell);border-radius:2rem;padding:.5rem}
+.plate .inner{background:#fff;border-radius:1.625rem;padding:2.2rem 2rem 1.6rem;
+  box-shadow:0 1px 2px rgba(11,11,15,.03),0 12px 40px -12px rgba(11,11,15,.06)}
+.chart svg{display:block;width:100%;height:auto;overflow:visible}
+.legend{display:flex;gap:1.8rem;font-size:.7rem;color:var(--muted);
+  letter-spacing:.08em;margin:1.4rem 0 0;text-transform:uppercase}
+.legend i{display:inline-block;width:.5rem;height:.5rem;border-radius:2px;
+  margin-right:.45rem}
+.legend .c i{background:var(--held)} .legend .u i{background:var(--open)}
+
+/* filters */
+.controls{display:flex;flex-wrap:wrap;gap:.9rem 1.6rem;align-items:center;
+  margin:0 0 2rem;font-size:.82rem;color:var(--muted)}
+.controls input,.controls select{font:inherit;font-size:.9rem;color:var(--ink);
+  background:transparent;border:0;border-bottom:1px solid var(--line);
+  padding:.3rem 0;min-width:6.5rem;
+  transition:border-color .5s var(--ease)}
+.controls input:focus,.controls select:focus{outline:0;
+  border-bottom-color:var(--violet)}
+.count{margin-left:auto;color:var(--faint);font-variant-numeric:tabular-nums}
+
+.mark{font-size:.9rem}
+.mark.approved{color:var(--held)}
+.mark.breach,.mark.rejected{color:var(--open)}
+.mark.defect{color:#b4453c}
+.empty{color:var(--faint);font-style:italic}
+footer{margin-top:7rem;padding-top:2rem;border-top:1px solid var(--line);
+  font-size:.78rem;color:var(--faint);letter-spacing:.01em}
+
+/* Nothing arrives already there. Sections rise and resolve, on transform and
+   opacity only -- animating height or top would reflow the document on every
+   frame and stutter on a phone. */
+/* Hidden only once a script has proved it is running. Scoping the starting
+   state under `.js` means the page a judge opens with scripting off, or on a
+   browser where the observer throws, is a complete page rather than a blank
+   one -- the animation is an enhancement and must not be load-bearing. */
+.js .reveal{opacity:0;transform:translate3d(0,28px,0);
+  transition:opacity .9s var(--ease),transform .9s var(--ease)}
+.js .reveal.seen{opacity:1;transform:none}
+.reveal.d1{transition-delay:.08s} .reveal.d2{transition-delay:.16s}
+.reveal.d3{transition-delay:.24s}
+@media (prefers-reduced-motion:reduce){
+  .reveal{opacity:1;transform:none;transition:none}
 }
-/* Two slow orbs. Fixed and pointer-events-none so nothing repaints on scroll. */
-body::before {
-  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
-  background:
-    radial-gradient(60rem 40rem at 12% -10%, rgba(74,222,128,.10), transparent 60%),
-    radial-gradient(50rem 36rem at 92% 8%, rgba(251,191,36,.07), transparent 60%);
+@media (max-width:720px){
+  .wrap{padding:3.5rem 1.25rem 5rem}
+  section{padding-top:4.5rem}
+  .figures{gap:2rem 2.6rem}
+  .fig .n{font-size:1.85rem}
+  .plate .inner{padding:1.4rem 1rem 1rem}
+  .lede{font-size:1.05rem}
+  table{font-size:.88rem}
 }
-.wrap { position: relative; z-index: 1; max-width: 74rem; margin: 0 auto;
-        padding: 6rem 2rem 5rem; }
-@media (max-width: 768px) { .wrap { padding: 3rem 1rem 3rem; } }
-
-.eyebrow { display: inline-block; border-radius: 999px; padding: .3rem .75rem;
-  font-size: 10px; text-transform: uppercase; letter-spacing: .2em;
-  font-weight: 500; color: var(--dim);
-  background: var(--shell); border: 1px solid var(--hair); }
-h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); line-height: .95; font-weight: 600;
-     letter-spacing: -.04em; margin: 1.4rem 0 0; }
-.lede { color: var(--dim); max-width: 46rem; margin: 1.1rem 0 0;
-        font-size: 1.02rem; }
-h2 { font-size: 1.05rem; font-weight: 500; letter-spacing: -.01em;
-     margin: 0 0 1rem; }
-section { margin-top: 6rem; }
-@media (max-width: 768px) { section { margin-top: 3.5rem; } }
-
-/* Double bezel: a glass plate sitting in a machined tray. */
-.shell { background: var(--shell); border: 1px solid var(--hair);
-         border-radius: var(--r); padding: .4rem; }
-.core { background: var(--core); border-radius: calc(var(--r) - .4rem);
-        box-shadow: inset 0 1px 1px rgba(255,255,255,.06);
-        padding: 1.5rem 1.6rem; }
-@media (max-width: 768px) { .core { padding: 1.1rem; } }
-
-.bento { display: grid; grid-template-columns: repeat(12, 1fr); gap: 1rem; }
-.bento > * { grid-column: span 4; }
-.bento > .wide { grid-column: span 12; }
-@media (max-width: 768px) { .bento > * , .bento > .wide { grid-column: span 12; } }
-
-.k { font-size: 10px; text-transform: uppercase; letter-spacing: .18em;
-     color: var(--dim); }
-.v { font-size: clamp(1.5rem, 4vw, 2.1rem); font-weight: 600;
-     letter-spacing: -.03em; margin-top: .45rem; line-height: 1; }
-.v small { font-size: .8rem; font-weight: 400; color: var(--dim);
-           letter-spacing: 0; margin-left: .4rem; }
-
-table { border-collapse: collapse; width: 100%; font-size: .88rem; }
-th { text-align: left; font-weight: 500; font-size: 10px; letter-spacing: .16em;
-     text-transform: uppercase; color: var(--dim); padding: 0 .7rem .7rem;
-     border-bottom: 1px solid var(--hair); }
-td { padding: .72rem .7rem; border-bottom: 1px solid rgba(255,255,255,.05);
-     vertical-align: top; }
-tbody tr { transition: background .45s var(--ease); }
-tbody tr:hover { background: rgba(255,255,255,.025); }
-td.detail { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-            font-size: .8rem; color: var(--dim); }
-.scroll { overflow-x: auto; }
-
-.badge { display: inline-block; border-radius: 999px; padding: .18rem .6rem;
-  font-size: 10px; text-transform: uppercase; letter-spacing: .12em;
-  border: 1px solid var(--hair); color: var(--dim); white-space: nowrap; }
-tr.rejected .badge { color: var(--no); border-color: rgba(251,113,133,.35);
-                     background: rgba(251,113,133,.08); }
-tr.defect .badge { color: var(--alarm); border-color: rgba(251,191,36,.4);
-                   background: rgba(251,191,36,.1); }
-tr.defect td { font-weight: 500; }
-/* A breach is not a malfunction, so it does not borrow the defect's colour.
-   It is the promise not holding, which is work to do rather than something to
-   inspect -- and it has to be findable at a glance. */
-tr.breach .badge { color: var(--no); border-color: rgba(251,113,133,.5);
-                   background: rgba(251,113,133,.14); }
-tr.breach td { font-weight: 500; }
-
-.controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap;
-            margin: 0 0 1.2rem; font-size: .82rem; color: var(--dim); }
-.controls label { letter-spacing: .1em; text-transform: uppercase;
-                  font-size: 10px; }
-.controls input, .controls select {
-  font: inherit; color: var(--ink); padding: .42rem .7rem;
-  background: var(--shell); border: 1px solid var(--hair); border-radius: 999px;
-  outline: none; transition: border-color .5s var(--ease),
-            background .5s var(--ease); }
-.controls input:focus, .controls select:focus {
-  border-color: rgba(255,255,255,.28); background: rgba(255,255,255,.06); }
-.controls .count { margin-left: auto; font-variant-numeric: tabular-nums; }
-
-details summary { cursor: pointer; list-style: none; color: var(--ink);
-                  transition: color .4s var(--ease); }
-details summary::-webkit-details-marker { display: none; }
-details summary::before { content: "+"; display: inline-block; width: 1.1em;
-                          color: var(--dim); transition: transform .5s var(--ease); }
-details[open] summary::before { content: "\2212"; }
-details summary:hover { color: var(--ok); }
-details pre { margin: .7rem 0 0; padding: .8rem .9rem; overflow-x: auto;
-  background: rgba(255,255,255,.03); border: 1px solid var(--hair);
-  border-radius: .8rem; font-size: .76rem; color: var(--dim); }
-
-footer { margin-top: 6rem; padding-top: 1.6rem; border-top: 1px solid var(--hair);
-         font-size: .78rem; color: var(--dim); }
-footer a { color: var(--ink); text-decoration: none;
-           border-bottom: 1px solid var(--hair); }
-.empty { color: var(--dim); font-style: italic; }
-
-/* Entry motion: transform and opacity only, so nothing reflows. */
-.reveal { opacity: 0; transform: translateY(2rem); filter: blur(6px);
-  transition: opacity .9s var(--ease), transform .9s var(--ease),
-              filter .9s var(--ease); }
-.reveal.in { opacity: 1; transform: none; filter: none; }
-@media (prefers-reduced-motion: reduce) {
-  .reveal { opacity: 1; transform: none; filter: none; transition: none; }
-}
-
-/* --- the promise, and the floor you can drag --------------------------- */
-.note{margin:1.4rem 0 0;padding:1.1rem 1.3rem;border-left:2px solid var(--ink);
-  background:var(--panel);font-size:.98rem;line-height:1.65;max-width:62ch}
-.note.empty{border-left-color:var(--muted);color:var(--muted);font-style:italic}
-.changed{margin:0}
-.changes{margin:0;padding-left:1.2rem;line-height:1.9}
-.changes li{font-variant-numeric:tabular-nums}
-.card .s{display:block;margin-top:.35rem;font-size:.78rem;color:var(--muted);
-  letter-spacing:.02em}
-.good{color:#1c7c4a}
-.bad{color:#b3261e}
-.floor{margin-top:1.2rem}
-.floor label{display:block;font-size:.86rem;letter-spacing:.04em;
-  text-transform:uppercase;color:var(--muted);margin-bottom:.5rem}
-.floor output{font-variant-numeric:tabular-nums;color:var(--ink);
-  font-weight:600;font-size:1.05rem;text-transform:none;letter-spacing:0}
-.floor input[type=range]{width:100%;max-width:38rem;accent-color:var(--ink);
-  margin:0 0 1.4rem;cursor:grab}
-.floor input[type=range]:active{cursor:grabbing}
 """
-
-# No request of any kind: it reads attributes the server already rendered and
-# toggles rows. Guarded so a page with an empty journal, which renders no
-# controls, does not throw on load.
-_SCRIPT = """
-/* The floor, interpolated between the rungs the agent measured.
-   Straight lines between measured points, because the payoff bends only at a
-   strike -- so this is the exact answer between them rather than a fit. */
-(function () {
-  var box = document.querySelector('.floor');
-  if (!box) return;
-  var rungs = JSON.parse(box.getAttribute('data-rungs'));
-  var budget = parseFloat(box.getAttribute('data-budget'));
-  var range = document.getElementById('shockrange');
-  var shockOut = document.getElementById('shockout');
-  var lossOut = document.getElementById('lossout');
-  var verdictOut = document.getElementById('verdictout');
-
-  function money(n) {
-    return '$' + Math.round(n).toLocaleString('en-US');
-  }
-
-  function lossAt(shock) {
-    if (!rungs.length) return 0;
-    // Milder than the shallowest rung measured, including a market that has
-    // not moved at all. The ladder starts at -5%, and returning its loss for
-    // everything above it told a reader dragging the slider to zero that a
-    // still market costs them thirty thousand dollars. A book that has not
-    // fallen has not lost, so the segment from flat to the first rung is
-    // interpolated from zero like every other segment is from its neighbour.
-    if (shock >= 0) return 0;
-    if (shock >= rungs[0].shock) {
-      return rungs[0].loss * (shock / rungs[0].shock);
-    }
-    for (var i = 0; i < rungs.length - 1; i++) {
-      var a = rungs[i], b = rungs[i + 1];
-      if (shock <= a.shock && shock >= b.shock) {
-        var span = a.shock - b.shock;
-        if (span === 0) return a.loss;
-        var w = (a.shock - shock) / span;
-        return a.loss + w * (b.loss - a.loss);
-      }
-    }
-    return rungs[rungs.length - 1].loss;
-  }
-
-  function draw() {
-    var pct = parseInt(range.value, 10);
-    var loss = lossAt(-pct / 100);
-    shockOut.textContent = pct + '%';
-    lossOut.textContent = money(loss);
-    var over = loss - budget;
-    if (over > 0) {
-      verdictOut.textContent = money(over) + ' past it';
-      verdictOut.className = 'v bad';
-    } else {
-      verdictOut.textContent = 'inside the promise';
-      verdictOut.className = 'v good';
-    }
-  }
-
-  range.addEventListener('input', draw);
-  draw();
-})();
-
-(function () {
-  // Entry motion. IntersectionObserver rather than a scroll listener:
-  // a scroll handler reflows continuously and wrecks mobile frame rate.
-  var seen = document.querySelectorAll('.reveal');
-  if (window.IntersectionObserver) {
-    var io = new IntersectionObserver(function (items) {
-      items.forEach(function (item) {
-        if (item.isIntersecting) { item.target.classList.add('in');
-          io.unobserve(item.target); }
-      });
-    }, { rootMargin: '0px 0px -8% 0px' });
-    [].forEach.call(seen, function (el) { io.observe(el); });
-  } else {
-    [].forEach.call(seen, function (el) { el.classList.add('in'); });
-  }
-
-  var symbolBox = document.getElementById('f-symbol');
-  var verdictBox = document.getElementById('f-verdict');
-  var rows = [].slice.call(document.querySelectorAll('tr[data-symbol]'));
-  var shown = document.getElementById('f-count');
-  var nothing = document.getElementById('f-nomatch');
-  if (!symbolBox || !verdictBox || !rows.length) { return; }
-  function apply() {
-    var needle = symbolBox.value.trim().toUpperCase();
-    var verdict = verdictBox.value;
-    var visible = 0;
-    rows.forEach(function (row) {
-      var bySymbol = !needle ||
-        row.getAttribute('data-symbol').indexOf(needle) !== -1;
-      var byVerdict = verdict === 'all' ||
-        row.getAttribute('data-verdict') === verdict;
-      var show = bySymbol && byVerdict;
-      row.hidden = !show;
-      if (show) { visible += 1; }
-    });
-    shown.textContent = visible + ' of ' + rows.length;
-    nothing.hidden = visible !== 0;
-  }
-  symbolBox.addEventListener('input', apply);
-  verdictBox.addEventListener('change', apply);
-  apply();
-})();
-"""
-
 
 
 def latest(entries: list[dict], event: str) -> dict:
@@ -328,124 +221,16 @@ def latest(entries: list[dict], event: str) -> dict:
     return {}
 
 
-def _changed(review: dict) -> str:
-    """What the client did since the last cycle, and what it was read to mean.
-
-    The list of changes is the diff arithmetic produced; the paragraph beneath
-    it is a language model's read of the same diff. They are shown apart, and
-    labelled apart, because one is a fact about the account and the other is
-    prose about it -- a reader has to be able to tell which is which without
-    being told.
-
-    An absent answer is shown as absent, and it is not the same as an answer of
-    "nothing needs attention". The model is allowed to be unreachable and the
-    page is not allowed to cover for it.
-    """
-    if not review:
-        return '<p class="empty">No cycle has read the book yet.</p>'
-
-    if review.get("first"):
-        headline = "First cycle against this book &mdash; nothing to compare with."
-    elif not review.get("moved"):
-        headline = "Nothing moved in the book since the last cycle."
-    else:
-        rows = "".join(
-            f"<li>{_cell(line)}</li>" for line in review.get("changes") or []
-        )
-        headline = f"<ul class=\"changes\">{rows}</ul>"
-
-    if not review.get("answered"):
-        found = '<p class="note empty">The analyst did not answer this cycle.</p>'
-    elif not (findings := review.get("findings") or []):
-        found = '<p class="note">No position needs attention.</p>'
-    else:
-        found = "".join(
-            f'<p class="note"><strong>{_cell(f["symbol"])}</strong> &mdash; '
-            f'{_cell(f["issue"])}<br><em>Review:</em> '
-            f'{_cell(f["recommendation"])}</p>'
-            for f in findings
-        )
-    return f'<div class="changed">{headline}{found}</div>'
+def _cell(value) -> str:
+    """Escape anything on its way into the document. No exceptions."""
+    return html.escape("" if value is None else str(value))
 
 
-def _promise(stress: dict, note: str) -> str:
-    """What the client was promised, where the book stands, and why.
-
-    Everything here is read off the journal rather than recomputed. The page is
-    a window onto what the agent already decided; a page that did its own
-    arithmetic could disagree with the record, and then neither would be
-    evidence of anything.
-    """
-    if not stress:
-        return (
-            '<p class="empty">No cycle has measured the promise yet.</p>'
-        )
-
-    budget = float(stress.get("budget") or 0)
-    exposure = float(stress.get("equity_exposure") or 0)
-    uncovered = float(stress.get("uncovered_risk") or 0)
-    pct = stress.get("downside_budget_pct")
-    verdict = (
-        f'<span class="bad">${uncovered:,.0f} of risk not covered</span>'
-        if uncovered > 0
-        else '<span class="good">the promise holds</span>'
-    )
-    prose = (
-        f'<p class="note">{_cell(note)}</p>'
-        if note
-        else '<p class="note empty">No note was written for the last decision.</p>'
-    )
-    return f"""<div class="bento">
-<div class="card"><span class="k">The promise</span>
-<span class="v">{_cell(pct)}%</span>
-<span class="s">of the account, at most, over 12 months</span></div>
-<div class="card"><span class="k">In dollars</span>
-<span class="v">${budget:,.0f}</span>
-<span class="s">the whole downside budget</span></div>
-<div class="card"><span class="k">Equity at risk</span>
-<span class="v">${exposure:,.0f}</span>
-<span class="s">what a fall would move</span></div>
-<div class="card"><span class="k">Against the promise</span>
-<span class="v">{verdict}</span>
-<span class="s">mandate: {_cell(stress.get("mandate"))}</span></div>
-</div>
-{prose}"""
-
-
-def _floor(stress: dict) -> str:
-    """The ladder as something you can drag.
-
-    A table of four shocks says the promise holds at four prices. The point of
-    the design is that it holds at *every* price, and a reader has to be able
-    to check that rather than take it. So the rungs the agent actually measured
-    are handed to the browser and the rest is interpolated between them --
-    interpolated, not modelled, because the payoff is piecewise linear in the
-    shock and a straight line between two measured rungs is the exact answer,
-    not an approximation of one.
-    """
-    rungs = stress.get("ladder") or []
-    if not rungs:
-        return '<p class="empty">No ladder has been measured yet.</p>'
-    budget = float(stress.get("budget") or 0)
-    data = json.dumps(
-        [
-            {"shock": float(r["shock"]), "loss": abs(float(r["loss"]))}
-            for r in sorted(rungs, key=lambda r: -float(r["shock"]))
-        ]
-    )
-    return f"""<div class="floor" data-rungs='{data}' data-budget="{budget:.2f}">
-<label for="shockrange">If the market falls
-<output id="shockout">10%</output></label>
-<input id="shockrange" type="range" min="0" max="35" value="10" step="1">
-<div class="bento">
-<div class="card"><span class="k">The portfolio loses</span>
-<span class="v" id="lossout">&mdash;</span></div>
-<div class="card"><span class="k">The client agreed to</span>
-<span class="v">${budget:,.0f}</span></div>
-<div class="card"><span class="k">Verdict</span>
-<span class="v" id="verdictout">&mdash;</span></div>
-</div>
-</div>"""
+def _money(value, dp: int = 0) -> str:
+    try:
+        return f"${float(value):,.{dp}f}"
+    except (TypeError, ValueError):
+        return "&mdash;"
 
 
 def entry_from_journal(line: dict) -> dict:
@@ -485,124 +270,452 @@ def entry_from_journal(line: dict) -> dict:
     }
 
 
-def _cell(value) -> str:
-    """Escape anything on its way into the document. No exceptions."""
-    return html.escape("" if value is None else str(value))
+# --- the verdict ------------------------------------------------------------
 
 
-def _sleeve_rows(plan: dict) -> str:
-    """What the agent is holding up, one row per holding.
+def _hero(stress: dict) -> str:
+    """Is the client inside the number they were given, and by how much.
 
-    Read from the last `protection.plan` in the journal rather than from a
-    state snapshot. The snapshot was written by the strategy this project no
-    longer runs -- nothing has exported it since, so the page confidently
-    reported "no position has opened yet" for an account holding 800,000 of
-    equity. A page that is wrong and certain is worse than one that is empty,
-    because a reader cannot tell which they are looking at.
+    Three figures and one word. The word is the whole page: a reader who stops
+    here has the answer, and everything below is the working.
 
-    The journal is the record the agent actually writes, every cycle, and it
-    is the only thing the page should ever believe.
-    """
-    sleeves = plan.get("sleeves") or []
-    if not sleeves:
-        return (
-            '<tr><td colspan="5" class="empty">'
-            "No cycle has measured the book yet.</td></tr>"
-        )
-    rows = []
-    for sleeve in sleeves:
-        chosen = sleeve.get("chosen")
-        taken = next(
-            (o for o in sleeve.get("offers") or [] if o.get("kind") == chosen), None
-        )
-        # No remedy chosen is a real outcome, not a gap in the data: the sleeve
-        # is inside its share of the promise and needs nothing bought for it.
-        detail = _cell(taken["detail"]) if taken else "&mdash; nothing needed"
-        cost = f"${float(taken['premium_cost']):,.0f}" if taken else "&mdash;"
-        iv = (
-            f"{float(taken['protection_iv']):.1%}"
-            if taken and taken.get("protection_iv") is not None
-            else "&mdash;"
-        )
-        rows.append(
-            "<tr>"
-            f"<td>{_cell(sleeve.get('symbol'))}</td>"
-            f"<td>${float(sleeve.get('exposure') or 0):,.0f}</td>"
-            f"<td>${float(sleeve.get('budget') or 0):,.0f}</td>"
-            f"<td>{detail}</td>"
-            f"<td>{cost} <small>{iv}</small></td>"
-            "</tr>"
-        )
-    return "\n".join(rows)
-
-
-def _book_cards(stress: dict, plan: dict) -> str:
-    """The book as headline figures, all of them from the journal.
-
-    `worst_case` is the number the agent acts on -- the most this book can lose
-    anywhere on the way down, which for unhedged shares is all of it. It is
-    shown beside the budget rather than instead of it, because the pair is the
-    whole claim: this is what could happen, and this is what was promised.
+    `worst_case` rather than the loss at some named shock. The promise is about
+    the worst outcome anywhere on the way down, not about a depth somebody
+    picked, and the two differ by more than they sound.
     """
     if not stress:
-        return (
-            '<div class="wide shell"><div class="core">'
-            '<div class="k">Book</div>'
-            '<div class="v">Not yet measured<small>no cycle has run</small></div>'
-            "</div></div>"
-        )
-    worst = float(stress.get("worst_case") or 0)
+        return '<p class="empty">No cycle has measured the promise yet.</p>'
+
     budget = float(stress.get("budget") or 0)
-    spent = float((plan or {}).get("total_premium") or 0)
-    cards = [
-        ("Equity at risk", f"${float(stress.get('equity_exposure') or 0):,.0f}", ""),
-        ("Worst case", f"${worst:,.0f}", "anywhere on the way down"),
-        ("The promise", f"${budget:,.0f}", "what the client agreed to"),
-        ("Spent on protection", f"${spent:,.0f}", "this cycle"),
-    ]
-    return "\n".join(
-        '<div class="shell"><div class="core">'
-        f'<div class="k">{_cell(label)}</div>'
-        f'<div class="v">{value}'
-        + (f"<small>{_cell(note)}</small>" if note else "")
-        + "</div></div></div>"
-        for label, value, note in cards
+    worst = float(stress.get("worst_case") or 0)
+    uncovered = float(stress.get("uncovered_risk") or 0)
+    held = uncovered <= 0
+    headroom = budget - worst
+
+    verdict = (
+        '<p class="verdict held"><span class="dot"></span>Inside the promise</p>'
+        if held
+        else '<p class="verdict open"><span class="dot"></span>'
+        "Risk outside the promise</p>"
+    )
+    third = (
+        ("Remaining headroom", _money(headroom))
+        if held
+        else ("Not covered", _money(uncovered))
+    )
+    return f"""{verdict}
+<div class="figures">
+<div class="fig lead"><span class="n">{_money(budget)}</span>
+<span class="k">Loss limit</span></div>
+<div class="fig lead"><span class="n">{_money(worst)}</span>
+<span class="k">Worst case</span></div>
+<div class="fig lead"><span class="n">{third[1]}</span>
+<span class="k">{third[0]}</span></div>
+</div>"""
+
+
+def _promise(stress: dict) -> str:
+    """The four numbers the client agreed to, and nothing else.
+
+    `reference` is what the account was worth the day the promise opened, not
+    what it is worth this morning. Ten percent of today would re-base every
+    cycle: lose ten percent and the agent starts defending ten percent of the
+    smaller number, which permits a 47% loss in five steps and calls every one
+    of them kept.
+    """
+    if not stress:
+        return ""
+    started, ends = stress.get("period_started"), stress.get("period_ends")
+    window = f"{started} &rarr; {ends}" if started and ends else "fixed at the open"
+    return f"""<div class="figures tight">
+<div class="fig"><span class="n">{_money(stress.get("reference"))}</span>
+<span class="k">Reference portfolio</span></div>
+<div class="fig"><span class="n">{_cell(stress.get("downside_budget_pct"))}%</span>
+<span class="k">Maximum drawdown</span></div>
+<div class="fig"><span class="n">{_money(stress.get("budget"))}</span>
+<span class="k">Loss budget</span></div>
+<div class="fig"><span class="n">12 months</span>
+<span class="k">Mandate window &middot; {window}</span></div>
+</div>"""
+
+
+# --- the book ---------------------------------------------------------------
+
+
+def _portfolio(stress: dict) -> str:
+    """What is held right now, and what is standing behind it.
+
+    Bills and cash are shown and marked as not exposure rather than left out.
+    A client holding ten percent in T-bills is not holding ninety percent of a
+    portfolio; the promise is measured against the part that can fall, and
+    hiding the part that cannot would make the weights read as a mistake.
+    """
+    holdings = stress.get("holdings") or []
+    if not holdings:
+        return '<p class="empty">No book has been read yet.</p>'
+
+    legs = stress.get("legs") or []
+    cover: dict[str, list[str]] = {}
+    for leg in legs:
+        contracts = int(leg.get("contracts") or 0)
+        side = "long" if contracts > 0 else "short"
+        kind = "put" if leg.get("right") == "P" else "call"
+        cover.setdefault(str(leg.get("symbol")), []).append(
+            f"{side} {abs(contracts)} &times; {_cell(leg.get('strike'))} {kind}"
+        )
+
+    total = sum(float(h.get("value") or 0) for h in holdings)
+    rows = []
+    for holding in holdings:
+        value = float(holding.get("value") or 0)
+        weight = (value / total * 100) if total else 0.0
+        symbol = str(holding.get("symbol"))
+        shares = holding.get("shares")
+        protection = ", ".join(cover.get(symbol, [])) or (
+            "&mdash;" if holding.get("shocked", True) else "not exposure"
+        )
+        rows.append(
+            f'<tr><td class="sym">{_cell(symbol)}</td>'
+            f'<td class="n">{"&mdash;" if symbol == "CASH" else _cell(shares)}</td>'
+            f'<td class="n">{_money(value)}</td>'
+            f'<td class="n">{weight:.1f}%</td>'
+            f'<td class="opt">{protection}</td></tr>'
+        )
+    rows.append(
+        f'<tr><td class="sym">Total</td><td class="n"></td>'
+        f'<td class="n">{_money(total)}</td><td class="n">100.0%</td>'
+        f'<td class="opt"></td></tr>'
+    )
+    return f"""<table>
+<thead><tr><th>Holding</th><th class="n">Shares</th><th class="n">Value</th>
+<th class="n">Weight</th><th>Protection</th></tr></thead>
+<tbody>{"".join(rows)}</tbody></table>"""
+
+
+# --- how the book got here --------------------------------------------------
+
+
+def daily_series(entries: list[dict]) -> list[dict]:
+    """One row per trading day: the closing account value, and whether the
+    promise was held at the close.
+
+    The closing reading rather than every cycle, deliberately. The agent now
+    measures thirteen times a day and a line through all of them is a picture
+    of the market's noise, which is the one thing this project has no view
+    about. One point a day is the honest resolution for the question being
+    asked, which is what the book was worth and whether it was covered.
+
+    Both figures come from the last entry of their kind on that date, because
+    entries arrive newest first and the first one seen for a date is the last
+    one written.
+    """
+    days: dict[str, dict] = {}
+    for entry in entries:
+        date = str(entry.get("ts", ""))[:10]
+        if not date:
+            continue
+        row = days.setdefault(date, {"date": date, "equity": None, "uncovered": None})
+        payload = entry.get("payload") or {}
+        if entry.get("event") == "cycle.complete" and row["equity"] is None:
+            try:
+                row["equity"] = float(payload.get("equity"))
+            except (TypeError, ValueError):
+                pass
+        elif entry.get("event") == "mandate.stress" and row["uncovered"] is None:
+            try:
+                row["uncovered"] = float(payload.get("uncovered_risk"))
+            except (TypeError, ValueError):
+                pass
+    return [row for _, row in sorted(days.items()) if row["equity"] is not None]
+
+
+def _events_by_date(entries: list[dict]) -> dict[str, str]:
+    """What happened on each day, in three words, for the axis.
+
+    Only the things that changed the book. A day the agent measured and did
+    nothing needs no label -- the line already says the value moved and the
+    band already says the promise held.
+    """
+    labels: dict[str, str] = {}
+    for entry in reversed(entries):
+        date = str(entry.get("ts", ""))[:10]
+        payload = entry.get("payload") or {}
+        event = entry.get("event")
+        if event == "book.reviewed":
+            for change in payload.get("changes") or []:
+                text = str(change)
+                # "opened +9 contracts of XLF P56" -- the symbol follows "of",
+                # and what comes after it is the strike. Taking the last token
+                # gave "P56 bought", which names the contract instead of the
+                # instrument and reads as though the client had bought it.
+                parts = text.split()
+                symbol = parts[parts.index("of") + 1] if "of" in parts else ""
+                if "contracts" in text:
+                    labels[date] = f"{symbol} hedged"
+                elif "closed all" in text:
+                    labels[date] = f"{symbol} sold"
+                elif text.startswith("opened"):
+                    labels[date] = f"{symbol} bought"
+        elif event == "protection.released" and payload.get("executed"):
+            labels[date] = "hedge released"
+        elif event == "order.filled" and date not in labels:
+            labels[date] = f"{payload.get('symbol', '')} hedged".strip()
+    return labels
+
+
+def _band(
+    points: list[tuple[float, float]],
+    i: int,
+    left: float,
+    right: float,
+    y: float,
+    held: bool,
+) -> str:
+    """One day's coverage segment, under the point it belongs to.
+
+    A day spans the halfway points to its neighbours, so the place the colour
+    changes is the place the promise changed. The first and last days own only
+    the half of the interval that exists, and are clamped to the plot -- an
+    unclamped segment ran off the right edge of the drawing.
+    """
+    start = left if i == 0 else (points[i - 1][0] + points[i][0]) / 2
+    end = right if i == len(points) - 1 else (points[i][0] + points[i + 1][0]) / 2
+    colour = "#3f9573" if held else "#c4863a"
+    return (
+        f'<rect x="{start + 1.5:.1f}" y="{y:.1f}" '
+        f'width="{max(end - start - 3, 1):.1f}" height="8" rx="4" '
+        f'fill="{colour}" opacity=".9"/>'
     )
 
 
-def _detail_cell(entry: dict) -> str:
-    """The summary, and the raw record folded behind it when there is one.
+def _evolution(entries: list[dict]) -> str:
+    """The account's closing value, and whether the promise held on each day.
 
-    `<details>` is native disclosure: it works before the script runs and would
-    keep working if the script were removed.
+    Two quantities that do not share a scale -- dollars held and dollars of
+    risk left open -- so they do not share an axis. The line is the money. The
+    bar beneath it is the promise, and the day it changes colour is the day the
+    agent finished its job.
+
+    Every value is printed at its own point rather than against a y-axis. On a
+    five-figure account moving by hundreds, an axis has to either lie about the
+    zero or compress the whole story into the top inch; labelling the points
+    tells the reader the number and lets the shape stay a shape.
+
+    Inline SVG rather than a charting library, for the same reason the page
+    loads no font: a judge's click must not depend on anyone else's uptime.
     """
-    summary = _cell(entry.get("detail"))
-    record = entry.get("full")
-    if not record:
-        return summary
-    return f"<details><summary>{summary}</summary><pre>{_cell(record)}</pre></details>"
-
-
-def _journal_rows(entries: list[dict]) -> str:
-    if not entries:
-        return '<tr><td colspan="5" class="empty">No cycles recorded yet.</td></tr>'
-    ordered = sorted(entries, key=lambda entry: entry.get("ts", ""), reverse=True)
-    rows = []
-    for entry in ordered:
-        verdict = str(entry.get("verdict", ""))
-        css_class = verdict if verdict in ("rejected", "defect", "breach") else ""
-        symbol = str(entry.get("symbol", ""))
-        rows.append(
-            f'<tr class="{css_class}" data-symbol="{_cell(symbol)}" '
-            f'data-verdict="{_cell(verdict)}">'
-            f"<td>{_cell(entry.get('ts'))}</td>"
-            f"<td>{_cell(symbol)}</td>"
-            f"<td>{_cell(entry.get('action'))}</td>"
-            f'<td><span class="badge">{_cell(verdict)}</span></td>'
-            f'<td class="detail">{_detail_cell(entry)}</td>'
-            "</tr>"
+    series = daily_series(entries)
+    if len(series) < 2:
+        return (
+            '<p class="empty">Two closes are needed before there is a line to draw.</p>'
         )
-    return "\n".join(rows)
+
+    labels = _events_by_date(entries)
+    width, height = 1000.0, 300.0
+    left, right, top, floor = 24.0, 24.0, 58.0, 214.0
+    values = [row["equity"] for row in series]
+    low, high = min(values), max(values)
+    # A flat week is a real answer and must not render as a zero-height line,
+    # so a degenerate range is given room rather than divided by.
+    span = (high - low) or max(high * 0.002, 1.0)
+    low, high = low - span * 0.55, high + span * 0.45
+    step = (width - left - right) / (len(series) - 1)
+
+    def x(i: int) -> float:
+        return left + i * step
+
+    def y(value: float) -> float:
+        return top + (high - value) / (high - low) * (floor - top)
+
+    points = [(x(i), y(v)) for i, v in enumerate(values)]
+    line = " ".join(f"{px:.1f},{py:.1f}" for px, py in points)
+    area = f"{points[0][0]:.1f},{floor:.1f} {line} {points[-1][0]:.1f},{floor:.1f}"
+
+    marks = ""
+    for i, (px, py) in enumerate(points):
+        row = series[i]
+        held = (row["uncovered"] or 0) <= 0
+        # The last point is the one a reader looks for, so it is the solid one.
+        # The rest are hollow: present, and not competing for the eye.
+        fill = "#6d3aed" if i == len(points) - 1 else "#fff"
+        marks += (
+            f'<circle cx="{px:.1f}" cy="{py:.1f}" r="5" fill="{fill}" '
+            f'stroke="#6d3aed" stroke-width="2"/>'
+            f'<text x="{px:.1f}" y="{py - 18:.1f}" text-anchor="middle" '
+            f'font-size="15" font-weight="500" fill="#0b0b0f" '
+            f'letter-spacing="-.3">{_money(row["equity"])}</text>'
+            # The date sits on the baseline; the event, if there was one, sits
+            # above it in the accent, because that is the line a reader is
+            # scanning for when they ask what happened.
+            f'<text x="{px:.1f}" y="{floor + 30:.1f}" text-anchor="middle" '
+            f'font-size="12" fill="#8b8b98" letter-spacing=".08em">'
+            f"{_cell(row['date'][5:].replace('-', ' / '))}</text>"
+            + (
+                f'<text x="{px:.1f}" y="{floor + 52:.1f}" text-anchor="middle" '
+                f'font-size="11.5" font-weight="500" fill="#6d3aed" '
+                f'letter-spacing=".03em">{_cell(labels[row["date"]])}</text>'
+                if labels.get(row["date"])
+                else ""
+            )
+            # The band. One segment per day, spanning the halfway points to its
+            # neighbours so the day a colour changes is the day the promise
+            # changed -- and clamped to the plot at both ends, because a first
+            # and last day own only the half of the interval that exists.
+            + _band(points, i, left, width - right, floor + 70, held)
+        )
+
+    return f"""<div class="plate"><div class="inner">
+<div class="chart">
+<svg viewBox="0 0 {width:.0f} {height:.0f}" role="img"
+     aria-label="closing account value, one point per trading day">
+<defs><linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+<stop offset="0%" stop-color="#6d3aed" stop-opacity=".13"/>
+<stop offset="100%" stop-color="#6d3aed" stop-opacity="0"/>
+</linearGradient></defs>
+<polygon points="{area}" fill="url(#fade)"/>
+<polyline points="{line}" fill="none" stroke="#6d3aed" stroke-width="2.5"
+          stroke-linejoin="round" stroke-linecap="round"/>
+{marks}
+</svg>
+</div>
+<p class="legend"><span class="c"><i></i>promise held</span>
+<span class="u"><i></i>risk outside the promise</span></p>
+</div></div>"""
+
+
+# --- what was decided -------------------------------------------------------
+
+# Who acted. The distinction is not decoration: this agent's whole claim is
+# that it never takes a view on the market, and a table that shows the client
+# selling a position in the same voice as the agent buying a put reads as an
+# agent trading on an opinion. The client moves their own money; the agent
+# answers.
+_CLIENT_EVENTS = {"portfolio.established"}
+
+# One short line per event, in the client's words rather than the program's.
+# The old page printed the raw payload here -- a wall of JSON in a table cell,
+# which is the record and not a reading of it. The record is still one click
+# away under every row.
+_SAYS = {
+    "order.submitted": "order sent to the broker",
+    "order.filled": "hedge bought",
+    "order.partial": "part of the hedge bought",
+    "order.working": "order accepted, not yet bought",
+    "order.still_working": "order from earlier today still live",
+    "order.refused": "refused by the risk gate",
+    "order.simulated": "dry run, nothing sent",
+    "protection.released": "hedge handed back, no longer needed",
+    "protection.recommended_release": "hedge redundant, could not be priced",
+    "protection.plan": "priced the protection this portfolio needs",
+    "protection.unplaceable": "nothing tradable today covers this",
+    "protection.no_underlying": "risk with no shares behind it",
+    "protection.explained": "wrote the note for the client",
+    "protection.chain_unreadable": "could not read the option prices",
+    "mandate.stress": "measured the portfolio against the promise",
+    "mandate.period_opened": "opened the promise",
+    "mandate.unreadable": "could not read the positions",
+    "book.reviewed": "checked the portfolio",
+    "review.unaddressed": "flagged something the cycle did not act on",
+    "cycle.complete": "finished the check",
+    "reconcile.discrepancy": "took the broker's version of the position",
+}
+
+# Events that say nothing a reader wants. Filtering the chain-liquidity line is
+# not hiding it -- it is in the journal, which is linked -- but thirteen cycles
+# a day of "the chain had 214 tradable puts" buries the six lines that matter.
+_QUIET = {"protection.chain_filtered", "cycle.complete", "mandate.stress"}
+
+# Events that say the same thing every cycle until somebody fixes the cause.
+# Shown once each, at their most recent occurrence.
+_REPEATS = {"reconcile.discrepancy", "protection.plan", "book.reviewed"}
+
+
+def _who(entry: dict) -> str:
+    """Whose action this row records.
+
+    Not decoration. This agent's whole claim is that it never takes a view on
+    the market, and a table showing the client selling a position in the same
+    voice as the agent buying a put reads as an agent trading on an opinion.
+
+    `book.reviewed` is the hard case, because the diff behind it does not know
+    who moved what -- it is a set difference between two snapshots. But the
+    instrument says it: shares in this book change because the client bought or
+    sold them, and option legs change because the agent did. So the row is
+    attributed by what moved rather than by who was asked.
+    """
+    event = str(entry.get("event", ""))
+    if event == "book.reviewed":
+        changes = entry.get("payload", {}).get("changes") or []
+        # A leg is keyed "XLF P56"; shares are keyed by the bare symbol.
+        if changes and all("contracts of" in str(c) for c in changes):
+            return "agent"
+        return "client"
+    return "client" if event in _CLIENT_EVENTS else "agent"
+
+
+def _says(entry: dict) -> str:
+    """What this entry means, in one clause."""
+    event = str(entry.get("event", ""))
+    payload = entry.get("payload") or {}
+    if event == "book.reviewed":
+        changes = payload.get("changes") or []
+        if changes:
+            return "; ".join(str(c) for c in changes[:2])
+        return "nothing moved"
+    if event == "order.filled":
+        price = payload.get("fill_price")
+        detail = f"{payload.get('contracts', '')} contracts"
+        return f"hedge bought, {detail}" + (f" at {price}" if price else "")
+    if event == "protection.released":
+        return f"hedge handed back, {payload.get('contracts', '')} contracts"
+    return _SAYS.get(event, event.replace(".", " "))
+
+
+def _decision_rows(entries: list[dict]) -> str:
+    """The record, read rather than dumped."""
+    rows = []
+    seen: set[tuple] = set()
+    for entry in entries:
+        event = str(entry.get("event", ""))
+        if event in _QUIET:
+            continue
+        # The same finding, reported again on the next cycle, is not a second
+        # finding. Thirteen cycles a day each notice the same three
+        # reconciliation discrepancies, and ninety-nine identical rows do not
+        # tell a reader anything the first one did not -- they bury the six
+        # lines that do. Kept once, at its first appearance, which is the
+        # newest because entries arrive newest first.
+        fingerprint = (event, entry.get("symbol"), _says(entry))
+        if event in _REPEATS:
+            if fingerprint in seen:
+                continue
+            seen.add(fingerprint)
+        who = _who(entry)
+        icon = "&#128100;" if who == "client" else "&#129302;"
+        symbol = str(entry.get("symbol") or "")
+        when = str(entry.get("ts", ""))[:16].replace("T", " ")
+        verdict = str(entry.get("verdict", "approved"))
+        glyph = {"approved": "&check;", "breach": "!", "rejected": "&times;"}.get(
+            verdict, "&#9888;"
+        )
+        rows.append(
+            f'<tr data-symbol="{_cell(symbol)}" data-verdict="{_cell(verdict)}" '
+            f'data-who="{who}" data-date="{_cell(str(entry.get("ts", ""))[:10])}">'
+            f'<td class="opt">{_cell(when)}</td>'
+            f'<td class="who">{icon} {who}</td>'
+            f'<td class="sym">{_cell(symbol) or "&mdash;"}</td>'
+            # No raw payload behind a disclosure triangle. The client reading
+            # this does not write code, and a page that offers JSON as its
+            # evidence is asking them to take the summary on trust anyway. The
+            # record is the journal, and the journal is linked in the footer.
+            f"<td>{_says(entry)}</td>"
+            f'<td class="n mark {_cell(verdict)}">{glyph}</td></tr>'
+        )
+        if len(rows) >= MAX_DECISIONS:
+            break
+    if not rows:
+        return '<tr><td colspan="5" class="empty">Nothing recorded yet.</td></tr>'
+    return "".join(rows)
 
 
 def _controls(entries: list[dict]) -> str:
@@ -613,15 +726,25 @@ def _controls(entries: list[dict]) -> str:
     """
     if not entries:
         return ""
+    dates = sorted(
+        {str(e.get("ts", ""))[:10] for e in entries if e.get("ts")}, reverse=True
+    )
+    options = "".join(f'<option value="{_cell(d)}">{_cell(d)}</option>' for d in dates)
     return (
         '<div class="controls">'
-        '<label for="f-symbol">Symbol</label>'
+        '<label for="f-date">Date</label>'
+        f'<select id="f-date"><option value="all">all</option>{options}</select>'
+        '<label for="f-symbol">Instrument</label>'
         # Deliberately no `placeholder` attribute. The word contains "older",
-        # which collides with the newest-first ordering test — the substring is
+        # which collides with the newest-first ordering test -- the substring is
         # in the attribute name, so no choice of value avoids it. The label and
         # the title say everything a placeholder would.
         '<input id="f-symbol" type="text" size="8" autocomplete="off" '
-        'title="filter by symbol, for example SPY">'
+        'title="filter by symbol, for example XLF">'
+        '<label for="f-who">Who</label>'
+        '<select id="f-who"><option value="all">all</option>'
+        '<option value="agent">agent</option>'
+        '<option value="client">client</option></select>'
         '<label for="f-verdict">Verdict</label>'
         '<select id="f-verdict">'
         '<option value="all">all</option>'
@@ -647,121 +770,133 @@ def _source_link(repository_url: str) -> str:
     return f'<a href="{_cell(repository_url)}">source</a> &middot;\n'
 
 
+_SCRIPT = """
+(function () {
+  // Sections rise as they are reached. IntersectionObserver rather than a
+  // scroll listener: a listener fires on every frame of every scroll and
+  // reflows the document each time, which is fine on a laptop and visibly
+  // stutters on a phone. This fires once per element.
+  //
+  // `seen` is added and never removed, so a section does not re-animate when
+  // the reader scrolls back up -- movement that repeats stops reading as
+  // arrival and starts reading as a glitch.
+  var revealed = document.querySelectorAll('.reveal');
+  if (!('IntersectionObserver' in window)) {
+    Array.prototype.forEach.call(revealed, function (el) {
+      el.classList.add('seen');
+    });
+  } else {
+    var watcher = new IntersectionObserver(function (rows) {
+      rows.forEach(function (row) {
+        if (row.isIntersecting) {
+          row.target.classList.add('seen');
+          watcher.unobserve(row.target);
+        }
+      });
+    }, { rootMargin: '0px 0px -12% 0px', threshold: 0.05 });
+    Array.prototype.forEach.call(revealed, function (el) {
+      watcher.observe(el);
+    });
+  }
+})();
+
+(function () {
+  var rows = Array.prototype.slice.call(
+    document.querySelectorAll('#decisions tbody tr[data-symbol]'));
+  var f = {
+    date: document.getElementById('f-date'),
+    symbol: document.getElementById('f-symbol'),
+    who: document.getElementById('f-who'),
+    verdict: document.getElementById('f-verdict')
+  };
+  var count = document.getElementById('f-count');
+  if (!count) { return; }
+  function apply() {
+    var sym = (f.symbol.value || '').trim().toUpperCase();
+    var shown = 0;
+    rows.forEach(function (row) {
+      var ok =
+        (f.date.value === 'all' || row.dataset.date === f.date.value) &&
+        (f.who.value === 'all' || row.dataset.who === f.who.value) &&
+        (f.verdict.value === 'all' || row.dataset.verdict === f.verdict.value) &&
+        (sym === '' || (row.dataset.symbol || '').toUpperCase().indexOf(sym) === 0);
+      row.style.display = ok ? '' : 'none';
+      if (ok) { shown++; }
+    });
+    count.textContent = shown + ' of ' + rows.length;
+  }
+  Object.keys(f).forEach(function (k) {
+    f[k].addEventListener(f[k].tagName === 'INPUT' ? 'input' : 'change', apply);
+  });
+  apply();
+})();
+"""
+
+
 def render_site(
     entries: list[dict],
     positions: list[dict],
     generated_at: datetime,
     repository_url: str = "",
 ) -> str:
-    """The whole page, as a string. Pure: no files, no clock, no network."""
+    """The whole page, as a string. Pure: no files, no clock, no network.
+
+    `positions` is accepted and unused. It is the option bookkeeping snapshot,
+    and everything it once supplied -- what is held, and what stands behind it
+    -- now comes off `mandate.stress`, which is the reading the agent actually
+    made rather than a second source that could disagree with it. The parameter
+    stays because `build_site` is the only caller and changing both at once
+    would hide the reason in a diff.
+    """
     stress = latest(entries, "mandate.stress")
-    review = latest(entries, "book.reviewed")
-    promise_block = _promise(
-        stress, latest(entries, "protection.explained").get("note", "")
-    )
-    floor_block = _floor(stress)
-    changed_block = _changed(review)
-    plan = latest(entries, "protection.plan")
-    book_cards = _book_cards(stress, plan)
-    sleeve_rows = _sleeve_rows(plan)
     return f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Drawdown-Guard &mdash; the loss a client named, kept</title>
+<title>Drawdown Guard &mdash; the loss a client named, kept</title>
 <style>{_STYLE}</style>
+<script>document.documentElement.className+=" js";</script>
 </head>
 <body>
 <div class="wrap">
 
-<header class="reveal">
-<span class="eyebrow">Alpaca paper trading &middot; live</span>
-<h1>Drawdown-Guard</h1>
-<p class="lede">An investor can say how much they are willing to lose. A
-portfolio cannot keep that promise on its own. Every weekday this agent
-measures the client&rsquo;s book against the loss they agreed to, and when the
-promise stops holding it buys back the difference &mdash; the cheapest
-structure that floors the loss at every depth, never a view on where the market
-is going.</p>
+<header>
+<h1 class="reveal">&#128737; Drawdown Guard</h1>
+<p class="lede reveal d1">An autonomous AI agent that keeps a portfolio within a
+client-defined downside limit, through an option overlay.</p>
+<div class="reveal d2">{_hero(stress)}</div>
 </header>
 
 <section class="reveal">
-<h2>What changed this morning</h2>
-<p class="lede">The list is arithmetic &mdash; the book against yesterday&rsquo;s
-snapshot. Below it, a language model is handed the holdings, the promise, the
-protection held and the four stress rungs, and asked which positions carry a
-risk issue. It is not given the answer; finding it is the question. Nothing it
-says reaches an order &mdash; the hedge is sized from the ladder below, and a
-finding the cycle did not act on is recorded as a disagreement rather than
-resolved.</p>
-{changed_block}
+<h2>The promise</h2>
+{_promise(stress)}
 </section>
 
 <section class="reveal">
-<h2>The promise, and where the book stands</h2>
-{promise_block}
+<h2>The portfolio</h2>
+{_portfolio(stress)}
 </section>
 
 <section class="reveal">
-<h2>The floor holds at every depth</h2>
-<p class="lede">Four rungs are measured every cycle and the line between them is
-straight &mdash; the payoff bends only at a strike, so this is the exact answer
-between the points, not a curve fitted to them. Drag it. Nothing here predicts
-a fall; it answers what this book would be worth if one happened.</p>
-{floor_block}
+<h2>Portfolio evolution</h2>
+{_evolution(entries)}
 </section>
 
-<section class="reveal">
-<h2>The book</h2>
-<div class="bento">
-{book_cards}
-</div>
-</section>
-
-<section class="reveal">
-<h2>What is holding the promise up</h2>
-<p class="lede">One row per holding. Each is hedged on its own underlying with
-its own share of the budget &mdash; a put on one index pays nothing for a fall
-in another, and the three implied volatilities are why a single hedge could
-never have been right.</p>
-<div class="shell"><div class="core"><div class="scroll">
-<table>
-<thead><tr><th>Holding</th><th>Exposure</th><th>Its budget</th>
-<th>Protection</th><th>Cost</th></tr></thead>
-<tbody>
-{sleeve_rows}
-</tbody>
-</table>
-</div></div></div>
-</section>
-
-<section class="reveal">
+<section id="decisions" class="reveal">
 <h2>Decisions</h2>
-<p class="lede">Refusals are listed alongside fills. A gate that never says no
-is not a gate, so the rejections are the evidence, not the omissions. Filter to
-<em>rejected</em> to read only the trades this agent talked itself out of, and
-expand any row for the record it decided from.</p>
-<div class="shell"><div class="core">
 {_controls(entries)}
-<div class="scroll">
 <table>
-<thead><tr><th>Time (UTC)</th><th>Symbol</th><th>Action</th><th>Verdict</th>
-<th>Detail</th></tr></thead>
-<tbody>
-{_journal_rows(entries)}
-<tr id="f-nomatch" hidden><td colspan="5" class="empty">Nothing matches that
-filter.</td></tr>
-</tbody>
+<thead><tr><th>When</th><th>Who</th><th>Instrument</th><th>What happened</th>
+<th class="n">&nbsp;</th></tr></thead>
+<tbody>{_decision_rows(entries)}</tbody>
 </table>
-</div>
-</div></div>
 </section>
 
-<footer>
-Generated {_cell(generated_at.strftime("%Y-%m-%d %H:%M"))} UTC &middot;
-{_source_link(repository_url)}paper trading only &middot; this page loads
-nothing remote
+<footer class="reveal">
+{_source_link(repository_url)}Rebuilt from the journal after every cycle &middot;
+{_cell(generated_at.strftime("%Y-%m-%d %H:%M"))} UTC &middot;
+Alpaca paper trading. This has never traded real money.
 </footer>
 
 </div>
@@ -796,13 +931,19 @@ def build_site(
     out_path: Path = DEFAULT_OUTPUT,
     journal_dir: Path = writer.JOURNAL_DIR,
     snapshot: Path = DEFAULT_SNAPSHOT,
-    limit: int = 200,
+    limit: int = 4000,
 ) -> Path:
     """Regenerate the status page from the journal and the state snapshot.
 
     Runs even on a cycle that traded nothing: "considered and declined" is a
     state worth publishing, and a page that only updates on fills would imply
     the agent was asleep on the days it was most careful.
+
+    The limit is four thousand entries rather than two hundred. At thirteen
+    cycles a day the old ceiling covered about a day and a half, so the
+    evolution chart -- which needs one closing reading per day across the whole
+    period -- would have been drawn from a day and a half of history and looked
+    like a project that started yesterday.
     """
     entries = [
         entry_from_journal(line)
