@@ -332,26 +332,17 @@ def _hero(stress: dict) -> str:
         return '<p class="empty">No cycle has measured the promise yet.</p>'
 
     budget = float(stress.get("budget") or 0)
-    # The limit, taken apart. It is not repeated as a figure here -- "The
-    # promise" below states it once, and a page that shows the same number
-    # twice in two screens invites a reader to look for the difference between
-    # them.
+    # The limit, taken apart. It is not repeated here -- "The promise" states
+    # it once, further down, and a page showing the same number twice in two
+    # screens invites a reader to look for the difference between them.
     #
-    # These three sum to it exactly, which is the whole reason to show them:
-    # what the account has already given up since the promise opened, what the
-    # worst case can still take from here, and what is left over.
-    #
-    # `already` is not the premium, though the premium is most of it. Premium
-    # leaves the account the day it is paid and shows as a fall in equity, and
-    # so does an ordinary move in the market; separating the two would need a
-    # figure the journal does not keep, and inventing one to make a nicer label
-    # is exactly the kind of thing this page does not do.
-    already = float(stress.get("already_lost") or 0)
+    # These three sum to it exactly: what the protection cost, the worst the
+    # book can still do from here, and what is left over.
+    premium = float(stress.get("premium_paid") or 0)
     ahead = float(stress.get("worst_case") or 0)
-    worst = already + ahead
     uncovered = float(stress.get("uncovered_risk") or 0)
     held = uncovered <= 0
-    headroom = budget - worst
+    headroom = budget - premium - ahead
 
     verdict = (
         '<p class="verdict held"><span class="dot"></span>Inside the promise</p>'
@@ -366,8 +357,8 @@ def _hero(stress: dict) -> str:
     )
     return f"""{verdict}
 <div class="figures">
-<div class="fig"><span class="n">{_money(already)}</span>
-<span class="k">Spent so far &middot; premium and market</span></div>
+<div class="fig"><span class="n">{_money(premium)}</span>
+<span class="k">Premium paid for protection</span></div>
 <div class="fig"><span class="n">{_money(ahead)}</span>
 <span class="k">Worst case from here</span></div>
 <div class="fig"><span class="n">{last[1]}</span>
@@ -487,7 +478,9 @@ def daily_series(entries: list[dict]) -> list[dict]:
                 "worst_case": None,
                 "already_lost": 0.0,
                 "remaining_budget": None,
-                "worst_case_unhedged": None,
+                "premium_paid": None,
+                "holdings": None,
+                "legs": None,
             },
         )
         payload = entry.get("payload") or {}
@@ -503,7 +496,9 @@ def daily_series(entries: list[dict]) -> list[dict]:
                 row["worst_case"] = float(payload.get("worst_case"))
                 row["already_lost"] = float(payload.get("already_lost") or 0.0)
                 row["remaining_budget"] = payload.get("remaining_budget")
-                row["worst_case_unhedged"] = payload.get("worst_case_unhedged")
+                row["premium_paid"] = payload.get("premium_paid")
+                row["holdings"] = payload.get("holdings")
+                row["legs"] = payload.get("legs")
             except (TypeError, ValueError):
                 pass
     return [row for _, row in sorted(days.items()) if row["equity"] is not None]
@@ -548,20 +543,38 @@ def promise_held(row: dict) -> bool:
     return (row.get("uncovered") or 0.0) <= 0
 
 
-def all_in_worst(row: dict) -> float | None:
-    """Everything the promise could still cost on that day, or None.
+def hedged_share(row: dict) -> float | None:
+    """How much of the day's equity exposure has a hedge behind it, 0 to 1.
 
-    Both halves, which is the only honest total: what the account had already
-    given up since the promise opened, plus the worst it could still do from
-    there. The premium is in the first half -- it leaves the account the day it
-    is paid, so it shows as a fall in equity rather than as risk ahead, and a
-    figure that counted only the second half reported 7,287 of headroom where
-    the truth was 5,545.
+    The question is the plain one: are the options bought on everything that
+    can fall? Weighted by value rather than counted by symbol, because a
+    portfolio 55% in XLF and 31% in IWM is not half hedged when the smaller of
+    the two is covered.
+
+    Cash and bills are excluded. They do not move with an equity shock, so
+    leaving them in the denominator would make a fully hedged book read as
+    ninety percent hedged for holding some bills.
+
+    None where the day's book was not recorded, which is different from nothing
+    being hedged.
     """
-    worst = row.get("worst_case")
-    if worst is None:
+    holdings = row.get("holdings")
+    if holdings is None:
         return None
-    return worst + (row.get("already_lost") or 0.0)
+    exposed = {
+        h["symbol"]: float(h.get("value") or 0)
+        for h in holdings
+        if h.get("shocked", True) and h.get("symbol") != "CASH"
+    }
+    total = sum(exposed.values())
+    if total <= 0:
+        return 1.0
+    covered = {
+        leg["symbol"]
+        for leg in (row.get("legs") or [])
+        if leg.get("right") == "P" and int(leg.get("contracts") or 0) > 0
+    }
+    return sum(v for k, v in exposed.items() if k in covered) / total
 
 
 def _coverage_track(
@@ -583,7 +596,7 @@ def _coverage_track(
     only the half of the interval that exists.
     """
     measured = [
-        (i, row) for i, row in enumerate(series) if row.get("worst_case") is not None
+        (i, row) for i, row in enumerate(series) if row.get("uncovered") is not None
     ]
     if not measured:
         return ""
@@ -592,31 +605,29 @@ def _coverage_track(
     for i, row in measured:
         start = left if i == 0 else (points[i - 1][0] + points[i][0]) / 2
         end = right if i == len(series) - 1 else (points[i][0] + points[i + 1][0]) / 2
-        budget = row.get("budget") or 0.0
-        worst = all_in_worst(row) or 0.0
-        left_over = budget - worst
-        held = left_over >= 0
-        share = min(worst / budget, 1.0) if budget else 1.0
+        share = hedged_share(row)
+        full = share is not None and share >= 0.999
+        colour = "#4ade80" if full else "#fbbf24"
+        # An unrecorded book still gets its day drawn, in the colour the
+        # verdict gives it. Leaving a gap would read as a day nothing ran.
+        width = max((end - start) * (1.0 if share is None else share), 3.0)
+        if share is None:
+            colour = "#4ade80" if promise_held(row) else "#fbbf24"
         out += (
-            f'<rect x="{start:.1f}" y="{y:.1f}" '
-            f'width="{max((end - start) * share, 3.0):.1f}" '
-            f'height="{height:.1f}" fill="{"#4ade80" if held else "#fbbf24"}" '
-            f'opacity=".85"/>'
-            f'<text x="{start + 11:.1f}" y="{y + height / 2 + 4:.1f}" '
-            f'font-size="12" font-weight="600" fill="#0b1220">'
-            f"{_money(worst)}"
-            + (
-                f" &middot; {_money(left_over)} left"
-                if held
-                else f" &middot; {_money(-left_over)} over"
-            )
-            + "</text>"
+            f'<rect x="{start:.1f}" y="{y:.1f}" width="{width:.1f}" '
+            f'height="{height:.1f}" fill="{colour}" opacity=".85"/>'
         )
+        if share is not None:
+            out += (
+                f'<text x="{start + 11:.1f}" y="{y + height / 2 + 4:.1f}" '
+                f'font-size="12" font-weight="600" fill="#0b1220">'
+                f"{share * 100:.0f}% hedged</text>"
+            )
     first = left if measured[0][0] == 0 else 0.0
     return (
         f'<text x="{first:.0f}" y="{y - 14:.0f}" font-size="11" fill="#8b8b86" '
-        f'letter-spacing=".16em">THE LOSS LIMIT, AND WHAT THE WORST CASE TAKES '
-        f"OF IT</text>"
+        f'letter-spacing=".16em">HOW MUCH OF THE PORTFOLIO HAD PROTECTION '
+        f"BEHIND IT</text>"
         f'<clipPath id="trackclip"><rect x="{first:.1f}" y="{y:.1f}" '
         f'width="{right - first:.1f}" height="{height:.1f}" '
         f'rx="{height / 2:.1f}"/></clipPath>'
@@ -714,9 +725,8 @@ def _evolution(entries: list[dict]) -> str:
 {_coverage_track(series, points, left, width - right, 322.0)}
 </svg>
 </div>
-<p class="legend"><span class="c"><i></i>the worst case fits inside the
-limit</span>
-<span class="u"><i></i>it does not</span></p>"""
+<p class="legend"><span class="c"><i></i>every exposed holding is hedged</span>
+<span class="u"><i></i>some of it is not</span></p>"""
 
 
 # --- what was decided -------------------------------------------------------

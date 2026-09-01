@@ -12,10 +12,11 @@ import pytest
 
 from drawdownguard.journal import writer
 from drawdownguard.journal.site import (
-    all_in_worst,
     build_site,
     daily_series,
     entry_from_journal,
+    hedged_share,
+    promise_held,
     render_site,
 )
 
@@ -41,7 +42,8 @@ def _stress(**overrides) -> dict:
         # What the account has already given up since the promise opened,
         # mostly the premium. Part of the total the limit is measured against.
         "already_lost": 1777.23,
-        "remaining_budget": 8220.61,
+        "premium_paid": 4656.0,
+        "remaining_budget": 5341.84,
         "period_started": "2026-08-28",
         "period_ends": "2027-08-28",
         "holdings": [
@@ -120,19 +122,20 @@ def _week() -> list[dict]:
 def test_a_promise_that_holds_says_so_and_shows_the_headroom():
     page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
     assert "Inside the promise" in page
-    assert "$5,545" in page, "9,998 less a 4,453 all-in worst case"
+    assert "$2,666" in page, "9,998 less 4,656 of premium and 2,676 ahead"
     assert "Remaining headroom" in page
 
 
 def test_the_header_takes_the_limit_apart_rather_than_restating_it():
-    """1,777 already spent, 2,676 still ahead, 5,545 left -- and those sum to
-    the 9,998 that "The promise" states once, further down.
+    """4,656 of premium, 2,676 still ahead, 2,666 left -- and those sum to the
+    9,998 that "The promise" states once, further down.
 
     A page showing the same number twice in two screens invites a reader to
     look for the difference between them.
     """
     page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
-    assert "$1,777" in page and "$2,676" in page and "$5,545" in page
+    assert "$4,656" in page, "what the protection cost"
+    assert "$2,676" in page and "$2,666" in page
     assert page.count("$9,998") == 1, "stated once, under The promise"
 
 
@@ -270,37 +273,55 @@ def test_a_day_with_no_completed_cycle_is_not_a_point_on_the_line():
     assert daily_series(entries) == []
 
 
-def test_the_worst_case_counts_the_premium_already_paid():
-    """Both halves, which is the only honest total.
+def test_every_exposed_holding_hedged_is_a_hundred_per_cent():
+    """The plain question: are the options bought on everything that can fall?
 
-    The premium leaves the account the day it is paid, so it shows as a fall in
-    equity rather than as risk ahead. Counting only the second half reported
-    7,287 of headroom where the truth was 5,545.
+    Weighted by value, not counted by symbol -- a book 55% in XLF and 31% in
+    IWM is not half hedged when the smaller of the two is covered.
     """
-    day = {"worst_case": 2676.0, "already_lost": 1777.23}
-    assert all_in_worst(day) == pytest.approx(4453.23)
+    day = {
+        "holdings": [
+            {"symbol": "XLF", "value": 51480.0, "shocked": True},
+            {"symbol": "IWM", "value": 29050.0, "shocked": True},
+        ],
+        "legs": [
+            {"symbol": "XLF", "right": "P", "contracts": 9},
+            {"symbol": "IWM", "right": "P", "contracts": 1},
+        ],
+    }
+    assert hedged_share(day) == 1.0
 
 
-def test_a_day_never_measured_has_no_worst_case():
-    assert all_in_worst({}) is None
+def test_hedging_the_smaller_holding_is_not_half_the_job():
+    day = {
+        "holdings": [
+            {"symbol": "XLF", "value": 51480.0, "shocked": True},
+            {"symbol": "IWM", "value": 29050.0, "shocked": True},
+        ],
+        "legs": [{"symbol": "IWM", "right": "P", "contracts": 1}],
+    }
+    assert hedged_share(day) == pytest.approx(29050 / 80530)
 
 
-def test_the_track_prints_the_same_three_numbers_as_the_verdict():
-    """The limit, what the worst case takes of it, and what is left.
+def test_bills_and_cash_are_not_counted_as_things_to_hedge():
+    """They do not move with an equity shock, so leaving them in the
+    denominator would make a fully hedged book read as partly hedged for
+    holding some bills."""
+    day = {
+        "holdings": [
+            {"symbol": "XLF", "value": 51480.0, "shocked": True},
+            {"symbol": "BIL", "value": 9140.0, "shocked": False},
+            {"symbol": "CASH", "value": 4018.0, "shocked": False},
+        ],
+        "legs": [{"symbol": "XLF", "right": "P", "contracts": 9}],
+    }
+    assert hedged_share(day) == 1.0
 
-    A reader who has taken in the header already knows how to read the track,
-    which is the point of it being the same picture.
-    """
-    page = _page(_week())
-    assert "$4,453" in page and "$5,545 left" in page
-    assert "$73,664 over" in page, "the day the book was unhedged"
 
-
-def test_a_day_over_the_limit_is_drawn_in_the_other_colour():
-    page = _page(_week())
-    assert "#fbbf24" in page, "two days went past the limit"
-    assert "#4ade80" in page, "and one did not"
-    assert "not recorded" not in page
+def test_a_day_whose_book_was_not_recorded_has_no_share():
+    """Different from nothing being hedged."""
+    assert hedged_share({}) is None
+    assert promise_held({"uncovered": 0.0}) is True
 
 
 def test_one_close_is_not_a_line():

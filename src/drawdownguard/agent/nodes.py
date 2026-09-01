@@ -274,10 +274,27 @@ async def mandate_node(state: GuardState) -> GuardState:
     # measured today's risk as though nothing had happened yet. A promise is a
     # statement about a period, and both halves of it have to be read from the
     # day it opened.
-    spent = max(promise.reference - float(portfolio.equity), 0.0)
-    remaining = period.remaining_budget(
-        budget, promise.reference, float(portfolio.equity)
+    # The premium is charged to the promise, not to the market.
+    #
+    # `worst_loss` treats premium already paid as sunk, on the argument that
+    # today's equity reflects it. That is true of the *account* and wrong for
+    # the *promise*: a hedge whose cost the budget never sees is a hedge the
+    # client is paying for out of a different pocket than the one they named.
+    # The strike is solved so that `fall to strike + premium = sleeve budget`,
+    # so the budget has to be the one with the premium taken out of it or the
+    # solver is working against a number nobody is enforcing.
+    #
+    # Equity drift is deliberately not used here. On 2026-09-01 the account was
+    # 1,823 below its reference while 4,656 of premium had been paid: the
+    # shares had risen and given part of it back. Charging the smaller number
+    # would let a good week refund the insurance, and a promise that gets
+    # cheaper when the market rises is not a promise, it is a bet.
+    premium_paid = sum(
+        float(leg.premium) * abs(leg.contracts) * 100
+        for leg in book.legs
+        if leg.contracts > 0
     )
+    remaining = max(budget - premium_paid, 0.0)
     uncovered = max(exposure - remaining, 0.0)
 
     writer.write(
@@ -290,7 +307,14 @@ async def mandate_node(state: GuardState) -> GuardState:
             # what is left to cover the worst case from here. The page reads
             # `remaining`; a reader comparing `worst_case` against `budget`
             # alone would reach the wrong verdict on any day but the first.
-            "already_lost": round(spent, 2),
+            # What the protection cost, and what the promise has left after
+            # paying for it. `already_lost` is the account's drift from the
+            # reference and is reported beside them rather than used: it is a
+            # different question and the two are easy to confuse.
+            "premium_paid": round(premium_paid, 2),
+            "already_lost": round(
+                max(promise.reference - float(portfolio.equity), 0.0), 2
+            ),
             "remaining_budget": round(remaining, 2),
             # The same book with the options taken off, which is the only way
             # to say how much of the day's protection is actually in place.
@@ -339,6 +363,7 @@ async def mandate_node(state: GuardState) -> GuardState:
                     "right": leg.right,
                     "strike": str(leg.strike),
                     "contracts": leg.contracts,
+                    "premium": str(leg.premium),
                     "expiry": leg.expiry.isoformat() if leg.expiry else None,
                 }
                 for leg in book.legs
@@ -495,8 +520,16 @@ async def protect_node(state: GuardState) -> GuardState:
     # The same remaining budget `mandate` measured against. Sizing a hedge
     # against the whole budget while the promise was measured against what is
     # left of it would buy exactly enough protection to breach.
-    remaining = period.remaining_budget(
-        budget, promise.reference, float(portfolio.equity)
+    # The same remaining budget `mandate` measured against: the promise less
+    # what the protection already in place cost it.
+    remaining = max(
+        budget
+        - sum(
+            float(leg.premium) * abs(leg.contracts) * 100
+            for leg in book.legs
+            if leg.contracts > 0
+        ),
+        0.0,
     )
     shock = mandate.binding_shock
 
