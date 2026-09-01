@@ -76,141 +76,155 @@ MAX_DECISIONS = 120
 # statement of fact. Hierarchy here comes from size and spacing; the only rules
 # that remain are the ones separating one section from the next.
 _STYLE = """
-/* Bento grid, in the Apple palette: #F5F5F7 ground, white tiles, #1D1D1F ink.
-   Cards of varied span rather than one column of sections, 24px radii, and
-   shadows that read as diffused light rather than as drop shadows.
+/* Ethereal Glass. Committed to one look rather than tracking the reader's
+   theme: a trading console is read as an instrument, and an instrument does
+   not change colour depending on who picks it up.
 
-   The type stack is the system's own -- SF Pro on Apple hardware, Segoe UI
-   Variable on Windows. These are the faces the operating systems were drawn
-   around, and they load nothing: a page that fetched a font would make a
-   judge's click depend on somebody else's uptime, which is the one thing this
-   document refuses to do.
+   Bands rather than tiles. A bento grid chops a single argument into a wall of
+   equal boxes, and this page is making one argument in order -- the verdict,
+   then what was promised, then what is held, then what happened. Each of those
+   is a full-width band separated by a hairline, so a reader falls down the
+   page instead of scanning a grid for the important square.
 
-   The decisions table is deliberately not a bento tile. This layout is for
-   summaries and galleries and is poor at dense rows; the table sits on one
-   plain surface and is read the way a table is read. */
-:root{
-  --ink:#1d1d1f; --body:#515154; --muted:#86868b; --faint:#aeaeb2;
-  --page:#f5f5f7; --card:#fff; --hairline:rgba(0,0,0,.06);
-  --accent:#6e56cf; --accent-soft:rgba(110,86,207,.09);
-  --held:#2f8f68; --open:#c07f2e;
-  --gap:20px; --radius:24px;
-  --shadow:0 1px 2px rgba(0,0,0,.03),0 8px 28px -10px rgba(0,0,0,.08);
-  --shadow-up:0 2px 6px rgba(0,0,0,.05),0 18px 44px -14px rgba(0,0,0,.13);
-  --ease:cubic-bezier(.32,.72,0,1);
+   NOTE ON TYPE. Every reference for this aesthetic reaches for a licensed
+   grotesk. This page loads nothing remote -- no CDN, no font file -- because a
+   judge's click must not depend on anyone else's uptime. So the stack is
+   system-first, and the character comes from scale, spacing and rhythm
+   instead. Constraint first, taste within it. */
+:root {
+  --ink: #f4f4f2;
+  --dim: #8b8b86;
+  --void: #050505;
+  --shell: rgba(255,255,255,.035);
+  --hair: rgba(255,255,255,.09);
+  --core: #0b0b0c;
+  --ok: #4ade80;
+  --no: #fb7185;
+  --alarm: #fbbf24;
+  --ease: cubic-bezier(.32,.72,0,1);
+  --r: 1.75rem;
 }
-*{box-sizing:border-box}
-html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--page);color:var(--ink);
-  font:400 17px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Display",
-    "SF Pro Text","Segoe UI Variable Text",system-ui,sans-serif;
-  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
-  letter-spacing:-.012em}
-.wrap{max-width:1080px;margin:0 auto;padding:5rem 1.5rem 6rem}
-p{margin:0}
-a{color:var(--accent);text-decoration:none}
-a:hover{text-decoration:underline}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--void); color: var(--ink);
+  font: 400 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-feature-settings: "cv05" 1, "ss01" 1; letter-spacing: -.006em;
+  min-height: 100dvh; overflow-x: hidden;
+}
+/* Two slow orbs. Fixed and pointer-events-none so nothing repaints on scroll. */
+body::before {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(60rem 40rem at 12% -10%, rgba(74,222,128,.10), transparent 60%),
+    radial-gradient(50rem 36rem at 92% 8%, rgba(251,191,36,.07), transparent 60%);
+}
+.wrap { position: relative; z-index: 1; max-width: 72rem; margin: 0 auto;
+        padding: 6rem 2rem 5rem; }
+@media (max-width: 768px) { .wrap { padding: 3rem 1rem 3rem; } }
 
-/* the grid */
-.bento{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--gap);
-  margin:0 0 var(--gap)}
-.tile{background:var(--card);border-radius:var(--radius);padding:2rem 2.1rem;
-  box-shadow:var(--shadow);grid-column:span 1;
-  transition:transform .55s var(--ease),box-shadow .55s var(--ease)}
-.tile.wide{grid-column:span 2} .tile.full{grid-column:span 4}
-.tile.lift:hover{transform:translate3d(0,-2px,0) scale(1.012);
-  box-shadow:var(--shadow-up)}
-.tile.hero{padding:2.6rem 2.4rem}
-.tile.plain{background:transparent;box-shadow:none;padding:0}
+.eyebrow { display: inline-block; border-radius: 999px; padding: .3rem .75rem;
+  font-size: 10px; text-transform: uppercase; letter-spacing: .2em;
+  font-weight: 500; color: var(--dim);
+  background: var(--shell); border: 1px solid var(--hair); }
+h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); line-height: .95; font-weight: 600;
+     letter-spacing: -.04em; margin: 1.4rem 0 0; }
+.lede { color: var(--dim); max-width: 46rem; margin: 1.1rem 0 0;
+        font-size: 1.02rem; }
+h2 { font-size: 10px; font-weight: 500; letter-spacing: .2em;
+     text-transform: uppercase; color: var(--dim); margin: 0 0 1.8rem; }
 
-h1{font-size:1.6rem;font-weight:600;letter-spacing:-.022em;margin:0 0 .55rem}
-h2{font-size:.68rem;font-weight:590;letter-spacing:.13em;text-transform:uppercase;
-  color:var(--muted);margin:0 0 1.4rem}
-.lede{color:var(--body);font-size:1.05rem;line-height:1.5;max-width:44ch}
-.tag{display:inline-block;font-size:.68rem;font-weight:590;letter-spacing:.13em;
-  text-transform:uppercase;color:var(--muted);margin:0 0 1.5rem;padding:0 .2rem}
+/* The bands. One argument per band, a hairline between, nothing boxed. */
+section { margin-top: 5rem; padding-top: 5rem; border-top: 1px solid var(--hair); }
+@media (max-width: 768px) { section { margin-top: 3rem; padding-top: 3rem; } }
 
 /* the verdict */
-.verdict{display:inline-flex;align-items:center;gap:.55rem;
-  font-size:.72rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
-  margin:0 0 2.2rem;padding:.45rem .95rem .45rem .8rem;border-radius:980px}
-.verdict .dot{width:.45rem;height:.45rem;border-radius:50%}
-.held{color:var(--held);background:rgba(47,143,104,.1)}
-.held .dot{background:var(--held)}
-.open{color:var(--open);background:rgba(192,127,46,.11)}
-.open .dot{background:var(--open)}
+.verdict { display: inline-flex; align-items: center; gap: .6rem;
+  font-size: 10px; font-weight: 500; letter-spacing: .2em; text-transform: uppercase;
+  margin: 2.6rem 0 2.2rem; padding: .38rem .85rem .38rem .7rem;
+  border-radius: 999px; border: 1px solid var(--hair); }
+.verdict .dot { width: .42rem; height: .42rem; border-radius: 50%; }
+.held { color: var(--ok); border-color: rgba(74,222,128,.35);
+        background: rgba(74,222,128,.07); }
+.held .dot { background: var(--ok); box-shadow: 0 0 12px rgba(74,222,128,.7); }
+.open { color: var(--alarm); border-color: rgba(251,191,36,.4);
+        background: rgba(251,191,36,.08); }
+.open .dot { background: var(--alarm); box-shadow: 0 0 12px rgba(251,191,36,.7); }
 
-/* One figure size everywhere, per the brief. */
-.figures{display:flex;flex-wrap:wrap;gap:2.2rem 3.6rem;margin:0}
-.fig{min-width:7rem}
-.fig .n{display:block;font-size:2.4rem;line-height:1.06;font-weight:590;
-  letter-spacing:-.032em;font-variant-numeric:tabular-nums;
-  font-feature-settings:"tnum" 1}
-.fig .k{display:block;font-size:.7rem;letter-spacing:.04em;
-  color:var(--muted);margin-top:.6rem;font-weight:400}
-.tile .fig{min-width:0}
+/* One figure size everywhere: these are one statement, not a ranking. */
+.figures { display: flex; flex-wrap: wrap; gap: 2.4rem 4rem; margin: 0; }
+.fig { min-width: 7rem; }
+.fig .n { display: block; font-size: 2.4rem; line-height: 1.05; font-weight: 600;
+  letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+.fig .k { display: block; font-size: 10px; text-transform: uppercase;
+  letter-spacing: .18em; color: var(--dim); margin-top: .7rem; }
 
-/* tables */
-table{width:100%;border-collapse:collapse;font-size:.95rem}
-th{text-align:left;font-size:.68rem;letter-spacing:.05em;color:var(--faint);
-  font-weight:510;padding:0 1.1rem .8rem 0;white-space:nowrap}
-td{padding:.8rem 1.1rem;border-top:1px solid var(--hairline);
-  vertical-align:baseline;color:var(--body);padding-left:0}
-td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;padding-right:0}
-td.sym{font-weight:590;color:var(--ink)}
-tbody tr:last-child td{color:var(--ink);font-weight:510}
-#decisions tbody tr:last-child td{font-weight:400;color:var(--body)}
-.who{font-size:.86rem;color:var(--muted);white-space:nowrap}
-.opt{font-size:.86rem;color:var(--muted);font-variant-numeric:tabular-nums}
+table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+th { text-align: left; font-weight: 500; font-size: 10px; letter-spacing: .16em;
+     text-transform: uppercase; color: var(--dim); padding: 0 .7rem .7rem 0;
+     border-bottom: 1px solid var(--hair); white-space: nowrap; }
+td { padding: .72rem .7rem .72rem 0; border-bottom: 1px solid rgba(255,255,255,.05);
+     vertical-align: baseline; color: var(--dim); }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums;
+             padding-right: 0; }
+td.sym { color: var(--ink); font-weight: 500; }
+tbody tr { transition: background .45s var(--ease); }
+tbody tr:hover { background: rgba(255,255,255,.025); }
+tbody tr:last-child td { color: var(--ink); }
+#decisions tbody tr:last-child td { color: var(--dim); }
+.who { white-space: nowrap; }
+.opt { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+       font-size: .8rem; }
+.scroll { overflow-x: auto; }
 
-/* chart */
-.chart svg{display:block;width:100%;height:auto;overflow:visible}
-.legend{display:flex;gap:1.6rem;font-size:.78rem;color:var(--muted);
-  margin:1.5rem 0 0}
-.legend i{display:inline-block;width:.5rem;height:.5rem;border-radius:2px;
-  margin-right:.45rem}
-.legend .c i{background:var(--held)} .legend .u i{background:var(--open)}
+/* the line, and the band under it */
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.legend { display: flex; gap: 1.8rem; font-size: 10px; letter-spacing: .16em;
+  text-transform: uppercase; color: var(--dim); margin: 1.6rem 0 0; }
+.legend i { display: inline-block; width: .45rem; height: .45rem;
+  border-radius: 2px; margin-right: .5rem; }
+.legend .c i { background: var(--ok); } .legend .u i { background: var(--alarm); }
 
-/* filters */
-.controls{display:flex;flex-wrap:wrap;gap:.8rem 1.5rem;align-items:center;
-  margin:0 0 1.6rem;font-size:.84rem;color:var(--muted)}
-.controls input,.controls select{font:inherit;font-size:.9rem;color:var(--ink);
-  background:var(--page);border:0;border-radius:980px;padding:.4rem .85rem;
-  min-width:6.5rem;transition:box-shadow .4s var(--ease)}
-.controls input:focus,.controls select:focus{outline:0;
-  box-shadow:0 0 0 3px var(--accent-soft)}
-.count{margin-left:auto;color:var(--faint);font-variant-numeric:tabular-nums}
+.controls { display: flex; gap: .6rem 1rem; align-items: center; flex-wrap: wrap;
+            margin: 0 0 1.6rem; font-size: .82rem; color: var(--dim); }
+.controls label { letter-spacing: .16em; text-transform: uppercase;
+                  font-size: 10px; }
+.controls input, .controls select {
+  font: inherit; font-size: .82rem; color: var(--ink); padding: .42rem .8rem;
+  background: var(--shell); border: 1px solid var(--hair); border-radius: 999px;
+  outline: none; transition: border-color .5s var(--ease),
+            background .5s var(--ease); }
+.controls input:focus, .controls select:focus {
+  border-color: rgba(255,255,255,.28); background: rgba(255,255,255,.06); }
+.controls .count { margin-left: auto; font-variant-numeric: tabular-nums; }
 
-.mark{font-size:.9rem}
-.mark.approved{color:var(--held)}
-.mark.breach,.mark.rejected{color:var(--open)}
-.mark.defect{color:#b4453c}
-.empty{color:var(--faint)}
-footer{margin-top:2.4rem;font-size:.78rem;color:var(--faint);
-  padding:0 .4rem}
+.mark { font-size: .9rem; }
+.mark.approved { color: var(--ok); }
+.mark.breach, .mark.rejected { color: var(--no); }
+.mark.defect { color: var(--alarm); }
 
-/* Nothing arrives already there, and the starting state is scoped under `.js`
-   so a page opened with scripting off is a complete page rather than a blank
-   one -- the motion is an enhancement and must not be load-bearing. */
-.js .reveal{opacity:0;transform:translate3d(0,22px,0);
-  transition:opacity .8s var(--ease),transform .8s var(--ease)}
-.js .reveal.seen{opacity:1;transform:none}
-.js .reveal.d1{transition-delay:.07s} .js .reveal.d2{transition-delay:.14s}
-.js .reveal.d3{transition-delay:.21s}
-@media (prefers-reduced-motion:reduce){
-  .js .reveal{opacity:1;transform:none;transition:none}
-  .tile.lift:hover{transform:none}
+footer { margin-top: 5rem; padding-top: 1.6rem; border-top: 1px solid var(--hair);
+         font-size: .78rem; color: var(--dim); }
+footer a { color: var(--ink); text-decoration: none;
+           border-bottom: 1px solid var(--hair); }
+.empty { color: var(--dim); font-style: italic; }
+
+/* Entry motion: transform, opacity and filter only, so nothing reflows. The
+   starting state is scoped under `.js` so a page opened with scripting off is
+   a complete page rather than a blank one. */
+.js .reveal { opacity: 0; transform: translateY(2rem); filter: blur(6px);
+  transition: opacity .9s var(--ease), transform .9s var(--ease),
+              filter .9s var(--ease); }
+.js .reveal.seen { opacity: 1; transform: none; filter: none; }
+.js .reveal.d1 { transition-delay: .08s; }
+.js .reveal.d2 { transition-delay: .16s; }
+.js .reveal.d3 { transition-delay: .24s; }
+@media (prefers-reduced-motion: reduce) {
+  .js .reveal { opacity: 1; transform: none; filter: none; transition: none; }
 }
-@media (max-width:860px){
-  .bento{grid-template-columns:repeat(2,1fr)}
-  .tile.wide,.tile.full{grid-column:span 2}
-}
-@media (max-width:560px){
-  .wrap{padding:2.5rem 1rem 4rem}
-  .bento{grid-template-columns:1fr}
-  .tile,.tile.wide,.tile.full{grid-column:span 1;padding:1.6rem 1.4rem}
-  .fig .n{font-size:1.9rem}
-  table{font-size:.88rem}
+@media (max-width: 640px) {
+  .figures { gap: 1.8rem 2.4rem; }
+  .fig .n { font-size: 1.8rem; }
 }
 """
 
@@ -334,18 +348,18 @@ def _promise(stress: dict) -> str:
         return ""
     started, ends = stress.get("period_started"), stress.get("period_ends")
     window = f"{started} &rarr; {ends}" if started and ends else "fixed at the open"
-    tiles = (
+    figures = (
         (_money(stress.get("reference")), "Reference portfolio"),
         (f"{_cell(stress.get('downside_budget_pct'))}%", "Maximum drawdown"),
         (_money(stress.get("budget")), "Loss budget"),
         ("12 months", f"Mandate window &middot; {window}"),
     )
-    return "".join(
-        f'<div class="tile lift reveal d{i}">'
+    body = "".join(
         f'<div class="fig"><span class="n">{value}</span>'
-        f'<span class="k">{key}</span></div></div>'
-        for i, (value, key) in enumerate(tiles)
+        f'<span class="k">{key}</span></div>'
+        for value, key in figures
     )
+    return f'<div class="figures">{body}</div>'
 
 
 # --- the book ---------------------------------------------------------------
@@ -489,11 +503,11 @@ def _band(
     """
     start = left if i == 0 else (points[i - 1][0] + points[i][0]) / 2
     end = right if i == len(points) - 1 else (points[i][0] + points[i + 1][0]) / 2
-    colour = "#3f9573" if held else "#c4863a"
+    colour = "#4ade80" if held else "#fbbf24"
     return (
         f'<rect x="{start + 1.5:.1f}" y="{y:.1f}" '
         f'width="{max(end - start - 3, 1):.1f}" height="8" rx="4" '
-        f'fill="{colour}" opacity=".9"/>'
+        f'fill="{colour}" opacity=".8"/>'
     )
 
 
@@ -546,22 +560,22 @@ def _evolution(entries: list[dict]) -> str:
         held = (row["uncovered"] or 0) <= 0
         # The last point is the one a reader looks for, so it is the solid one.
         # The rest are hollow: present, and not competing for the eye.
-        fill = "#6d3aed" if i == len(points) - 1 else "#fff"
+        fill = "#4ade80" if i == len(points) - 1 else "#0b0b0c"
         marks += (
             f'<circle cx="{px:.1f}" cy="{py:.1f}" r="5" fill="{fill}" '
-            f'stroke="#6d3aed" stroke-width="2"/>'
+            f'stroke="#4ade80" stroke-width="2"/>'
             f'<text x="{px:.1f}" y="{py - 18:.1f}" text-anchor="middle" '
-            f'font-size="15" font-weight="500" fill="#0b0b0f" '
+            f'font-size="15" font-weight="500" fill="#f4f4f2" '
             f'letter-spacing="-.3">{_money(row["equity"])}</text>'
             # The date sits on the baseline; the event, if there was one, sits
             # above it in the accent, because that is the line a reader is
             # scanning for when they ask what happened.
             f'<text x="{px:.1f}" y="{floor + 30:.1f}" text-anchor="middle" '
-            f'font-size="12" fill="#8b8b98" letter-spacing=".08em">'
+            f'font-size="12" fill="#8b8b86" letter-spacing=".08em">'
             f"{_cell(row['date'][5:].replace('-', ' / '))}</text>"
             + (
                 f'<text x="{px:.1f}" y="{floor + 52:.1f}" text-anchor="middle" '
-                f'font-size="11.5" font-weight="500" fill="#6d3aed" '
+                f'font-size="11.5" font-weight="500" fill="#4ade80" '
                 f'letter-spacing=".03em">{_cell(labels[row["date"]])}</text>'
                 if labels.get(row["date"])
                 else ""
@@ -577,11 +591,11 @@ def _evolution(entries: list[dict]) -> str:
 <svg viewBox="0 0 {width:.0f} {height:.0f}" role="img"
      aria-label="closing account value, one point per trading day">
 <defs><linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
-<stop offset="0%" stop-color="#6d3aed" stop-opacity=".13"/>
-<stop offset="100%" stop-color="#6d3aed" stop-opacity="0"/>
+<stop offset="0%" stop-color="#4ade80" stop-opacity=".16"/>
+<stop offset="100%" stop-color="#4ade80" stop-opacity="0"/>
 </linearGradient></defs>
 <polygon points="{area}" fill="url(#fade)"/>
-<polyline points="{line}" fill="none" stroke="#6d3aed" stroke-width="2.5"
+<polyline points="{line}" fill="none" stroke="#4ade80" stroke-width="2"
           stroke-linejoin="round" stroke-linecap="round"/>
 {marks}
 </svg>
@@ -868,44 +882,40 @@ def render_site(
 <body>
 <div class="wrap">
 
-<div class="bento">
-<div class="tile hero full reveal">
-<h1>&#128737;&#65039; Drawdown Guard</h1>
+<header class="reveal">
+<span class="eyebrow">Alpaca paper trading &middot; live</span>
+<h1>Drawdown Guard</h1>
 <p class="lede">An autonomous AI agent that keeps a portfolio within a
 client-defined downside limit, through an option overlay.</p>
 {_hero(stress)}
-</div>
-</div>
+</header>
 
-<div class="bento">
+<section class="reveal">
+<h2>The promise</h2>
 {_promise(stress)}
-</div>
+</section>
 
-<div class="bento">
-<div class="tile full reveal">
+<section class="reveal">
 <h2>The portfolio</h2>
-{_portfolio(stress)}
-</div>
-</div>
+<div class="scroll">{_portfolio(stress)}</div>
+</section>
 
-<div class="bento">
-<div class="tile full reveal">
+<section class="reveal">
 <h2>Portfolio evolution</h2>
 {_evolution(entries)}
-</div>
-</div>
+</section>
 
-<div class="bento" id="decisions">
-<div class="tile full reveal">
+<section id="decisions" class="reveal">
 <h2>Decisions</h2>
 {_controls(entries)}
+<div class="scroll">
 <table>
 <thead><tr><th>When</th><th>Who</th><th>Instrument</th><th>What happened</th>
 <th class="n">&nbsp;</th></tr></thead>
 <tbody>{_decision_rows(entries)}</tbody>
 </table>
 </div>
-</div>
+</section>
 
 <footer class="reveal">
 {_source_link(repository_url)}Rebuilt from the journal after every cycle &middot;
