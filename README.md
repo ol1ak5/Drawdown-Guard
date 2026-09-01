@@ -66,6 +66,43 @@ The client changes the portfolio mid-flight:
 
 The portfolio is intentionally not static. A client who never touches their allocation isn't the point. That gives Drawdown Guard a real job - it keeps the changing portfolio aligned with a fixed risk mandate.
 
+## 🔄 The Agent Loop
+
+```mermaid
+flowchart TD
+    CRON["⏰ Agent activation"] --> HALT{Stop signal<br/>active?}
+    HALT -- yes --> JOURNAL
+    HALT -- no --> RECONCILE
+
+    RECONCILE["1️⃣ RECONCILE"] --> KILL{Account already<br/>outside the mandate?}
+    KILL -- yes --> JOURNAL
+    KILL -- no --> MANDATE
+
+    MANDATE["2️⃣ MANDATE + 3️⃣ STRESS"] --> LLM1
+    LLM1(["LLM · RISK ANALYSIS"]) --> GAP{Within the<br/>mandate?}
+
+    GAP -- yes --> JOURNAL
+    GAP -- no --> PROTECT
+
+    PROTECT["4️⃣ PROTECT"] --> ELIGIBLE{Closes the risk?}
+    ELIGIBLE -- no --> DROP[Never shown to the model]
+    ELIGIBLE -- yes --> LLM2
+
+    LLM2(["🤖 LLM · PROTECTION CHOICE"]) --> GATE
+
+    GATE{"5️⃣ GATE"}
+    GATE -- veto --> JOURNAL
+    GATE -- approve --> EXECUTE
+
+    EXECUTE["6️⃣ EXECUTE"] --> JOURNAL
+
+    JOURNAL["7️⃣ JOURNAL LLM<br/>THE CLIENT'S NOTE"] --> END([Commit and stop])
+
+    style LLM1 fill:#7c3aed,stroke:#4c1d95,color:#fff
+    style LLM2 fill:#7c3aed,stroke:#4c1d95,color:#fff
+    style JOURNAL fill:#7c3aed,stroke:#134e4a,color:#fff
+```
+
 ## ⚙️ How the agent actually works
 
 Seven steps presented as five nodes in the LangGraph cycle. Every half hour while the market is open. Fully autonomous.
@@ -90,10 +127,6 @@ On every cycle, the LLM receives the material and answers the following question
 
 > *Given this portfolio, this mandate and this existing protection, which positions carry a risk issue that needs attention, and what should be reviewed?*
 
-**It is not given the conclusion.** `uncovered_risk` is a single number the arithmetic has already worked out, and handing it over would turn the call into a paraphrase. What it gets instead is the raw material: holdings position by position, the promise and what it is measured against, the option legs held **listed separately and not paired with the holdings**, and what the book loses at each stress rung.
-
-So "nine puts and no shares behind them" is something the model has to put together rather than agree with.
-
 For example:
 
 ```
@@ -110,7 +143,7 @@ Recommendation: review the XLF hedge for removal.
 
 **LLM call #2 - Protection choice**
 
-When protection is required, the LLM chooses between eligible hedge structures. **Eligible is decided in code, not by the model:** a candidate is only shown to it if the structure closes the risk in full and expires. So the model cannot leave the promise broken and cannot sell the client's shares - it chooses between hedges that all keep the promise, on the one question that is genuinely about today's prices.
+When protection is required, the LLM chooses between eligible hedge structures. **Eligibility is determined in code**, so the model only sees options that can fully satisfy the client's mandate. It then chooses the structure that offers the best trade-off under today's market conditions, without being able to break the promise or sell the client's shares.
 
 If the LLM fails, returns an invalid choice or names a structure that was not offered, the deterministic rule remains the fallback.
 
@@ -119,13 +152,9 @@ Every protection choice records:
 - `rule_would_have` - what the rule would have taken
 - `rule_because` - the rule's own reasoning
 
-The rule runs on every sleeve regardless, so a disagreement between the model and the arithmetic is visible in the journal rather than inferred.
-
 **LLM call #3 - The client's note**
 
 After the orders have gone and their fills have been read back, the LLM writes the paragraph a client reads. Nothing is left to decide by then, so it can be unclear but it cannot be expensive.
-
-**Where the AI cannot reach.** No LLM output is read by an order. `protect` sizes the hedge from `uncovered_risk`, which is settled before the model is called; the deterministic Gate is the last check either way. A finding the cycle did not act on is recorded as `review.unaddressed` - either the model was wrong or the checks have a blind spot, and neither is discoverable if the two are never compared.
 
 ## 🔗 The Chain of Decision
 
@@ -150,8 +179,8 @@ The agent allocates the budget proportionally to each instrument's weighted cont
 **For this portfolio, that gives:**
 
 ```
-XLF → $6,385
-IWM → $3,613
+XLF → $6,403
+IWM → $3,595
 ────────────
 Total $9,998
 ```
@@ -193,17 +222,17 @@ IWM:  100 shares → ceil(100/100) = 1 contract
 Once the agent knows how many contracts are required, it has to decide which strike to buy. The strike **always** comes from the budget.
 
 ```
-XLF   share of the budget $6,382
-  fall to the strike    (58.17 − 54) × 900  =  $3,753
-  premium                   2.64 × 9 × 100  =  $2,376
-                                               ───────
-  worst case                                   $6,134   ≤  $6,382  ✅
+XLF   share of the budget $6,403
+  fall to the strike   (57.65 − 56) × 900  =  $1,481
+  premium                  3.50 × 9 × 100  =  $3,150
+                                              ───────
+  worst case                                  $4,631   ≤  $6,403  ✅
 
-IWM   share of the budget $3,616
-  fall to the strike  (296.65 − 275) × 100  =  $2,165
-  premium                  14.25 × 1 × 100  =  $1,425
-                                               ───────
-  worst case                                   $3,590   ≤  $3,616  ✅
+IWM   share of the budget $3,595
+  fall to the strike  (291.31 − 275) × 100  =  $1,631
+  premium                  15.06 × 1 × 100  =  $1,506
+                                              ───────
+  worst case                                  $3,137   ≤  $3,595  ✅
 ```
 
 > The premium is part of the risk budget.
@@ -227,12 +256,14 @@ On Day 2, one of the two filled:
 | IWM 275 put ×1 | 15.06 | ✅ filled at 15.06 |
 | XLF 54 put ×9 | 2.78 | ❌ unfilled |
 
-On Day 3, the new rule worked and the agent bought the remaining options:
+On Day 3, the new rule worked and the book was fully hedged:
 
 | Options | Our limit | Result |
 |---|---|---|
-| IWM 275 put ×1 | n.a. | ✅ filled on Day 2 |
-| XLF 54 put ×9 | 2.78 | ✅ filled at XXX |
+| IWM 275 put ×1 | n.a. | ✅ filled on Day 2 at 15.06 |
+| XLF **56** put ×9 | 3.53 | ✅ filled at **3.50** |
+
+The XLF strike is 56, not the 54 that went unfilled. The agent did not resurrect the old order - it re-measured the risk against Day 3's chain, and that day's budget reached a strike closer to the market. A higher strike is a higher floor, so the day the order failed ended up buying the client better protection than the day it was priced.
 
 **7️⃣ What does the protection actually do?** 
 
@@ -287,49 +318,6 @@ The portfolio can become uncovered for several reasons:
 | 💵 **Client sold** | Risk exposure falls. The agent reassesses the book and returns any protection that is no longer needed |
 | ⏳ **Hedge aged** | The market moved and the strike that used to hold the floor no longer reaches it |
 | 📅 **Coverage expired** | Coverage silently ended. Nothing but recomputation notices |
-
-## 🔄 The Agent Loop
-
-```mermaid
-flowchart TD
-    CRON["⏰ Every 30 min, 09:45-15:45 ET<br/>Cloudflare worker + GitHub Actions"] --> HALT{HALT file?}
-    HALT -- yes --> JOURNAL
-    HALT -- no --> RECONCILE
-
-    RECONCILE["1️⃣ RECONCILE<br/>Ask the broker what is held.<br/>Never assume"] --> KILL{Drawdown ><br/>kill-switch?}
-    KILL -- yes --> JOURNAL
-    KILL -- no --> MANDATE
-
-    MANDATE["2️⃣ MANDATE + 3️⃣ STRESS<br/>Budget fixed once when the promise opened.<br/>Run the book down the whole descent"] --> LLM1
-    LLM1(["🤖 LLM · risk analyst<br/>given the material, not the answer<br/>→ issue + recommendation"]) --> GAP{uncovered_risk > 0<br/>or a sleeve exposed?}
-
-    GAP -- no --> JOURNAL
-    GAP -- yes --> PROTECT
-
-    PROTECT["4️⃣ PROTECT<br/>Release what is redundant.<br/>Price every permitted structure<br/>on the live chain"] --> ELIGIBLE{Closes the risk?<br/>Expires?}
-    ELIGIBLE -- no --> DROP[Never shown to the model]
-    ELIGIBLE -- yes --> LLM2
-
-    LLM2(["🤖 LLM · chooser<br/>picks between admissible structures<br/>fallback: deterministic rule"]) --> GATE
-
-    GATE{"5️⃣ GATE<br/>capital at risk · liquidity · spread<br/>drawdown · net delta"}
-    GATE -- veto --> JOURNAL
-    GATE -- approve --> EXECUTE
-
-    EXECUTE["6️⃣ EXECUTE<br/>Already live at the broker? Do not resend.<br/>Otherwise send, then read the fill back"] --> JOURNAL
-
-    JOURNAL["7️⃣ JOURNAL<br/>Append-only record · status page<br/>🤖 LLM · the client's note"] --> END([Commit and stop])
-
-    style LLM1 fill:#7c3aed,stroke:#4c1d95,color:#fff
-    style LLM2 fill:#7c3aed,stroke:#4c1d95,color:#fff
-    style JOURNAL fill:#0f766e,stroke:#134e4a,color:#fff
-    style GATE fill:#b91c1c,stroke:#7f1d1d,color:#fff
-    style DROP fill:#57534e,stroke:#292524,color:#fff
-```
-
-**Read it as two colours.** Purple is where a language model speaks; red is the boundary it cannot cross. Every purple box is downstream of a number that was already settled and upstream of a check it cannot influence.
-
-**The halt edge is the reason this is a graph and not a function.** An early return can skip the journal, and a cycle that stopped without writing anything is indistinguishable, six days later, from a cycle that crashed. Routing every halt *to* the journal makes "we deliberately did nothing, here is why" a recorded outcome rather than an absence.
 
 ## 🔌 Alpaca Trading API and MCP Server
 
@@ -425,11 +413,12 @@ src/drawdownguard/
   options/     Black-Scholes pricing and payoff
   execution/   order submission and broker reconciliation
   mcp/         the Alpaca MCP client and its toolsets
-  journal/     append-only record, and the status page built from it
-  config/      risk.yaml, the permanent limits; mandates.yaml, the promises
+  journal/     the writer, and the status page built from the record
+
+config/        risk.yaml, the permanent limits; mandates.yaml, the promises
                scenario.yaml, the client's week, committed before it runs
-  scripts/     run_cycle, healthcheck, build_portfolio, build_site, client_action
-  scheduler/   the Cloudflare worker that presses the button on time
-  journal/     the append-only record, one file per day
-  docs/        the published status page
+scripts/       run_cycle, healthcheck, build_portfolio, build_site, client_action
+scheduler/     the Cloudflare worker that presses the button on time
+journal/       the append-only record, one file per day
+docs/          the published status page
 ```
