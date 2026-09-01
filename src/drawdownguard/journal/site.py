@@ -76,133 +76,140 @@ MAX_DECISIONS = 120
 # statement of fact. Hierarchy here comes from size and spacing; the only rules
 # that remain are the ones separating one section from the next.
 _STYLE = """
-/* Soft structuralism: near-white ground, one violet accent, no hard edges.
-   Hierarchy comes from size, weight and air -- the only rules left on the page
-   are the ones separating one section from the next, and even those are a
-   quarter-opacity hairline rather than a border.
+/* Bento grid, in the Apple palette: #F5F5F7 ground, white tiles, #1D1D1F ink.
+   Cards of varied span rather than one column of sections, 24px radii, and
+   shadows that read as diffused light rather than as drop shadows.
 
-   The type stack is the system's own. SF Pro on Apple hardware, Segoe UI
-   Variable on Windows: the faces these operating systems were designed around,
-   and they load nothing. A page that fetched a font would make a judge's click
-   depend on somebody else's uptime, which is the one thing this document
-   refuses to do. */
+   The type stack is the system's own -- SF Pro on Apple hardware, Segoe UI
+   Variable on Windows. These are the faces the operating systems were drawn
+   around, and they load nothing: a page that fetched a font would make a
+   judge's click depend on somebody else's uptime, which is the one thing this
+   document refuses to do.
+
+   The decisions table is deliberately not a bento tile. This layout is for
+   summaries and galleries and is poor at dense rows; the table sits on one
+   plain surface and is read the way a table is read. */
 :root{
-  --ink:#0b0b0f; --body:#4a4a55; --muted:#8b8b98; --faint:#c2c2cd;
-  --line:rgba(11,11,15,.07); --bg:#fbfafc; --shell:rgba(124,58,237,.035);
-  --violet:#6d3aed; --violet-soft:rgba(109,58,237,.09);
-  --held:#3f9573; --open:#c4863a;
-  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  --ink:#1d1d1f; --body:#515154; --muted:#86868b; --faint:#aeaeb2;
+  --page:#f5f5f7; --card:#fff; --hairline:rgba(0,0,0,.06);
+  --accent:#6e56cf; --accent-soft:rgba(110,86,207,.09);
+  --held:#2f8f68; --open:#c07f2e;
+  --gap:20px; --radius:24px;
+  --shadow:0 1px 2px rgba(0,0,0,.03),0 8px 28px -10px rgba(0,0,0,.08);
+  --shadow-up:0 2px 6px rgba(0,0,0,.05),0 18px 44px -14px rgba(0,0,0,.13);
   --ease:cubic-bezier(.32,.72,0,1);
 }
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;background:var(--bg);color:var(--ink);
-  font:400 17px/1.65 -apple-system,BlinkMacSystemFont,"SF Pro Display",
-    "SF Pro Text","Segoe UI Variable Text","Plus Jakarta Sans",system-ui,sans-serif;
+body{margin:0;background:var(--page);color:var(--ink);
+  font:400 17px/1.6 -apple-system,BlinkMacSystemFont,"SF Pro Display",
+    "SF Pro Text","Segoe UI Variable Text",system-ui,sans-serif;
   -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
-  letter-spacing:-.011em}
-.wrap{max-width:1000px;margin:0 auto;padding:7rem 2rem 9rem}
-
-/* Eyebrows, not headings. A section title should name the thing and then get
-   out of the way; the figures under it are the content. */
-h1{font-size:1rem;font-weight:590;letter-spacing:.16em;text-transform:uppercase;
-  margin:0 0 1.1rem}
-h2{font-size:.7rem;font-weight:590;letter-spacing:.2em;text-transform:uppercase;
-  color:var(--muted);margin:0 0 2.6rem;
-  display:inline-block;padding:.35rem .8rem;border-radius:999px;
-  background:var(--shell)}
-p{margin:0 0 1rem}
-a{color:var(--violet);text-decoration:none}
+  letter-spacing:-.012em}
+.wrap{max-width:1080px;margin:0 auto;padding:5rem 1.5rem 6rem}
+p{margin:0}
+a{color:var(--accent);text-decoration:none}
 a:hover{text-decoration:underline}
-section{padding:7rem 0 0}
-section+section{border-top:1px solid var(--line);margin-top:0}
-.lede{color:var(--body);max-width:34ch;font-size:1.15rem;line-height:1.5;margin:0}
+
+/* the grid */
+.bento{display:grid;grid-template-columns:repeat(4,1fr);gap:var(--gap);
+  margin:0 0 var(--gap)}
+.tile{background:var(--card);border-radius:var(--radius);padding:2rem 2.1rem;
+  box-shadow:var(--shadow);grid-column:span 1;
+  transition:transform .55s var(--ease),box-shadow .55s var(--ease)}
+.tile.wide{grid-column:span 2} .tile.full{grid-column:span 4}
+.tile.lift:hover{transform:translate3d(0,-2px,0) scale(1.012);
+  box-shadow:var(--shadow-up)}
+.tile.hero{padding:2.6rem 2.4rem}
+.tile.plain{background:transparent;box-shadow:none;padding:0}
+
+h1{font-size:1.6rem;font-weight:600;letter-spacing:-.022em;margin:0 0 .55rem}
+h2{font-size:.68rem;font-weight:590;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 1.4rem}
+.lede{color:var(--body);font-size:1.05rem;line-height:1.5;max-width:44ch}
+.tag{display:inline-block;font-size:.68rem;font-weight:590;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--muted);margin:0 0 1.5rem;padding:0 .2rem}
 
 /* the verdict */
-.verdict{display:inline-flex;align-items:center;gap:.65rem;
-  font-size:.72rem;font-weight:590;letter-spacing:.2em;text-transform:uppercase;
-  margin:3.5rem 0 2.6rem;padding:.5rem 1rem .5rem .85rem;border-radius:999px}
-.verdict .dot{width:.5rem;height:.5rem;border-radius:50%}
-.held{color:var(--held);background:rgba(63,149,115,.08)}
-.held .dot{background:var(--held);box-shadow:0 0 0 4px rgba(63,149,115,.14)}
-.open{color:var(--open);background:rgba(196,134,58,.09)}
-.open .dot{background:var(--open);box-shadow:0 0 0 4px rgba(196,134,58,.16)}
+.verdict{display:inline-flex;align-items:center;gap:.55rem;
+  font-size:.72rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+  margin:0 0 2.2rem;padding:.45rem .95rem .45rem .8rem;border-radius:980px}
+.verdict .dot{width:.45rem;height:.45rem;border-radius:50%}
+.held{color:var(--held);background:rgba(47,143,104,.1)}
+.held .dot{background:var(--held)}
+.open{color:var(--open);background:rgba(192,127,46,.11)}
+.open .dot{background:var(--open)}
 
-/* One figure size everywhere. A page that shouts three numbers and murmurs
-   four more is ranking them for the reader; these seven are one statement. */
-.figures{display:flex;flex-wrap:wrap;gap:2.8rem 4.5rem;margin:0}
-.fig{min-width:7.5rem}
-.fig .n{display:block;font-size:2.4rem;line-height:1.05;font-weight:300;
-  letter-spacing:-.035em;font-variant-numeric:tabular-nums;
+/* One figure size everywhere, per the brief. */
+.figures{display:flex;flex-wrap:wrap;gap:2.2rem 3.6rem;margin:0}
+.fig{min-width:7rem}
+.fig .n{display:block;font-size:2.4rem;line-height:1.06;font-weight:590;
+  letter-spacing:-.032em;font-variant-numeric:tabular-nums;
   font-feature-settings:"tnum" 1}
-.fig .k{display:block;font-size:.66rem;letter-spacing:.15em;text-transform:uppercase;
-  color:var(--muted);margin-top:.75rem;font-weight:510}
+.fig .k{display:block;font-size:.7rem;letter-spacing:.04em;
+  color:var(--muted);margin-top:.6rem;font-weight:400}
+.tile .fig{min-width:0}
 
-/* tables on air */
+/* tables */
 table{width:100%;border-collapse:collapse;font-size:.95rem}
-th{text-align:left;font-size:.63rem;letter-spacing:.16em;text-transform:uppercase;
-  color:var(--faint);font-weight:590;padding:0 1.1rem 1rem 0;white-space:nowrap}
-td{padding:.85rem 1.1rem .85rem 0;border-top:1px solid var(--line);
-  vertical-align:baseline;color:var(--body)}
+th{text-align:left;font-size:.68rem;letter-spacing:.05em;color:var(--faint);
+  font-weight:510;padding:0 1.1rem .8rem 0;white-space:nowrap}
+td{padding:.8rem 1.1rem;border-top:1px solid var(--hairline);
+  vertical-align:baseline;color:var(--body);padding-left:0}
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;padding-right:0}
-td.sym{font-weight:590;color:var(--ink);letter-spacing:-.005em}
-tbody tr:last-child td{font-weight:510;color:var(--ink)}
-.who{font-size:.85rem;color:var(--muted);white-space:nowrap}
-.opt{font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+td.sym{font-weight:590;color:var(--ink)}
+tbody tr:last-child td{color:var(--ink);font-weight:510}
 #decisions tbody tr:last-child td{font-weight:400;color:var(--body)}
+.who{font-size:.86rem;color:var(--muted);white-space:nowrap}
+.opt{font-size:.86rem;color:var(--muted);font-variant-numeric:tabular-nums}
 
-/* The chart sits in a shell, the way a plate sits in a tray. */
-.plate{background:var(--shell);border-radius:2rem;padding:.5rem}
-.plate .inner{background:#fff;border-radius:1.625rem;padding:2.2rem 2rem 1.6rem;
-  box-shadow:0 1px 2px rgba(11,11,15,.03),0 12px 40px -12px rgba(11,11,15,.06)}
+/* chart */
 .chart svg{display:block;width:100%;height:auto;overflow:visible}
-.legend{display:flex;gap:1.8rem;font-size:.7rem;color:var(--muted);
-  letter-spacing:.08em;margin:1.4rem 0 0;text-transform:uppercase}
+.legend{display:flex;gap:1.6rem;font-size:.78rem;color:var(--muted);
+  margin:1.5rem 0 0}
 .legend i{display:inline-block;width:.5rem;height:.5rem;border-radius:2px;
   margin-right:.45rem}
 .legend .c i{background:var(--held)} .legend .u i{background:var(--open)}
 
 /* filters */
-.controls{display:flex;flex-wrap:wrap;gap:.9rem 1.6rem;align-items:center;
-  margin:0 0 2rem;font-size:.82rem;color:var(--muted)}
+.controls{display:flex;flex-wrap:wrap;gap:.8rem 1.5rem;align-items:center;
+  margin:0 0 1.6rem;font-size:.84rem;color:var(--muted)}
 .controls input,.controls select{font:inherit;font-size:.9rem;color:var(--ink);
-  background:transparent;border:0;border-bottom:1px solid var(--line);
-  padding:.3rem 0;min-width:6.5rem;
-  transition:border-color .5s var(--ease)}
+  background:var(--page);border:0;border-radius:980px;padding:.4rem .85rem;
+  min-width:6.5rem;transition:box-shadow .4s var(--ease)}
 .controls input:focus,.controls select:focus{outline:0;
-  border-bottom-color:var(--violet)}
+  box-shadow:0 0 0 3px var(--accent-soft)}
 .count{margin-left:auto;color:var(--faint);font-variant-numeric:tabular-nums}
 
 .mark{font-size:.9rem}
 .mark.approved{color:var(--held)}
 .mark.breach,.mark.rejected{color:var(--open)}
 .mark.defect{color:#b4453c}
-.empty{color:var(--faint);font-style:italic}
-footer{margin-top:7rem;padding-top:2rem;border-top:1px solid var(--line);
-  font-size:.78rem;color:var(--faint);letter-spacing:.01em}
+.empty{color:var(--faint)}
+footer{margin-top:2.4rem;font-size:.78rem;color:var(--faint);
+  padding:0 .4rem}
 
-/* Nothing arrives already there. Sections rise and resolve, on transform and
-   opacity only -- animating height or top would reflow the document on every
-   frame and stutter on a phone. */
-/* Hidden only once a script has proved it is running. Scoping the starting
-   state under `.js` means the page a judge opens with scripting off, or on a
-   browser where the observer throws, is a complete page rather than a blank
-   one -- the animation is an enhancement and must not be load-bearing. */
-.js .reveal{opacity:0;transform:translate3d(0,28px,0);
-  transition:opacity .9s var(--ease),transform .9s var(--ease)}
+/* Nothing arrives already there, and the starting state is scoped under `.js`
+   so a page opened with scripting off is a complete page rather than a blank
+   one -- the motion is an enhancement and must not be load-bearing. */
+.js .reveal{opacity:0;transform:translate3d(0,22px,0);
+  transition:opacity .8s var(--ease),transform .8s var(--ease)}
 .js .reveal.seen{opacity:1;transform:none}
-.reveal.d1{transition-delay:.08s} .reveal.d2{transition-delay:.16s}
-.reveal.d3{transition-delay:.24s}
+.js .reveal.d1{transition-delay:.07s} .js .reveal.d2{transition-delay:.14s}
+.js .reveal.d3{transition-delay:.21s}
 @media (prefers-reduced-motion:reduce){
-  .reveal{opacity:1;transform:none;transition:none}
+  .js .reveal{opacity:1;transform:none;transition:none}
+  .tile.lift:hover{transform:none}
 }
-@media (max-width:720px){
-  .wrap{padding:3.5rem 1.25rem 5rem}
-  section{padding-top:4.5rem}
-  .figures{gap:2rem 2.6rem}
-  .fig .n{font-size:1.85rem}
-  .plate .inner{padding:1.4rem 1rem 1rem}
-  .lede{font-size:1.05rem}
+@media (max-width:860px){
+  .bento{grid-template-columns:repeat(2,1fr)}
+  .tile.wide,.tile.full{grid-column:span 2}
+}
+@media (max-width:560px){
+  .wrap{padding:2.5rem 1rem 4rem}
+  .bento{grid-template-columns:1fr}
+  .tile,.tile.wide,.tile.full{grid-column:span 1;padding:1.6rem 1.4rem}
+  .fig .n{font-size:1.9rem}
   table{font-size:.88rem}
 }
 """
@@ -305,11 +312,11 @@ def _hero(stress: dict) -> str:
     )
     return f"""{verdict}
 <div class="figures">
-<div class="fig lead"><span class="n">{_money(budget)}</span>
+<div class="fig"><span class="n">{_money(budget)}</span>
 <span class="k">Loss limit</span></div>
-<div class="fig lead"><span class="n">{_money(worst)}</span>
+<div class="fig"><span class="n">{_money(worst)}</span>
 <span class="k">Worst case</span></div>
-<div class="fig lead"><span class="n">{third[1]}</span>
+<div class="fig"><span class="n">{third[1]}</span>
 <span class="k">{third[0]}</span></div>
 </div>"""
 
@@ -327,16 +334,18 @@ def _promise(stress: dict) -> str:
         return ""
     started, ends = stress.get("period_started"), stress.get("period_ends")
     window = f"{started} &rarr; {ends}" if started and ends else "fixed at the open"
-    return f"""<div class="figures tight">
-<div class="fig"><span class="n">{_money(stress.get("reference"))}</span>
-<span class="k">Reference portfolio</span></div>
-<div class="fig"><span class="n">{_cell(stress.get("downside_budget_pct"))}%</span>
-<span class="k">Maximum drawdown</span></div>
-<div class="fig"><span class="n">{_money(stress.get("budget"))}</span>
-<span class="k">Loss budget</span></div>
-<div class="fig"><span class="n">12 months</span>
-<span class="k">Mandate window &middot; {window}</span></div>
-</div>"""
+    tiles = (
+        (_money(stress.get("reference")), "Reference portfolio"),
+        (f"{_cell(stress.get('downside_budget_pct'))}%", "Maximum drawdown"),
+        (_money(stress.get("budget")), "Loss budget"),
+        ("12 months", f"Mandate window &middot; {window}"),
+    )
+    return "".join(
+        f'<div class="tile lift reveal d{i}">'
+        f'<div class="fig"><span class="n">{value}</span>'
+        f'<span class="k">{key}</span></div></div>'
+        for i, (value, key) in enumerate(tiles)
+    )
 
 
 # --- the book ---------------------------------------------------------------
@@ -564,8 +573,7 @@ def _evolution(entries: list[dict]) -> str:
             + _band(points, i, left, width - right, floor + 70, held)
         )
 
-    return f"""<div class="plate"><div class="inner">
-<div class="chart">
+    return f"""<div class="chart">
 <svg viewBox="0 0 {width:.0f} {height:.0f}" role="img"
      aria-label="closing account value, one point per trading day">
 <defs><linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
@@ -579,8 +587,7 @@ def _evolution(entries: list[dict]) -> str:
 </svg>
 </div>
 <p class="legend"><span class="c"><i></i>promise held</span>
-<span class="u"><i></i>risk outside the promise</span></p>
-</div></div>"""
+<span class="u"><i></i>risk outside the promise</span></p>"""
 
 
 # --- what was decided -------------------------------------------------------
@@ -861,29 +868,35 @@ def render_site(
 <body>
 <div class="wrap">
 
-<header>
-<h1 class="reveal">&#128737; Drawdown Guard</h1>
-<p class="lede reveal d1">An autonomous AI agent that keeps a portfolio within a
+<div class="bento">
+<div class="tile hero full reveal">
+<h1>&#128737;&#65039; Drawdown Guard</h1>
+<p class="lede">An autonomous AI agent that keeps a portfolio within a
 client-defined downside limit, through an option overlay.</p>
-<div class="reveal d2">{_hero(stress)}</div>
-</header>
+{_hero(stress)}
+</div>
+</div>
 
-<section class="reveal">
-<h2>The promise</h2>
+<div class="bento">
 {_promise(stress)}
-</section>
+</div>
 
-<section class="reveal">
+<div class="bento">
+<div class="tile full reveal">
 <h2>The portfolio</h2>
 {_portfolio(stress)}
-</section>
+</div>
+</div>
 
-<section class="reveal">
+<div class="bento">
+<div class="tile full reveal">
 <h2>Portfolio evolution</h2>
 {_evolution(entries)}
-</section>
+</div>
+</div>
 
-<section id="decisions" class="reveal">
+<div class="bento" id="decisions">
+<div class="tile full reveal">
 <h2>Decisions</h2>
 {_controls(entries)}
 <table>
@@ -891,7 +904,8 @@ client-defined downside limit, through an option overlay.</p>
 <th class="n">&nbsp;</th></tr></thead>
 <tbody>{_decision_rows(entries)}</tbody>
 </table>
-</section>
+</div>
+</div>
 
 <footer class="reveal">
 {_source_link(repository_url)}Rebuilt from the journal after every cycle &middot;
