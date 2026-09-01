@@ -58,7 +58,7 @@ The client's mandate is simple:
 - 🔟 **10%** - the most the client can lose in our case. Roughly $10,000 on this account. The exact figure is fixed the day the promise opens.
 - 📆 **12 months** - the window that promise has to hold.
 
-### Activity during the hackathon
+### Client's activity during the hackathon
 
 The client changes the portfolio mid-flight:
 - Sells the whole XLF position of 900 shares on September 2nd
@@ -217,22 +217,22 @@ On Day 1, the initial limits were exactly at the ask:
 
 | Options | Our limit | Ask, minutes later | Filled |
 |---|---|---|---|
-| XLF 54 put ×9 | 2.71 | 2.78 | ❌ |
-| IWM 275 put ×1 | 14.48 | 14.60 | ❌ |
+| XLF 54 put ×9 | 2.71 | 2.78 | ❌ unfilled |
+| IWM 275 put ×1 | 14.48 | 14.60 | ❌ unfilled |
 
 On Day 2, one of the two filled:
 
 | Options | Our limit | Result |
 |---|---|---|
 | IWM 275 put ×1 | 15.06 | ✅ filled at 15.06 |
-| XLF 54 put ×9 | 2.78 | ❌ still working at the close |
+| XLF 54 put ×9 | 2.78 | ❌ unfilled |
 
-The IWM put is the first protection this account actually holds.
+On Day 3, the new rule worked and the agent bought the remaining options:
 
-The XLF order sat a cent under the market all day. It was priced at 14:19 against a 2.72 ask and sent at 2.78; by the close the ask was 2.87 against a 2.63 bid. A day limit is set once and cannot chase, so the tolerance is not really "how much are we willing to overpay" - it is "how far may the offer drift before the promise goes unheld for another day".
-
-The trade is not symmetric, which is the whole argument for crossing the full spread: $216 of possible overpayment against $52,000 of exposure left unprotected overnight. It remains a limit order. A market order on an option with a 9% spread is not the faster version of this, it is the unbounded one.
-
+| Options | Our limit | Result |
+|---|---|---|
+| IWM 275 put ×1 | n.a. | ✅ filled on Day 2 |
+| XLF 54 put ×9 | 2.78 | ✅ filled at XXX |
 
 **7️⃣ What does the protection actually do?** 
 
@@ -288,7 +288,7 @@ The portfolio can become uncovered for several reasons:
 | ⏳ **Hedge aged** | The market moved and the strike that used to hold the floor no longer reaches it |
 | 📅 **Coverage expired** | Coverage silently ended. Nothing but recomputation notices |
 
-## 🔄 The agent loop
+## 🔄 The Agent Loop
 
 ```mermaid
 flowchart TD
@@ -356,9 +356,9 @@ touch HALT && git add HALT && git commit -m "halt" && git push
 ```
 **It stops the agent, not the protection.** Every position stays exactly where it is. Hedges already bought keep working. A stop button that liquidated the client's protection would disarm the portfolio at the precise moment somebody was worried enough to press it.
 
-## 🔧 What broke, and how we knew
+## 🔧 What we improved during the Hackthon week
 
-Every one of these was found in the journal, not in a stack trace. That is the claim worth making: an autonomous agent trading unattended does not get to fail loudly, so the only defence is a record detailed enough to be read against reality.
+Every one of these was found in the journal, not in a stack trace. That's the claim worth making: an autonomous agent trading unattended does not get to fail loudly, so the only defence is a record detailed enough to be read against reality.
 
 | When | What broke | How we found out | The fix |
 |---|---|---|---|
@@ -426,11 +426,10 @@ src/drawdownguard/
   execution/   order submission and broker reconciliation
   mcp/         the Alpaca MCP client and its toolsets
   journal/     append-only record, and the status page built from it
-
-config/        risk.yaml, the permanent limits; mandates.yaml, the promises
+  config/      risk.yaml, the permanent limits; mandates.yaml, the promises
                scenario.yaml, the client's week, committed before it runs
-scripts/       run_cycle, healthcheck, build_portfolio, build_site, client_action
-scheduler/     the Cloudflare worker that presses the button on time
-journal/       the append-only record, one file per day
-docs/          the published status page
+  scripts/     run_cycle, healthcheck, build_portfolio, build_site, client_action
+  scheduler/   the Cloudflare worker that presses the button on time
+  journal/     the append-only record, one file per day
+  docs/        the published status page
 ```
