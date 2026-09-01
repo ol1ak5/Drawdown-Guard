@@ -112,12 +112,20 @@ body {
   font-feature-settings: "cv05" 1, "ss01" 1; letter-spacing: -.006em;
   min-height: 100dvh; overflow-x: hidden;
 }
-/* Two slow orbs. Fixed and pointer-events-none so nothing repaints on scroll. */
+/* Three slow fields, in one blue-to-violet family so they read as a single
+   iridescence rather than as three coloured lights. Fixed and
+   pointer-events-none: a gradient inside the scrolling flow repaints on every
+   frame, which is invisible on a laptop and visibly stutters on a phone.
+
+   Blue rather than the green it used to be. Green is doing a job on this page
+   -- it means the promise is holding -- and a background in the same hue
+   spends the one colour the reader is meant to look for. */
 body::before {
   content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
   background:
-    radial-gradient(60rem 40rem at 12% -10%, rgba(74,222,128,.10), transparent 60%),
-    radial-gradient(50rem 36rem at 92% 8%, rgba(251,191,36,.07), transparent 60%);
+    radial-gradient(70rem 46rem at 8% -12%, rgba(56,89,214,.16), transparent 62%),
+    radial-gradient(56rem 40rem at 96% 2%, rgba(124,58,237,.13), transparent 60%),
+    radial-gradient(48rem 34rem at 62% 34%, rgba(34,150,199,.07), transparent 66%);
 }
 .wrap { position: relative; z-index: 1; max-width: 72rem; margin: 0 auto;
         padding: 6rem 2rem 5rem; }
@@ -486,28 +494,35 @@ def _events_by_date(entries: list[dict]) -> dict[str, str]:
     return labels
 
 
-def _band(
+def _uncovered_wash(
     points: list[tuple[float, float]],
     i: int,
     left: float,
     right: float,
-    y: float,
-    held: bool,
+    top: float,
+    floor: float,
 ) -> str:
-    """One day's coverage segment, under the point it belongs to.
+    """A tint behind the days the promise was not held.
 
-    A day spans the halfway points to its neighbours, so the place the colour
-    changes is the place the promise changed. The first and last days own only
-    the half of the interval that exists, and are clamped to the plot -- an
-    unclamped segment ran off the right edge of the drawing.
+    This replaced a segmented bar under the axis. The bar was a second picture
+    of the same days drawn in a second place, so a reader had to align the two
+    by eye to learn anything -- and it drew a coloured segment for every
+    ordinary day, spending the page's loudest signal on the state that is
+    supposed to be normal.
+
+    A wash says it where it happened, and marks only the exception: where the
+    chart is tinted, the client had risk outside the number they agreed to.
+
+    A day spans the halfway points to its neighbours, so the edge of the tint
+    is the moment the promise changed, and the first and last days own only the
+    half of the interval that exists.
     """
     start = left if i == 0 else (points[i - 1][0] + points[i][0]) / 2
     end = right if i == len(points) - 1 else (points[i][0] + points[i + 1][0]) / 2
-    colour = "#4ade80" if held else "#fbbf24"
     return (
-        f'<rect x="{start + 1.5:.1f}" y="{y:.1f}" '
-        f'width="{max(end - start - 3, 1):.1f}" height="8" rx="4" '
-        f'fill="{colour}" opacity=".8"/>'
+        f'<rect x="{start:.1f}" y="{top - 28:.1f}" '
+        f'width="{max(end - start, 1):.1f}" height="{floor - top + 28:.1f}" '
+        f'fill="#fbbf24" opacity=".07"/>'
     )
 
 
@@ -554,10 +569,16 @@ def _evolution(entries: list[dict]) -> str:
     line = " ".join(f"{px:.1f},{py:.1f}" for px, py in points)
     area = f"{points[0][0]:.1f},{floor:.1f} {line} {points[-1][0]:.1f},{floor:.1f}"
 
+    # Drawn before the line so the tint sits behind it rather than over it.
+    wash = "".join(
+        _uncovered_wash(points, i, left, width - right, top, floor)
+        for i, row in enumerate(series)
+        if (row["uncovered"] or 0) > 0
+    )
+
     marks = ""
     for i, (px, py) in enumerate(points):
         row = series[i]
-        held = (row["uncovered"] or 0) <= 0
         # The last point is the one a reader looks for, so it is the solid one.
         # The rest are hollow: present, and not competing for the eye.
         fill = "#4ade80" if i == len(points) - 1 else "#0b0b0c"
@@ -584,7 +605,6 @@ def _evolution(entries: list[dict]) -> str:
             # neighbours so the day a colour changes is the day the promise
             # changed -- and clamped to the plot at both ends, because a first
             # and last day own only the half of the interval that exists.
-            + _band(points, i, left, width - right, floor + 70, held)
         )
 
     return f"""<div class="chart">
@@ -594,14 +614,15 @@ def _evolution(entries: list[dict]) -> str:
 <stop offset="0%" stop-color="#4ade80" stop-opacity=".16"/>
 <stop offset="100%" stop-color="#4ade80" stop-opacity="0"/>
 </linearGradient></defs>
+{wash}
 <polygon points="{area}" fill="url(#fade)"/>
 <polyline points="{line}" fill="none" stroke="#4ade80" stroke-width="2"
           stroke-linejoin="round" stroke-linecap="round"/>
 {marks}
 </svg>
 </div>
-<p class="legend"><span class="c"><i></i>promise held</span>
-<span class="u"><i></i>risk outside the promise</span></p>"""
+<p class="legend"><span class="u"><i></i>shaded: risk outside the promise</span>
+</p>"""
 
 
 # --- what was decided -------------------------------------------------------

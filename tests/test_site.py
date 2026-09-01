@@ -251,11 +251,16 @@ def test_a_day_with_no_completed_cycle_is_not_a_point_on_the_line():
     assert daily_series(entries) == []
 
 
-def test_the_band_marks_the_days_the_promise_was_not_held():
+def test_only_the_days_the_promise_was_not_held_are_marked():
+    """The exception is drawn; the ordinary day is left alone.
+
+    A strip that coloured every day spent the loudest signal on the state that
+    is supposed to be normal, and put a second picture of the same days in a
+    second place for the reader to align by eye.
+    """
     page = _page(_week())
-    assert 'class="u"' in page, "two days opened with risk outside the promise"
-    assert 'class="c"' in page, "and one closed inside it"
-    assert "promise held" in page
+    assert page.count('opacity=".07"') == 2, "two days opened outside the promise"
+    assert "shaded: risk outside the promise" in page
 
 
 def test_one_close_is_not_a_line():

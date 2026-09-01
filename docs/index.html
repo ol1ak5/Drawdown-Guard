@@ -41,12 +41,20 @@ body {
   font-feature-settings: "cv05" 1, "ss01" 1; letter-spacing: -.006em;
   min-height: 100dvh; overflow-x: hidden;
 }
-/* Two slow orbs. Fixed and pointer-events-none so nothing repaints on scroll. */
+/* Three slow fields, in one blue-to-violet family so they read as a single
+   iridescence rather than as three coloured lights. Fixed and
+   pointer-events-none: a gradient inside the scrolling flow repaints on every
+   frame, which is invisible on a laptop and visibly stutters on a phone.
+
+   Blue rather than the green it used to be. Green is doing a job on this page
+   -- it means the promise is holding -- and a background in the same hue
+   spends the one colour the reader is meant to look for. */
 body::before {
   content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
   background:
-    radial-gradient(60rem 40rem at 12% -10%, rgba(74,222,128,.10), transparent 60%),
-    radial-gradient(50rem 36rem at 92% 8%, rgba(251,191,36,.07), transparent 60%);
+    radial-gradient(70rem 46rem at 8% -12%, rgba(56,89,214,.16), transparent 62%),
+    radial-gradient(56rem 40rem at 96% 2%, rgba(124,58,237,.13), transparent 60%),
+    radial-gradient(48rem 34rem at 62% 34%, rgba(34,150,199,.07), transparent 66%);
 }
 .wrap { position: relative; z-index: 1; max-width: 72rem; margin: 0 auto;
         padding: 6rem 2rem 5rem; }
@@ -196,14 +204,15 @@ client-defined downside limit, through an option overlay.</p>
 <stop offset="0%" stop-color="#4ade80" stop-opacity=".16"/>
 <stop offset="100%" stop-color="#4ade80" stop-opacity="0"/>
 </linearGradient></defs>
+<rect x="24.0" y="30.0" width="238.0" height="184.0" fill="#fbbf24" opacity=".07"/><rect x="262.0" y="30.0" width="476.0" height="184.0" fill="#fbbf24" opacity=".07"/>
 <polygon points="24.0,214.0 24.0,93.1 500.0,123.2 976.0,171.1 976.0,214.0" fill="url(#fade)"/>
 <polyline points="24.0,93.1 500.0,123.2 976.0,171.1" fill="none" stroke="#4ade80" stroke-width="2"
           stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="24.0" cy="93.1" r="5" fill="#0b0b0c" stroke="#4ade80" stroke-width="2"/><text x="24.0" y="75.1" text-anchor="middle" font-size="15" font-weight="500" fill="#f4f4f2" letter-spacing="-.3">$99,726</text><text x="24.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b86" letter-spacing=".08em">08 / 28</text><rect x="25.5" y="284.0" width="235.0" height="8" rx="4" fill="#fbbf24" opacity=".8"/><circle cx="500.0" cy="123.2" r="5" fill="#0b0b0c" stroke="#4ade80" stroke-width="2"/><text x="500.0" y="105.2" text-anchor="middle" font-size="15" font-weight="500" fill="#f4f4f2" letter-spacing="-.3">$99,183</text><text x="500.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b86" letter-spacing=".08em">08 / 31</text><text x="500.0" y="266.0" text-anchor="middle" font-size="11.5" font-weight="500" fill="#4ade80" letter-spacing=".03em">IWM hedged</text><rect x="263.5" y="284.0" width="473.0" height="8" rx="4" fill="#fbbf24" opacity=".8"/><circle cx="976.0" cy="171.1" r="5" fill="#4ade80" stroke="#4ade80" stroke-width="2"/><text x="976.0" y="153.1" text-anchor="middle" font-size="15" font-weight="500" fill="#f4f4f2" letter-spacing="-.3">$98,320</text><text x="976.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b86" letter-spacing=".08em">09 / 01</text><text x="976.0" y="266.0" text-anchor="middle" font-size="11.5" font-weight="500" fill="#4ade80" letter-spacing=".03em">XLF hedged</text><rect x="739.5" y="284.0" width="235.0" height="8" rx="4" fill="#4ade80" opacity=".8"/>
+<circle cx="24.0" cy="93.1" r="5" fill="#0b0b0c" stroke="#4ade80" stroke-width="2"/><text x="24.0" y="75.1" text-anchor="middle" font-size="15" font-weight="500" fill="#f4f4f2" letter-spacing="-.3">$99,726</text><text x="24.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b86" letter-spacing=".08em">08 / 28</text><circle cx="500.0" cy="123.2" r="5" fill="#0b0b0c" stroke="#4ade80" stroke-width="2"/><text x="500.0" y="105.2" text-anchor="middle" font-size="15" font-weight="500" fill="#f4f4f2" letter-spacing="-.3">$99,183</text><text x="500.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b86" letter-spacing=".08em">08 / 31</text><text x="500.0" y="266.0" text-anchor="middle" font-size="11.5" font-weight="500" fill="#4ade80" letter-spacing=".03em">IWM hedged</text><circle cx="976.0" cy="171.1" r="5" fill="#4ade80" stroke="#4ade80" stroke-width="2"/><text x="976.0" y="153.1" text-anchor="middle" font-size="15" font-weight="500" fill="#f4f4f2" letter-spacing="-.3">$98,320</text><text x="976.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b86" letter-spacing=".08em">09 / 01</text><text x="976.0" y="266.0" text-anchor="middle" font-size="11.5" font-weight="500" fill="#4ade80" letter-spacing=".03em">XLF hedged</text>
 </svg>
 </div>
-<p class="legend"><span class="c"><i></i>promise held</span>
-<span class="u"><i></i>risk outside the promise</span></p>
+<p class="legend"><span class="u"><i></i>shaded: risk outside the promise</span>
+</p>
 </section>
 
 <section id="decisions" class="reveal">
@@ -220,7 +229,7 @@ client-defined downside limit, through an option overlay.</p>
 
 <footer class="reveal">
 Rebuilt from the journal after every cycle &middot;
-2026-09-01 21:14 UTC &middot;
+2026-09-01 21:16 UTC &middot;
 Alpaca paper trading. This has never traded real money.
 </footer>
 
