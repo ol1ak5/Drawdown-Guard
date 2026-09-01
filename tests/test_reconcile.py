@@ -210,9 +210,7 @@ def test_buying_protection_does_not_erase_what_the_shares_cost():
     covered-call floor is computed from it.
     """
     local = {
-        "SPY": Position(
-            symbol="SPY", leg="SHARES", shares=400, basis=Decimal("612.40")
-        )
+        "SPY": Position(symbol="SPY", leg="SHARES", shares=400, basis=Decimal("612.40"))
     }
     state, _ = reconcile(
         local, [shares("SPY", 400), option("SPY260918P00560000", 3, "20.68")]
@@ -231,9 +229,7 @@ def test_a_collar_reconciles_the_same_way_whatever_order_the_broker_lists_it():
     branch it also dropped the basis.
     """
     local = {
-        "SPY": Position(
-            symbol="SPY", leg="SHARES", shares=400, basis=Decimal("612.40")
-        )
+        "SPY": Position(symbol="SPY", leg="SHARES", shares=400, basis=Decimal("612.40"))
     }
     put = option("SPY260918P00560000", 3, "20.68")
     call = option("SPY260918C00900000", -3, "39.20")

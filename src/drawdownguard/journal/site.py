@@ -332,7 +332,17 @@ def _hero(stress: dict) -> str:
         return '<p class="empty">No cycle has measured the promise yet.</p>'
 
     budget = float(stress.get("budget") or 0)
-    worst = float(stress.get("worst_case") or 0)
+    # Everything the promise could still cost: what the account has already
+    # given up since the promise opened, plus the worst it can do from here.
+    #
+    # The page used to show only the second half, and on any day but the first
+    # that overstates the headroom by exactly what has already been lost -- on
+    # 2026-09-01 it read 7,287 where the true figure was 5,545. The premium is
+    # the usual reason: it leaves the account the day it is paid, so it shows up
+    # as a fall in equity rather than in the worst case ahead.
+    already = float(stress.get("already_lost") or 0)
+    ahead = float(stress.get("worst_case") or 0)
+    worst = already + ahead
     uncovered = float(stress.get("uncovered_risk") or 0)
     held = uncovered <= 0
     headroom = budget - worst
@@ -469,6 +479,7 @@ def daily_series(entries: list[dict]) -> list[dict]:
                 "uncovered": None,
                 "budget": None,
                 "worst_case": None,
+                "already_lost": 0.0,
             },
         )
         payload = entry.get("payload") or {}
@@ -482,6 +493,7 @@ def daily_series(entries: list[dict]) -> list[dict]:
                 row["uncovered"] = float(payload.get("uncovered_risk"))
                 row["budget"] = float(payload.get("budget"))
                 row["worst_case"] = float(payload.get("worst_case"))
+                row["already_lost"] = float(payload.get("already_lost") or 0.0)
             except (TypeError, ValueError):
                 pass
     return [row for _, row in sorted(days.items()) if row["equity"] is not None]
@@ -539,60 +551,58 @@ def covered_share(row: dict) -> float:
     budget, worst = row.get("budget"), row.get("worst_case")
     if not budget or worst is None:
         return 0.0
+    # On the same basis as the verdict: money already gone is money the promise
+    # has already spent, so it belongs in the total the budget is measured
+    # against.
+    worst += row.get("already_lost") or 0.0
     if worst <= 0:
         return 1.0
     return min(budget / worst, 1.0)
 
 
-def _coverage_bars(
+def _coverage_track(
     series: list[dict],
     points: list[tuple[float, float]],
     left: float,
     right: float,
-    top: float,
+    y: float,
 ) -> str:
-    """A column per day: how much of that day's risk the promise covered.
+    """One horizontal track under the line: how much of each day's risk the
+    promise covered.
 
-    This is the second reading of the chart, and it is a different question
-    from the line above it. The line is what the account was worth. This is
-    whether the client was inside the number they were given, and by how far --
-    which is the thing the agent is actually for.
+    A track rather than columns. The chart above it is a line across time, and
+    a row of vertical bars underneath is a second kind of picture asking the
+    reader to switch how they look at the same axis. A bar that fills from the
+    left along the same dates keeps one reading.
 
-    Drawn as filled columns rather than as a two-colour strip. A strip could
-    only say held or not held, so the morning the book was twelve percent
-    covered looked the same as the morning it was ninety-nine percent covered,
-    and those are not the same morning.
+    Drawn as a share of the whole, not as held-or-not-held: a two-colour strip
+    made the morning the book was twelve percent covered look exactly like a
+    morning it was ninety-nine percent covered, and those are not the same
+    morning.
     """
-    if not series:
+    measured = [(i, row) for i, row in enumerate(series) if row.get("budget")]
+    if not measured:
         return ""
-    height = 46.0
-    slot = (right - left) / len(series)
-    bar = min(slot * 0.62, 78.0)
-    out = ""
-    for i, row in enumerate(series):
+    height = 26.0
+    out = (
+        f'<rect x="{left:.1f}" y="{y:.1f}" width="{right - left:.1f}" '
+        f'height="{height:.1f}" rx="{height / 2:.1f}" fill="#ffffff" '
+        f'opacity=".05"/>'
+    )
+    for i, row in measured:
+        start = left if i == 0 else (points[i - 1][0] + points[i][0]) / 2
+        end = right if i == len(series) - 1 else (points[i][0] + points[i + 1][0]) / 2
         share = covered_share(row)
-        if row.get("budget") is None:
-            continue
-        # Clamped to the drawing. The first and last points sit on the plot's
-        # edges, so a column centred on them hangs half outside it and is cut
-        # off by the viewport.
-        px = min(max(points[i][0], left + bar / 2), right - bar / 2)
         full = share >= 0.999
         colour = "#4ade80" if full else "#fbbf24"
-        filled = max(height * share, 2.0)
+        width = max((end - start) * share, 3.0)
         out += (
-            # The track first: the whole promise, at the height it would be if
-            # it were kept. Without it a short column reads as a small number
-            # rather than as a shortfall.
-            f'<rect x="{px - bar / 2:.1f}" y="{top - height:.1f}" '
-            f'width="{bar:.1f}" height="{height:.1f}" rx="3" '
-            f'fill="#ffffff" opacity=".05"/>'
-            f'<rect x="{px - bar / 2:.1f}" y="{top - filled:.1f}" '
-            f'width="{bar:.1f}" height="{filled:.1f}" rx="3" '
-            f'fill="{colour}" opacity=".85"/>'
-            f'<text x="{px:.1f}" y="{top - height - 10:.1f}" '
-            f'text-anchor="middle" font-size="12" font-weight="500" '
-            f'fill="{colour}">{share * 100:.0f}%</text>'
+            f'<rect x="{start:.1f}" y="{y:.1f}" width="{width:.1f}" '
+            f'height="{height:.1f}" rx="{height / 2:.1f}" fill="{colour}" '
+            f'opacity=".9"/>'
+            f'<text x="{start + 10:.1f}" y="{y + height / 2 + 4:.1f}" '
+            f'font-size="12" font-weight="600" '
+            f'fill="{"#0b1220" if full else "#1a1206"}">{share * 100:.0f}%</text>'
         )
     return out
 
@@ -620,7 +630,7 @@ def _evolution(entries: list[dict]) -> str:
         )
 
     labels = _events_by_date(entries)
-    width, height = 1000.0, 404.0
+    width, height = 1000.0, 372.0
     left, right, top, floor = 24.0, 24.0, 58.0, 214.0
     values = [row["equity"] for row in series]
     low, high = min(values), max(values)
@@ -684,7 +694,7 @@ def _evolution(entries: list[dict]) -> str:
 {marks}
 <text x="{left:.0f}" y="316" font-size="11" fill="#8b8b86"
       letter-spacing=".16em">HOW MUCH OF THAT DAY&#39;S RISK THE PROMISE COVERED</text>
-{_coverage_bars(series, points, left, width - right, 390.0)}
+{_coverage_track(series, points, left, width - right, 330.0)}
 </svg>
 </div>
 <p class="legend"><span class="c"><i></i>the whole worst case is inside the

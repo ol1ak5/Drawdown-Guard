@@ -102,7 +102,6 @@ def test_the_release_band_is_a_band_and_not_a_line():
         mandate(release_margin_pct=100.0)
 
 
-
 def test_a_mandate_that_says_nothing_has_not_granted_the_power_to_sell():
     """The one default in this file that points at less freedom, not more.
 

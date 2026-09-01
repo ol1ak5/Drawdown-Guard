@@ -253,7 +253,32 @@ async def mandate_node(state: GuardState) -> GuardState:
     # Shares have no floor, so an unhedged equity book always breaches. That
     # is not the check being too strict; it is the fact the ladder was hiding.
     exposure = worst_loss(book.holdings, book.legs)
-    uncovered = max(exposure - budget, 0.0)
+
+    # What the promise has left, not what it started with.
+    #
+    # The client agreed to lose at most `budget` over twelve months, measured
+    # from the account the promise opened on. Money already gone is money the
+    # promise has already spent -- so the hedge has to fit inside what remains,
+    # and comparing the worst case from here against the whole budget lets the
+    # two losses add up past the number the client agreed to.
+    #
+    # It is not hypothetical, and the numbers are small enough to hide. On
+    # 2026-09-01 the account stood 1,741 below its reference, mostly the
+    # premium spent buying the puts. The agent read a 2,711 worst case against
+    # a 9,998 budget, called it covered with 7,287 to spare, and would have
+    # gone on permitting a further 9,998 -- a total of 11.7% against a 10%
+    # promise.
+    #
+    # This is the same defect `period.py` was written to close, in the other
+    # direction: that one re-based the promise on today's equity, and this one
+    # measured today's risk as though nothing had happened yet. A promise is a
+    # statement about a period, and both halves of it have to be read from the
+    # day it opened.
+    spent = max(promise.reference - float(portfolio.equity), 0.0)
+    remaining = period.remaining_budget(
+        budget, promise.reference, float(portfolio.equity)
+    )
+    uncovered = max(exposure - remaining, 0.0)
 
     writer.write(
         "mandate.stress",
@@ -261,6 +286,12 @@ async def mandate_node(state: GuardState) -> GuardState:
             "mandate": mandate.name,
             "downside_budget_pct": mandate.downside_budget_pct,
             "budget": round(budget, 2),
+            # What the promise started with, what it has already spent, and
+            # what is left to cover the worst case from here. The page reads
+            # `remaining`; a reader comparing `worst_case` against `budget`
+            # alone would reach the wrong verdict on any day but the first.
+            "already_lost": round(spent, 2),
+            "remaining_budget": round(remaining, 2),
             "equity_exposure": round(book.equity_exposure, 2),
             "binding_shock": mandate.binding_shock,
             "uncovered_risk": round(uncovered, 2),
@@ -455,6 +486,12 @@ async def protect_node(state: GuardState) -> GuardState:
     # here would give a budget that drifts between two nodes of one cycle.
     promise, _ = period.current(float(portfolio.equity), mandate.horizon_months)
     budget = mandate.budget(promise.reference)
+    # The same remaining budget `mandate` measured against. Sizing a hedge
+    # against the whole budget while the promise was measured against what is
+    # left of it would buy exactly enough protection to breach.
+    remaining = period.remaining_budget(
+        budget, promise.reference, float(portfolio.equity)
+    )
     shock = mandate.binding_shock
 
     # Imported here rather than at module scope for the same reason the chain
@@ -470,7 +507,7 @@ async def protect_node(state: GuardState) -> GuardState:
     # symbol whose shares have since been sold. Loaded once -- two reads of the
     # same chain a second apart can disagree, and a plan priced off one while
     # its orders are priced off the other is a plan nobody can check.
-    wanted = {symbol for symbol, _, _ in sleeves(book.holdings, budget)}
+    wanted = {symbol for symbol, _, _ in sleeves(book.holdings, remaining)}
     wanted |= {leg.symbol for leg in book.legs}
     chains: dict[str, dict[str, list[dict]]] = {}
     for symbol in sorted(wanted):
@@ -506,7 +543,9 @@ async def protect_node(state: GuardState) -> GuardState:
             severity="info",
         )
 
-    given = release(book.holdings, book.legs, budget, shock, mandate.release_margin_pct)
+    given = release(
+        book.holdings, book.legs, remaining, shock, mandate.release_margin_pct
+    )
 
     # Handing protection back is an order like any other, and for a while it
     # was not one. `release` returned the legs and nothing closed them: the
@@ -550,7 +589,7 @@ async def protect_node(state: GuardState) -> GuardState:
     # question `mandate` asked, so the two nodes cannot disagree about whether
     # the promise is broken. Measured on `legs`, which is the book after any
     # release that could actually be sent and the book as held otherwise.
-    uncovered = max(worst_loss(book.holdings, legs) - budget, 0.0)
+    uncovered = max(worst_loss(book.holdings, legs) - remaining, 0.0)
 
     # A sleeve can breach its own share of the promise while the book as a
     # whole reads clean, and the number above cannot see it. `ladder` moves
@@ -571,7 +610,7 @@ async def protect_node(state: GuardState) -> GuardState:
     # inside every sleeve's share is inside the budget too.
     exposed = [
         symbol
-        for symbol, sleeve, sleeve_budget in sleeves(book.holdings, budget)
+        for symbol, sleeve, sleeve_budget in sleeves(book.holdings, remaining)
         if worst_loss(sleeve, [leg for leg in legs if leg.symbol == symbol])
         > sleeve_budget
     ]
@@ -591,7 +630,7 @@ async def protect_node(state: GuardState) -> GuardState:
             results=[],
         )
 
-    if not sleeves(book.holdings, budget):
+    if not sleeves(book.holdings, remaining):
         # A gap with no shares behind it is a short-option gap, and the answer
         # to that is to stop selling rather than to buy a hedge for it.
         writer.write(
@@ -615,7 +654,7 @@ async def protect_node(state: GuardState) -> GuardState:
     offered: dict[str, list] = {}
     context: dict[str, dict] = {}
 
-    for symbol, sleeve, sleeve_budget in sleeves(book.holdings, budget):
+    for symbol, sleeve, sleeve_budget in sleeves(book.holdings, remaining):
         spot = sleeve[0].price
         sleeve_legs = [leg for leg in legs if leg.symbol == symbol]
 

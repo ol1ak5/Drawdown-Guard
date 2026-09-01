@@ -342,5 +342,3 @@ def unhedged_limit(budget: float, shock: float) -> float:
     if shock >= 0:
         return float("inf")
     return budget / abs(shock)
-
-

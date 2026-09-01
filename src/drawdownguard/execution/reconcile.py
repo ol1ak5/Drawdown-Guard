@@ -138,9 +138,7 @@ _EXPLAINED = {
 }
 
 
-def _adopt_wholesale(
-    state: Position, leg: Leg, holding: dict
-) -> tuple[Position, str]:
+def _adopt_wholesale(state: Position, leg: Leg, holding: dict) -> tuple[Position, str]:
     """Take the broker's view when no ordinary transition explains the gap.
 
     A fill that landed after the last snapshot, or a hand-placed trade. Basis

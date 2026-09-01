@@ -105,3 +105,28 @@ def current(
     return fresh, True
 
 
+def remaining_budget(budget: float, reference: float, equity: float) -> float:
+    """What the promise has left to spend, after what it has already spent.
+
+    The client agreed to lose at most `budget` over the period, measured from
+    the account the promise opened on. Money already gone is money the promise
+    has already spent, so the worst case still ahead has to fit inside what
+    remains -- and never inside the whole budget, which would let the two
+    losses add up past the number the client agreed to.
+
+    It is not a rounding matter. On 2026-09-01 the account stood 1,777 below
+    its reference, most of it the premium spent buying the puts. Measured
+    against the whole 9,998 the agent would have gone on permitting a further
+    9,998, a total of 11.8% against a 10% promise.
+
+    This closes the same defect from the other side as `current` does. That one
+    stopped the promise re-basing itself on today's equity; this one stops
+    today's risk being measured as though nothing had happened yet. A promise
+    is a statement about a period, and both halves have to be read from the day
+    it opened.
+
+    Never negative. An account already past its budget has nothing left to
+    spend, and a negative allowance would make every hedge look unaffordable
+    rather than making the breach visible -- which is `uncovered_risk`'s job.
+    """
+    return max(budget - max(reference - equity, 0.0), 0.0)

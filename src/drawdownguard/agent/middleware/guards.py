@@ -226,5 +226,3 @@ def default_stack(max_drawdown_pct: float, root: Path | str = ".") -> list:
         JournalMiddleware(),
         RetryMiddleware(),
     ]
-
-

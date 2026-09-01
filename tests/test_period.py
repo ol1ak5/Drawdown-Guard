@@ -101,3 +101,32 @@ def test_the_horizon_travels_with_the_promise(tmp_path):
     path = tmp_path / "period.json"
     save(Period(started=date(2026, 8, 28), reference=1.0, horizon_months=6), path)
     assert load(path).ends() == date(2027, 2, 28)
+
+
+def test_the_promise_spends_what_the_account_has_already_lost():
+    """9,998 of allowance, 1,777 already gone, 8,221 left to cover the rest."""
+    from drawdownguard.risk.period import remaining_budget
+
+    assert remaining_budget(9997.84, 99978.43, 98201.20) == pytest.approx(8220.61)
+
+
+def test_a_gain_does_not_enlarge_the_promise():
+    """The budget is 10% of the reference, not 10% of the best day since.
+
+    Letting a gain add to the allowance would ratchet the promise upward on
+    every good week and quietly permit a deeper fall than the client agreed to.
+    """
+    from drawdownguard.risk.period import remaining_budget
+
+    assert remaining_budget(9997.84, 99978.43, 105000.0) == pytest.approx(9997.84)
+
+
+def test_an_account_already_past_its_budget_has_nothing_left():
+    """Not a negative allowance.
+
+    A negative number would make every hedge look unaffordable; the breach is
+    reported by `uncovered_risk`, which is the field that exists to say so.
+    """
+    from drawdownguard.risk.period import remaining_budget
+
+    assert remaining_budget(9997.84, 99978.43, 80000.0) == 0.0

@@ -351,7 +351,6 @@ def _without(legs: list[OptionLeg], plan: dict[int, int]) -> list[OptionLeg]:
     return remaining
 
 
-
 def liquid(rows: list[dict], limits) -> list[dict]:
     """The rows that are choices at all, by the gate's own two liquidity rules.
 
@@ -924,8 +923,7 @@ def choose(offers: list[Remedy]) -> tuple[Remedy | None, str]:
         )
     saved = put.premium_cost - ring.premium_cost
     terms = (
-        f"call at {ring.financing_iv:.1%} vol against a put at "
-        f"{ring.protection_iv:.1%}"
+        f"call at {ring.financing_iv:.1%} vol against a put at {ring.protection_iv:.1%}"
     )
     if fair:
         return ring, (
@@ -981,8 +979,7 @@ class Release:
         note = ""
         if self.tail_given_up:
             note = (
-                f", gives up {self.tail_given_up:,.0f} at "
-                f"{self.tail_shock * 100:.0f}%"
+                f", gives up {self.tail_given_up:,.0f} at {self.tail_shock * 100:.0f}%"
             )
         if self.leaves_ceiling:
             note += f", ceiling left standing on {', '.join(self.leaves_ceiling)}"
@@ -1056,9 +1053,7 @@ def release(
     # Spent first, and unconditionally: a leg worth nothing at the promised
     # shock is not what is holding the promise up, so the margin has no say.
     plan = {
-        i: legs[i].contracts
-        for i in protective
-        if _protection_at(legs[i], shock) <= 0
+        i: legs[i].contracts for i in protective if _protection_at(legs[i], shock) <= 0
     }
     spent = bool(plan)
 
@@ -1094,9 +1089,7 @@ def release(
     orphaned = {
         leg.symbol
         for leg in remaining
-        if leg.right == "C"
-        and leg.contracts < 0
-        and leg.symbol not in still_protected
+        if leg.right == "C" and leg.contracts < 0 and leg.symbol not in still_protected
     }
     leaves_ceiling = sorted(orphaned & {leg.symbol for leg in released})
 

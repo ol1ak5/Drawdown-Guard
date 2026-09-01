@@ -18,16 +18,11 @@ SHARES --sell call--> CALL_OPEN --expired--> SHARES
                                 \\--assigned--> CASH
 """
 
-
 from drawdownguard.domain import SHARES_PER_CONTRACT, Leg, Position
 
 
 class IllegalTransition(Exception):
     """Raised when a transition would produce an unrepresentable position."""
-
-
-
-
 
 
 def on_expired_worthless(state: Position) -> Position:

@@ -24,7 +24,3 @@ def short_call(strike="570", premium="1.80"):
         contracts=-1,
         premium=Decimal(premium),
     )
-
-
-
-

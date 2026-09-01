@@ -39,7 +39,6 @@ from drawdownguard.risk.stress import DEFAULT_SHOCKS
 MANDATES_PATH = Path("config/mandates.yaml")
 
 
-
 class Mandate(BaseModel):
     """What this client's portfolio is allowed to want."""
 
@@ -108,7 +107,6 @@ class Mandate(BaseModel):
     # from the chain instead. What a client can usefully fix in advance is a
     # constraint, not an observation.
     allow_reduce_exposure: bool = False
-
 
     def budget(self, equity: float | Decimal) -> float:
         """The downside budget in dollars."""
@@ -208,6 +206,3 @@ def load_mandate(
         raise KeyError(f"unknown mandate {name!r}; have {', '.join(sorted(profiles))}")
     mandate = Mandate(name=name, **profiles[name])
     return mandate.validate_against(limits or load_limits())
-
-
-
