@@ -12,11 +12,10 @@ import pytest
 
 from drawdownguard.journal import writer
 from drawdownguard.journal.site import (
+    all_in_worst,
     build_site,
-    closed_share,
     daily_series,
     entry_from_journal,
-    promise_held,
     render_site,
 )
 
@@ -38,7 +37,11 @@ def _stress(**overrides) -> dict:
         "reference": 99978.43,
         "equity_exposure": 81011.5,
         "uncovered_risk": 0.0,
-        "worst_case": 2795.0,
+        "worst_case": 2676.0,
+        # What the account has already given up since the promise opened,
+        # mostly the premium. Part of the total the limit is measured against.
+        "already_lost": 1777.23,
+        "remaining_budget": 8220.61,
         "period_started": "2026-08-28",
         "period_ends": "2027-08-28",
         "holdings": [
@@ -117,8 +120,20 @@ def _week() -> list[dict]:
 def test_a_promise_that_holds_says_so_and_shows_the_headroom():
     page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
     assert "Inside the promise" in page
-    assert "$7,203" in page, "9,997.84 budget less a 2,795 worst case"
+    assert "$5,545" in page, "9,998 less a 4,453 all-in worst case"
     assert "Remaining headroom" in page
+
+
+def test_the_header_takes_the_limit_apart_rather_than_restating_it():
+    """1,777 already spent, 2,676 still ahead, 5,545 left -- and those sum to
+    the 9,998 that "The promise" states once, further down.
+
+    A page showing the same number twice in two screens invites a reader to
+    look for the difference between them.
+    """
+    page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
+    assert "$1,777" in page and "$2,676" in page and "$5,545" in page
+    assert page.count("$9,998") == 1, "stated once, under The promise"
 
 
 def test_a_broken_promise_is_labelled_as_broken():
@@ -150,8 +165,8 @@ def test_the_worst_case_is_the_whole_descent_not_a_named_shock():
     agent actually acted on.
     """
     page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
-    assert "$2,795" in page
-    assert "Worst case" in page
+    assert "$2,676" in page, "the worst it can still do from here"
+    assert "Worst case from here" in page
 
 
 def test_a_page_built_before_any_cycle_has_run_says_so():
@@ -255,77 +270,36 @@ def test_a_day_with_no_completed_cycle_is_not_a_point_on_the_line():
     assert daily_series(entries) == []
 
 
-def test_a_closed_promise_is_a_hundred_per_cent_and_matches_the_verdict():
-    """The track and the verdict at the top answer the same question.
+def test_the_worst_case_counts_the_premium_already_paid():
+    """Both halves, which is the only honest total.
 
-    A day whose gap is shut is a hundred per cent closed and is drawn in the
-    same green as "inside the promise"; a day with protection still to buy is
-    not.
+    The premium leaves the account the day it is paid, so it shows as a fall in
+    equity rather than as risk ahead. Counting only the second half reported
+    7,287 of headroom where the truth was 5,545.
     """
-    done = {
-        "worst_case_unhedged": 80530.0,
-        "remaining_budget": 8175.11,
-        "uncovered": 0.0,
-    }
-    assert closed_share(done) == 1.0
-    assert promise_held(done) is True
+    day = {"worst_case": 2676.0, "already_lost": 1777.23}
+    assert all_in_worst(day) == pytest.approx(4453.23)
 
 
-def test_buying_nothing_closes_nothing():
-    """Not a fraction of the possible loss.
+def test_a_day_never_measured_has_no_worst_case():
+    assert all_in_worst({}) is None
 
-    Measuring the share of the loss that fits inside the promise gave 12% on a
-    day with no hedge at all, which reads as though an eighth of the work were
-    done when none of it was.
+
+def test_the_track_prints_the_same_three_numbers_as_the_verdict():
+    """The limit, what the worst case takes of it, and what is left.
+
+    A reader who has taken in the header already knows how to read the track,
+    which is the point of it being the same picture.
     """
-    unhedged = {
-        "worst_case_unhedged": 81885.0,
-        "remaining_budget": 9997.84,
-        "uncovered": 71887.16,
-    }
-    assert closed_share(unhedged) == pytest.approx(0.0, abs=1e-9)
-    assert promise_held(unhedged) is False
-
-
-def test_a_book_that_needed_nothing_is_already_closed():
-    """Not a divide by zero, and not nought per cent."""
-    idle = {
-        "worst_case_unhedged": 4000.0,
-        "remaining_budget": 9997.84,
-        "uncovered": 0.0,
-    }
-    assert closed_share(idle) == 1.0
-
-
-def test_a_day_recorded_before_the_finer_reading_prints_no_number():
-    """The colour is still known -- whether the promise held is a fact about
-    every measured day -- but the share is not, and a figure we did not record
-    is not a figure to invent."""
-    assert closed_share({"budget": 9997.84, "worst_case": 2795.0}) is None
-
-
-def test_the_track_says_held_or_not_held_for_every_measured_day():
-    """A percentage lived here and was more than a line under a chart can
-    carry: it needed a label to explain it, a denominator a reader had to
-    trust, and a third state for the days recorded before it existed.
-
-    Held or not held is the question the page exists to answer, and it is
-    available for every day the book was measured.
-    """
-    assert promise_held({"uncovered": 0.0}) is True
-    assert promise_held({"uncovered": 71887.16}) is False
-
-
-def test_a_day_never_measured_is_not_called_held():
-    """An absent reading is not evidence that the promise was kept."""
-    assert promise_held({}) is True, "no risk recorded reads as none open"
-    assert daily_series([]) == []
-
-
-def test_the_track_is_drawn_in_both_colours_across_the_week():
     page = _page(_week())
-    assert page.count("#fbbf24") >= 2, "two days opened outside the promise"
-    assert "#4ade80" in page, "and one closed inside it"
+    assert "$4,453" in page and "$5,545 left" in page
+    assert "$73,664 over" in page, "the day the book was unhedged"
+
+
+def test_a_day_over_the_limit_is_drawn_in_the_other_colour():
+    page = _page(_week())
+    assert "#fbbf24" in page, "two days went past the limit"
+    assert "#4ade80" in page, "and one did not"
     assert "not recorded" not in page
 
 

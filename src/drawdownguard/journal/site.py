@@ -332,14 +332,20 @@ def _hero(stress: dict) -> str:
         return '<p class="empty">No cycle has measured the promise yet.</p>'
 
     budget = float(stress.get("budget") or 0)
-    # Everything the promise could still cost: what the account has already
-    # given up since the promise opened, plus the worst it can do from here.
+    # The limit, taken apart. It is not repeated as a figure here -- "The
+    # promise" below states it once, and a page that shows the same number
+    # twice in two screens invites a reader to look for the difference between
+    # them.
     #
-    # The page used to show only the second half, and on any day but the first
-    # that overstates the headroom by exactly what has already been lost -- on
-    # 2026-09-01 it read 7,287 where the true figure was 5,545. The premium is
-    # the usual reason: it leaves the account the day it is paid, so it shows up
-    # as a fall in equity rather than in the worst case ahead.
+    # These three sum to it exactly, which is the whole reason to show them:
+    # what the account has already given up since the promise opened, what the
+    # worst case can still take from here, and what is left over.
+    #
+    # `already` is not the premium, though the premium is most of it. Premium
+    # leaves the account the day it is paid and shows as a fall in equity, and
+    # so does an ordinary move in the market; separating the two would need a
+    # figure the journal does not keep, and inventing one to make a nicer label
+    # is exactly the kind of thing this page does not do.
     already = float(stress.get("already_lost") or 0)
     ahead = float(stress.get("worst_case") or 0)
     worst = already + ahead
@@ -353,19 +359,19 @@ def _hero(stress: dict) -> str:
         else '<p class="verdict open"><span class="dot"></span>'
         "Risk outside the promise</p>"
     )
-    third = (
+    last = (
         ("Remaining headroom", _money(headroom))
         if held
         else ("Not covered", _money(uncovered))
     )
     return f"""{verdict}
 <div class="figures">
-<div class="fig"><span class="n">{_money(budget)}</span>
-<span class="k">Loss limit</span></div>
-<div class="fig"><span class="n">{_money(worst)}</span>
-<span class="k">Worst case</span></div>
-<div class="fig"><span class="n">{third[1]}</span>
-<span class="k">{third[0]}</span></div>
+<div class="fig"><span class="n">{_money(already)}</span>
+<span class="k">Spent so far &middot; premium and market</span></div>
+<div class="fig"><span class="n">{_money(ahead)}</span>
+<span class="k">Worst case from here</span></div>
+<div class="fig"><span class="n">{last[1]}</span>
+<span class="k">{last[0]}</span></div>
 </div>"""
 
 
@@ -538,40 +544,24 @@ def _events_by_date(entries: list[dict]) -> dict[str, str]:
 
 
 def promise_held(row: dict) -> bool:
-    """Whether the client was inside the number they were given that day.
-
-    The colour of the track, and the same question the verdict at the top of
-    the page answers. Available for every day the book was measured, including
-    the ones recorded before the finer reading below existed.
-    """
+    """Whether the client was inside the number they were given that day."""
     return (row.get("uncovered") or 0.0) <= 0
 
 
-def closed_share(row: dict) -> float | None:
-    """How much of the day's required protection is closed, 0 to 1.
+def all_in_worst(row: dict) -> float | None:
+    """Everything the promise could still cost on that day, or None.
 
-    The denominator is what the day needed: the loss the book would take with
-    its options removed, less what the promise still allows. The numerator is
-    how much of that no longer stands open. Buy nothing and this is nought;
-    close the gap and it is one, which is the day the verdict above turns
-    green.
-
-    None where the reading cannot be made -- days journalled before
-    `worst_case_unhedged` existed. The track still draws those in the right
-    colour, because whether the promise held is known for every day; it just
-    prints no number, which is honest about the difference between a figure we
-    did not record and one we did.
+    Both halves, which is the only honest total: what the account had already
+    given up since the promise opened, plus the worst it could still do from
+    there. The premium is in the first half -- it leaves the account the day it
+    is paid, so it shows as a fall in equity rather than as risk ahead, and a
+    figure that counted only the second half reported 7,287 of headroom where
+    the truth was 5,545.
     """
-    unhedged = row.get("worst_case_unhedged")
-    remaining = row.get("remaining_budget")
-    if unhedged is None or remaining is None:
+    worst = row.get("worst_case")
+    if worst is None:
         return None
-    required = unhedged - remaining
-    if required <= 0:
-        # The book fits inside the promise with no options at all.
-        return 1.0
-    still_open = row.get("uncovered") or 0.0
-    return min(max(1.0 - still_open / required, 0.0), 1.0)
+    return worst + (row.get("already_lost") or 0.0)
 
 
 def _coverage_track(
@@ -581,51 +571,58 @@ def _coverage_track(
     right: float,
     y: float,
 ) -> str:
-    """One track under the line: how much of each day's risk is closed.
+    """The loss limit, day by day, with the worst case filling it.
 
-    A track rather than columns. The chart above is a line across time, and a
-    row of vertical bars underneath is a second kind of picture asking the
-    reader to switch how they look at the same axis.
+    The same three numbers as the verdict at the top of the page -- the limit,
+    what the worst case would take of it, and what is left -- drawn along the
+    same dates as the line above. A reader who has taken in the header already
+    knows how to read this, which is the point of it being the same picture.
 
-    Each day spans the halfway points to its neighbours, so the place the
-    colour changes is the place the promise changed, and the first and last
-    days own only the half of the interval that exists.
+    Each day spans the halfway points to its neighbours, so the place the fill
+    changes is the place the promise changed, and the first and last days own
+    only the half of the interval that exists.
     """
     measured = [
-        (i, row) for i, row in enumerate(series) if row.get("uncovered") is not None
+        (i, row) for i, row in enumerate(series) if row.get("worst_case") is not None
     ]
     if not measured:
         return ""
-    height = 22.0
+    height = 24.0
     out = ""
     for i, row in measured:
         start = left if i == 0 else (points[i - 1][0] + points[i][0]) / 2
         end = right if i == len(series) - 1 else (points[i][0] + points[i + 1][0]) / 2
-        held = promise_held(row)
-        colour = "#4ade80" if held else "#fbbf24"
-        share = closed_share(row)
-        # Where the share is unknown the day is still drawn full width in its
-        # own colour: whether the promise held is a fact about every day, and
-        # leaving a gap would read as a day the agent did not run.
-        width = max((end - start) * (1.0 if share is None else share), 3.0)
+        budget = row.get("budget") or 0.0
+        worst = all_in_worst(row) or 0.0
+        left_over = budget - worst
+        held = left_over >= 0
+        share = min(worst / budget, 1.0) if budget else 1.0
         out += (
-            f'<rect x="{start:.1f}" y="{y:.1f}" width="{width:.1f}" '
-            f'height="{height:.1f}" fill="{colour}" opacity=".85"/>'
-        )
-        if share is not None:
-            out += (
-                f'<text x="{start + 11:.1f}" y="{y + height / 2 + 4:.1f}" '
-                f'font-size="12" font-weight="600" fill="#0b1220">'
-                f"{share * 100:.0f}% closed</text>"
+            f'<rect x="{start:.1f}" y="{y:.1f}" '
+            f'width="{max((end - start) * share, 3.0):.1f}" '
+            f'height="{height:.1f}" fill="{"#4ade80" if held else "#fbbf24"}" '
+            f'opacity=".85"/>'
+            f'<text x="{start + 11:.1f}" y="{y + height / 2 + 4:.1f}" '
+            f'font-size="12" font-weight="600" fill="#0b1220">'
+            f"{_money(worst)}"
+            + (
+                f" &middot; {_money(left_over)} left"
+                if held
+                else f" &middot; {_money(-left_over)} over"
             )
+            + "</text>"
+        )
     first = left if measured[0][0] == 0 else 0.0
     return (
+        f'<text x="{first:.0f}" y="{y - 14:.0f}" font-size="11" fill="#8b8b86" '
+        f'letter-spacing=".16em">THE LOSS LIMIT, AND WHAT THE WORST CASE TAKES '
+        f"OF IT</text>"
         f'<clipPath id="trackclip"><rect x="{first:.1f}" y="{y:.1f}" '
         f'width="{right - first:.1f}" height="{height:.1f}" '
         f'rx="{height / 2:.1f}"/></clipPath>'
         f'<g clip-path="url(#trackclip)">'
         f'<rect x="{first:.1f}" y="{y:.1f}" width="{right - first:.1f}" '
-        f'height="{height:.1f}" fill="#ffffff" opacity=".05"/>{out}</g>'
+        f'height="{height:.1f}" fill="#ffffff" opacity=".06"/>{out}</g>'
     )
 
 
@@ -714,11 +711,12 @@ def _evolution(entries: list[dict]) -> str:
 <polyline points="{line}" fill="none" stroke="#4ade80" stroke-width="2"
           stroke-linejoin="round" stroke-linecap="round"/>
 {marks}
-{_coverage_track(series, points, left, width - right, 316.0)}
+{_coverage_track(series, points, left, width - right, 322.0)}
 </svg>
 </div>
-<p class="legend"><span class="c"><i></i>the promise is fully closed</span>
-<span class="u"><i></i>protection still to buy</span></p>"""
+<p class="legend"><span class="c"><i></i>the worst case fits inside the
+limit</span>
+<span class="u"><i></i>it does not</span></p>"""
 
 
 # --- what was decided -------------------------------------------------------
