@@ -400,7 +400,7 @@ Built directly against the four agent types this track names:
 | **Pydantic** | Mandates and limits are validated types |
 | **GitHub Actions** | The agent's heartbeat. Thirteen autonomous cycles a day, every weekday |
 | **GitHub Pages** | The live status page, rebuilt from the journal after every cycle |
-| **Cloudflare Workers** | Asks for all thirteen cycles on time. Two schedulers that fail independently: GitHub delivered three of thirteen on 2026-09-01 |
+| **Cloudflare Workers** | Asks for all thirteen cycles on time |
 | **Python 3.11** | The language the project runs on |
 
 ## ▶️ Try it
@@ -422,7 +422,7 @@ uv run pytest
 src/drawdownguard/
   risk/        mandate, period, stress ladder, remedies, and the gate
   agent/       the cycle, its nodes, the roles, the guards
-  market/      Alpaca adapters: account, chain, snapshot, history
+  market/      Alpaca adapters: account, chain, features, history
   options/     Black-Scholes pricing and payoff
   execution/   order submission and broker reconciliation
   mcp/         the Alpaca MCP client and its toolsets
@@ -431,7 +431,9 @@ src/drawdownguard/
 config/        risk.yaml, the permanent limits; mandates.yaml, the promises
                scenario.yaml, the client's week, committed before it runs
 scripts/       run_cycle, healthcheck, build_portfolio, build_site, client_action
-scheduler/     the Cloudflare worker that presses the button on time
+scheduler/     the Cloudflare worker that asks for every cycle on time
 journal/       the append-only record, one file per day
+data/          committed state: the promise, the holdings snapshot, price history
 docs/          the published status page
+tests/         420 of them
 ```
