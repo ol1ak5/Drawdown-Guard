@@ -156,17 +156,13 @@ h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); line-height: .95; font-weight: 600;
    reader is deciding whether to trust them. */
 .stamp { color: var(--dim); font-size: .8rem; margin: -.8rem 0 2.2rem;
          max-width: 54rem; font-variant-numeric: tabular-nums; }
-/* The figures are white and large inside the sentence that explains them, so
-   the numbers still read first and the grammar carries the arithmetic. */
-.statement { color: var(--dim); font-size: 1.35rem; line-height: 1.65;
-             max-width: 46rem; margin: 0; letter-spacing: -.014em; }
-.statement b { color: var(--ink); font-weight: 600; font-size: 1.7rem;
-               letter-spacing: -.03em; font-variant-numeric: tabular-nums;
-               white-space: nowrap; }
-@media (max-width: 640px) {
-  .statement { font-size: 1.1rem; }
-  .statement b { font-size: 1.35rem; }
-}
+/* The sentence sits between the stamp and the figures: it says what the three
+   numbers below it mean before a reader meets them, which the labels alone
+   could not do -- "worst case from here" does not tell anyone it is the
+   distance from today's price down to the strike. */
+.statement { color: var(--dim); font-size: 1rem; line-height: 1.6;
+             max-width: 44rem; margin: 0 0 2.6rem;
+             font-variant-numeric: tabular-nums; }
 h2 { font-size: 10px; font-weight: 500; letter-spacing: .2em;
      text-transform: uppercase; color: var(--dim); margin: 0 0 1.8rem;
      display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; align-items: baseline; }
@@ -449,17 +445,29 @@ def _hero(stress: dict, stamp: str = "") -> str:
     # from here" does not tell a reader it means the distance from today's
     # price down to the strike. Written out, the arithmetic is in the grammar.
     tail = (
-        f"That leaves <b>{_money(headroom)}</b> unused."
+        f"That leaves {_money(headroom)} unused."
         if held
-        else f"<b>{_money(uncovered)}</b> of it is not covered yet."
+        else f"{_money(uncovered)} of it is not covered yet."
+    )
+    last = (
+        ("Left unused", _money(headroom))
+        if held
+        else ("Not covered yet", _money(uncovered))
     )
     return f"""{verdict}
 {stamp}
-<p class="statement">Of the <b>{_money(budget)}</b> this client allowed
-themselves to lose, <b>{_money(premium)}</b> has gone on protection, and
-<b>{_money(ahead)}</b> is the furthest the portfolio can still fall before the
-puts take over &mdash; today&rsquo;s prices down to their strikes.
-{tail}</p>"""
+<p class="statement">Of the {_money(budget)} this client allowed themselves to
+lose, {_money(premium)} has gone on protection and {_money(ahead)} is the
+furthest the portfolio can still fall before the puts take over &mdash;
+today&rsquo;s prices down to their strikes. {tail}</p>
+<div class="figures">
+<div class="fig"><span class="n">{_money(premium)}</span>
+<span class="k">Paid for protection</span></div>
+<div class="fig"><span class="n">{_money(ahead)}</span>
+<span class="k">Today&rsquo;s prices down to the strikes</span></div>
+<div class="fig"><span class="n">{last[1]}</span>
+<span class="k">{last[0]}</span></div>
+</div>"""
 
 
 def _promise(stress: dict) -> str:
@@ -642,35 +650,64 @@ def promise_held(row: dict) -> bool:
 def hedged_share(row: dict) -> float | None:
     """How much of the day's equity exposure has a hedge behind it, 0 to 1.
 
-    The question is the plain one: are the options bought on everything that
-    can fall? Weighted by value rather than counted by symbol, because a
-    portfolio 55% in XLF and 31% in IWM is not half hedged when the smaller of
-    the two is covered.
-
-    Cash and bills are excluded. They do not move with an equity shock, so
-    leaving them in the denominator would make a fully hedged book read as
-    ninety percent hedged for holding some bills.
+    Weighted by value rather than counted by symbol, because a portfolio 55% in
+    XLF and 31% in IWM is not half hedged when the smaller of the two is
+    covered. Cash and bills are excluded: they do not move with an equity
+    shock, so leaving them in the denominator would make a fully hedged book
+    read as partly hedged for holding some bills.
 
     None where the day's book was not recorded, which is different from nothing
     being hedged.
     """
-    holdings = row.get("holdings")
-    if holdings is None:
+    by_symbol = per_symbol_cover(row)
+    if by_symbol is None:
         return None
     exposed = {
-        h["symbol"]: float(h.get("value") or 0)
-        for h in holdings
-        if h.get("shocked", True) and h.get("symbol") != "CASH"
+        h["symbol"]: float(h.get("value") or 0) for h in _exposed(row.get("holdings"))
     }
     total = sum(exposed.values())
     if total <= 0:
         return 1.0
-    covered = {
-        leg["symbol"]
-        for leg in (row.get("legs") or [])
-        if leg.get("right") == "P" and int(leg.get("contracts") or 0) > 0
-    }
-    return sum(v for k, v in exposed.items() if k in covered) / total
+    return sum(v * by_symbol.get(k, 0.0) for k, v in exposed.items()) / total
+
+
+def _exposed(holdings) -> list[dict]:
+    """The holdings the promise is actually about: things that fall."""
+    return [
+        h
+        for h in (holdings or [])
+        if h.get("shocked", True) and h.get("symbol") != "CASH"
+    ]
+
+
+def per_symbol_cover(row: dict) -> dict[str, float] | None:
+    """How much of each holding has a put behind it, 0 to 1 per symbol.
+
+    Not a yes or no. A contract covers a hundred shares and nothing smaller, so
+    a holding of 250 shares behind two puts is 80% covered -- and a page that
+    said "hedged" would be describing a position with fifty unprotected shares
+    in it.
+
+    None where the day's book was not recorded.
+    """
+    holdings = row.get("holdings")
+    if holdings is None:
+        return None
+    contracts: dict[str, int] = {}
+    for leg in row.get("legs") or []:
+        count = int(leg.get("contracts") or 0)
+        if leg.get("right") == "P" and count > 0:
+            contracts[str(leg.get("symbol"))] = (
+                contracts.get(str(leg.get("symbol")), 0) + count
+            )
+    cover: dict[str, float] = {}
+    for holding in _exposed(holdings):
+        shares = int(holding.get("shares") or 0)
+        symbol = str(holding.get("symbol"))
+        if shares <= 0:
+            continue
+        cover[symbol] = min(contracts.get(symbol, 0) * 100 / shares, 1.0)
+    return cover
 
 
 def _coverage_track(
@@ -680,74 +717,61 @@ def _coverage_track(
     right: float,
     y: float,
 ) -> str:
-    """The loss limit, day by day, with the worst case filling it.
+    """One row per holding, across the same dates as the line above.
 
-    The same three numbers as the verdict at the top of the page -- the limit,
-    what the worst case would take of it, and what is left -- drawn along the
-    same dates as the line above. A reader who has taken in the header already
-    knows how to read this, which is the point of it being the same picture.
+    A single track for the whole book could only say how much of the portfolio
+    was covered, never which part of it -- and "64% hedged" is the same number
+    whether the uncovered third is a client's largest position or their
+    smallest. A row per instrument says which, and when it changed.
 
-    Each day spans the halfway points to its neighbours, so the place the fill
-    changes is the place the promise changed, and the first and last days own
-    only the half of the interval that exists.
+    The percentage is inside the field because a holding is not covered by a
+    yes or a no: a contract covers a hundred shares and nothing smaller, so 250
+    shares behind two puts is eighty percent, with fifty shares out in the
+    open.
     """
-    measured = [
-        (i, row) for i, row in enumerate(series) if row.get("uncovered") is not None
-    ]
-    if not measured:
+    symbols: list[str] = []
+    for row in series:
+        for holding in _exposed(row.get("holdings")):
+            if holding["symbol"] not in symbols:
+                symbols.append(str(holding["symbol"]))
+    if not symbols:
         return ""
-    height = 24.0
+
+    row_height, gap = 22.0, 8.0
     out = ""
-    for i, row in measured:
-        start = left if i == 0 else (points[i - 1][0] + points[i][0]) / 2
-        end = right if i == len(series) - 1 else (points[i][0] + points[i + 1][0]) / 2
-        share = hedged_share(row)
-        if share is None:
-            # The book for that day was never written down, so the share
-            # cannot be computed. It used to be drawn full width in the
-            # verdict's colour, which put a solid amber bar across the two
-            # days that had the least protection of any -- the shape said a
-            # hundred percent of something while the day meant nearly none.
-            out += (
-                f'<text x="{(start + end) / 2:.1f}" '
-                f'y="{y + height / 2 + 4:.1f}" text-anchor="middle" '
-                f'font-size="11" fill="#8b8b86">book not recorded</text>'
-            )
-            continue
-        full = share >= 0.999
-        colour = "#4ade80" if full else "#fbbf24"
-        # Filled across that day's own span, so a partly hedged morning is a
-        # partly filled morning. The track behind it is the whole of the day,
-        # which is what makes the fraction readable.
+    for index, symbol in enumerate(symbols):
+        top = y + index * (row_height + gap)
         out += (
-            f'<rect x="{start:.1f}" y="{y:.1f}" '
-            f'width="{max((end - start) * share, 2.0):.1f}" '
-            f'height="{height:.1f}" fill="{colour}" opacity=".85"/>'
-            f'<text x="{start + 11:.1f}" y="{y + height / 2 + 4:.1f}" '
-            f'font-size="12" font-weight="600" '
-            f'fill="{"#0b1220" if share > 0.25 else "#8b8b86"}">'
-            f"{share * 100:.0f}% hedged</text>"
+            f'<text x="0" y="{top + row_height / 2 + 4:.1f}" font-size="12" '
+            f'font-weight="600" fill="#f4f4f2">{_cell(symbol)}</text>'
+            f'<rect x="{left:.1f}" y="{top:.1f}" width="{right - left:.1f}" '
+            f'height="{row_height:.1f}" rx="{row_height / 2:.1f}" '
+            f'fill="#ffffff" opacity=".05"/>'
         )
-    # A hairline where one day ends and the next begins. Without it three
-    # fills of different lengths read as one bar with two colour changes.
-    ticks = "".join(
-        f'<rect x="{(points[i - 1][0] + points[i][0]) / 2:.1f}" y="{y:.1f}" '
-        f'width="1" height="{height:.1f}" fill="#050505" opacity=".55"/>'
-        for i, _ in measured
-        if i > 0
-    )
-    first = left if measured[0][0] == 0 else 0.0
-    return (
-        f'<text x="{first:.0f}" y="{y - 14:.0f}" font-size="11" fill="#8b8b86" '
-        f'letter-spacing=".16em">HOW MUCH OF THE PORTFOLIO HAD PROTECTION '
-        f"BEHIND IT</text>"
-        f'<clipPath id="trackclip"><rect x="{first:.1f}" y="{y:.1f}" '
-        f'width="{right - first:.1f}" height="{height:.1f}" '
-        f'rx="{height / 2:.1f}"/></clipPath>'
-        f'<g clip-path="url(#trackclip)">'
-        f'<rect x="{first:.1f}" y="{y:.1f}" width="{right - first:.1f}" '
-        f'height="{height:.1f}" fill="#ffffff" opacity=".06"/>{out}{ticks}</g>'
-    )
+        for i, row in enumerate(series):
+            begin = left if i == 0 else (points[i - 1][0] + points[i][0]) / 2
+            last_day = i == len(series) - 1
+            end = right if last_day else (points[i][0] + points[i + 1][0]) / 2
+            cover = per_symbol_cover(row)
+            if cover is None or symbol not in cover:
+                # Either the book was never written down, or the client did not
+                # hold this on that day. Both are blank rather than zero: an
+                # unheld position is not an unprotected one.
+                continue
+            share = cover[symbol]
+            colour = "#4ade80" if share >= 0.999 else "#fbbf24"
+            out += (
+                f'<rect x="{begin:.1f}" y="{top:.1f}" '
+                f'width="{max((end - begin) * share, 2.0):.1f}" '
+                f'height="{row_height:.1f}" rx="{row_height / 2:.1f}" '
+                f'fill="{colour}" opacity=".85"/>'
+                f'<text x="{begin + 10:.1f}" y="{top + row_height / 2 + 4:.1f}" '
+                f'font-size="11" font-weight="600" '
+                f'fill="{"#0b1220" if share > 0.3 else "#8b8b86"}">'
+                f"{'100% hedged' if share >= 0.999 else f'{share * 100:.0f}% hedged'}"
+                f"</text>"
+            )
+    return out
 
 
 def _evolution(entries: list[dict]) -> str:
@@ -773,8 +797,8 @@ def _evolution(entries: list[dict]) -> str:
         )
 
     labels = _events_by_date(entries)
-    width, height = 1000.0, 340.0
-    left, right, top, floor = 24.0, 24.0, 58.0, 214.0
+    width, height = 1000.0, 386.0
+    left, right, top, floor = 62.0, 24.0, 58.0, 214.0
     values = [row["equity"] for row in series]
     low, high = min(values), max(values)
     # A flat week is a real answer and must not render as a zero-height line,
@@ -835,11 +859,15 @@ def _evolution(entries: list[dict]) -> str:
 <polyline points="{line}" fill="none" stroke="#4ade80" stroke-width="2"
           stroke-linejoin="round" stroke-linecap="round"/>
 {marks}
-{_coverage_track(series, points, left, width - right, 322.0)}
+<text x="0" y="300" font-size="11" fill="#8b8b86"
+      letter-spacing=".16em">HOW MUCH OF EACH HOLDING HAD A PUT BEHIND IT</text>
+{_coverage_track(series, points, left, width - right, 318.0)}
 </svg>
 </div>
-<p class="legend"><span class="c"><i></i>every exposed holding is hedged</span>
-<span class="u"><i></i>partly hedged &mdash; the fill is how much</span></p>"""
+<p class="legend"><span class="c"><i></i>fully hedged</span>
+<span class="u"><i></i>partly hedged &mdash; the fill is how much</span>
+<span><i style="background:rgba(255,255,255,.12)"></i>not held, or not
+recorded</span></p>"""
 
 
 # --- what was decided -------------------------------------------------------

@@ -85,17 +85,13 @@ h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); line-height: .95; font-weight: 600;
    reader is deciding whether to trust them. */
 .stamp { color: var(--dim); font-size: .8rem; margin: -.8rem 0 2.2rem;
          max-width: 54rem; font-variant-numeric: tabular-nums; }
-/* The figures are white and large inside the sentence that explains them, so
-   the numbers still read first and the grammar carries the arithmetic. */
-.statement { color: var(--dim); font-size: 1.35rem; line-height: 1.65;
-             max-width: 46rem; margin: 0; letter-spacing: -.014em; }
-.statement b { color: var(--ink); font-weight: 600; font-size: 1.7rem;
-               letter-spacing: -.03em; font-variant-numeric: tabular-nums;
-               white-space: nowrap; }
-@media (max-width: 640px) {
-  .statement { font-size: 1.1rem; }
-  .statement b { font-size: 1.35rem; }
-}
+/* The sentence sits between the stamp and the figures: it says what the three
+   numbers below it mean before a reader meets them, which the labels alone
+   could not do -- "worst case from here" does not tell anyone it is the
+   distance from today's price down to the strike. */
+.statement { color: var(--dim); font-size: 1rem; line-height: 1.6;
+             max-width: 44rem; margin: 0 0 2.6rem;
+             font-variant-numeric: tabular-nums; }
 h2 { font-size: 10px; font-weight: 500; letter-spacing: .2em;
      text-transform: uppercase; color: var(--dim); margin: 0 0 1.8rem;
      display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; align-items: baseline; }
@@ -215,11 +211,18 @@ footer a { color: var(--ink); text-decoration: none;
 client-defined downside limit, through an option overlay.</p>
 <p class="verdict held"><span class="dot"></span>Inside the promise</p>
 <p class="stamp">Measured on the 2026-09-01 23:28 UTC cycle, with XLF at $57.22, IWM at $290.50. Every figure here moves with the market.</p>
-<p class="statement">Of the <b>$9,998</b> this client allowed
-themselves to lose, <b>$4,656</b> has gone on protection, and
-<b>$2,648</b> is the furthest the portfolio can still fall before the
-puts take over &mdash; today&rsquo;s prices down to their strikes.
-That leaves <b>$2,694</b> unused.</p>
+<p class="statement">Of the $9,998 this client allowed themselves to
+lose, $4,656 has gone on protection and $2,648 is the
+furthest the portfolio can still fall before the puts take over &mdash;
+today&rsquo;s prices down to their strikes. That leaves $2,694 unused.</p>
+<div class="figures">
+<div class="fig"><span class="n">$4,656</span>
+<span class="k">Paid for protection</span></div>
+<div class="fig"><span class="n">$2,648</span>
+<span class="k">Today&rsquo;s prices down to the strikes</span></div>
+<div class="fig"><span class="n">$2,694</span>
+<span class="k">Left unused</span></div>
+</div>
 </header>
 
 <section class="reveal">
@@ -238,21 +241,25 @@ That leaves <b>$2,694</b> unused.</p>
 <section class="reveal">
 <h2>Portfolio evolution <span class="when" style="color:#fbbf24">&minus;$1,553 (&minus;1.56%) since 2026-08-28</span></h2>
 <div class="chart">
-<svg viewBox="0 0 1000 340" role="img"
+<svg viewBox="0 0 1000 386" role="img"
      aria-label="closing account value, one point per trading day">
 <defs><linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
 <stop offset="0%" stop-color="#4ade80" stop-opacity=".16"/>
 <stop offset="100%" stop-color="#4ade80" stop-opacity="0"/>
 </linearGradient></defs>
-<polygon points="24.0,214.0 24.0,93.1 500.0,120.4 976.0,171.1 976.0,214.0" fill="url(#fade)"/>
-<polyline points="24.0,93.1 500.0,120.4 976.0,171.1" fill="none" stroke="#4ade80" stroke-width="2"
+<polygon points="62.0,214.0 62.0,93.1 519.0,120.4 976.0,171.1 976.0,214.0" fill="url(#fade)"/>
+<polyline points="62.0,93.1 519.0,120.4 976.0,171.1" fill="none" stroke="#4ade80" stroke-width="2"
           stroke-linejoin="round" stroke-linecap="round"/>
-<circle cx="24.0" cy="93.1" r="5" fill="#0b0b0c" stroke="#4ade80" stroke-width="2"/><text x="24.0" y="75.1" text-anchor="middle" font-size="15" font-weight="500" fill="#f4f4f2" letter-spacing="-.3">$99,726</text><text x="24.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b86" letter-spacing=".08em">08 / 28</text><circle cx="500.0" cy="120.4" r="5" fill="#0b0b0c" stroke="#4ade80" stroke-width="2"/><text x="500.0" y="102.4" text-anchor="middle" font-size="15" font-weight="500" fill="#f4f4f2" letter-spacing="-.3">$99,183</text><text x="500.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b86" letter-spacing=".08em">08 / 31</text><text x="500.0" y="266.0" text-anchor="middle" font-size="11.5" font-weight="500" fill="#4ade80" letter-spacing=".03em">IWM hedged</text><circle cx="976.0" cy="171.1" r="5" fill="#4ade80" stroke="#4ade80" stroke-width="2"/><text x="976.0" y="153.1" text-anchor="middle" font-size="15" font-weight="500" fill="#f4f4f2" letter-spacing="-.3">$98,174</text><text x="976.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b86" letter-spacing=".08em">09 / 01</text><text x="976.0" y="266.0" text-anchor="middle" font-size="11.5" font-weight="500" fill="#4ade80" letter-spacing=".03em">XLF hedged</text>
-<text x="24" y="308" font-size="11" fill="#8b8b86" letter-spacing=".16em">HOW MUCH OF THE PORTFOLIO HAD PROTECTION BEHIND IT</text><clipPath id="trackclip"><rect x="24.0" y="322.0" width="952.0" height="24.0" rx="12.0"/></clipPath><g clip-path="url(#trackclip)"><rect x="24.0" y="322.0" width="952.0" height="24.0" fill="#ffffff" opacity=".06"/><text x="143.0" y="338.0" text-anchor="middle" font-size="11" fill="#8b8b86">book not recorded</text><text x="500.0" y="338.0" text-anchor="middle" font-size="11" fill="#8b8b86">book not recorded</text><rect x="738.0" y="322.0" width="238.0" height="24.0" fill="#4ade80" opacity=".85"/><text x="749.0" y="338.0" font-size="12" font-weight="600" fill="#0b1220">100% hedged</text><rect x="262.0" y="322.0" width="1" height="24.0" fill="#050505" opacity=".55"/><rect x="738.0" y="322.0" width="1" height="24.0" fill="#050505" opacity=".55"/></g>
+<circle cx="62.0" cy="93.1" r="5" fill="#0b0b0c" stroke="#4ade80" stroke-width="2"/><text x="62.0" y="75.1" text-anchor="middle" font-size="15" font-weight="500" fill="#f4f4f2" letter-spacing="-.3">$99,726</text><text x="62.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b86" letter-spacing=".08em">08 / 28</text><circle cx="519.0" cy="120.4" r="5" fill="#0b0b0c" stroke="#4ade80" stroke-width="2"/><text x="519.0" y="102.4" text-anchor="middle" font-size="15" font-weight="500" fill="#f4f4f2" letter-spacing="-.3">$99,183</text><text x="519.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b86" letter-spacing=".08em">08 / 31</text><text x="519.0" y="266.0" text-anchor="middle" font-size="11.5" font-weight="500" fill="#4ade80" letter-spacing=".03em">IWM hedged</text><circle cx="976.0" cy="171.1" r="5" fill="#4ade80" stroke="#4ade80" stroke-width="2"/><text x="976.0" y="153.1" text-anchor="middle" font-size="15" font-weight="500" fill="#f4f4f2" letter-spacing="-.3">$98,174</text><text x="976.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b86" letter-spacing=".08em">09 / 01</text><text x="976.0" y="266.0" text-anchor="middle" font-size="11.5" font-weight="500" fill="#4ade80" letter-spacing=".03em">XLF hedged</text>
+<text x="0" y="300" font-size="11" fill="#8b8b86"
+      letter-spacing=".16em">HOW MUCH OF EACH HOLDING HAD A PUT BEHIND IT</text>
+<text x="0" y="333.0" font-size="12" font-weight="600" fill="#f4f4f2">XLF</text><rect x="62.0" y="318.0" width="914.0" height="22.0" rx="11.0" fill="#ffffff" opacity=".05"/><rect x="747.5" y="318.0" width="228.5" height="22.0" rx="11.0" fill="#4ade80" opacity=".85"/><text x="757.5" y="333.0" font-size="11" font-weight="600" fill="#0b1220">100% hedged</text><text x="0" y="363.0" font-size="12" font-weight="600" fill="#f4f4f2">IWM</text><rect x="62.0" y="348.0" width="914.0" height="22.0" rx="11.0" fill="#ffffff" opacity=".05"/><rect x="747.5" y="348.0" width="228.5" height="22.0" rx="11.0" fill="#4ade80" opacity=".85"/><text x="757.5" y="363.0" font-size="11" font-weight="600" fill="#0b1220">100% hedged</text>
 </svg>
 </div>
-<p class="legend"><span class="c"><i></i>every exposed holding is hedged</span>
-<span class="u"><i></i>partly hedged &mdash; the fill is how much</span></p>
+<p class="legend"><span class="c"><i></i>fully hedged</span>
+<span class="u"><i></i>partly hedged &mdash; the fill is how much</span>
+<span><i style="background:rgba(255,255,255,.12)"></i>not held, or not
+recorded</span></p>
 </section>
 
 <section id="decisions" class="reveal">
@@ -269,7 +276,7 @@ That leaves <b>$2,694</b> unused.</p>
 
 <footer class="reveal">
 Rebuilt from the journal after every cycle &middot;
-2026-09-02 05:24 UTC &middot;
+2026-09-02 05:28 UTC &middot;
 Alpaca paper trading. This has never traded real money.
 </footer>
 

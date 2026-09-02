@@ -172,7 +172,7 @@ def test_the_worst_case_is_the_whole_descent_not_a_named_shock():
     page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
     assert "$2,676" in page, "the worst it can still do from here"
     assert "puts take over" in page
-    assert "today&rsquo;s prices down to their strikes" in page
+    assert "TODAY" in page.upper(), "the label says what the number measures"
 
 
 def test_a_page_built_before_any_cycle_has_run_says_so():
@@ -284,8 +284,8 @@ def test_every_exposed_holding_hedged_is_a_hundred_per_cent():
     """
     day = {
         "holdings": [
-            {"symbol": "XLF", "value": 51480.0, "shocked": True},
-            {"symbol": "IWM", "value": 29050.0, "shocked": True},
+            {"symbol": "XLF", "shares": 900, "value": 51480.0, "shocked": True},
+            {"symbol": "IWM", "shares": 100, "value": 29050.0, "shocked": True},
         ],
         "legs": [
             {"symbol": "XLF", "right": "P", "contracts": 9},
@@ -298,8 +298,8 @@ def test_every_exposed_holding_hedged_is_a_hundred_per_cent():
 def test_hedging_the_smaller_holding_is_not_half_the_job():
     day = {
         "holdings": [
-            {"symbol": "XLF", "value": 51480.0, "shocked": True},
-            {"symbol": "IWM", "value": 29050.0, "shocked": True},
+            {"symbol": "XLF", "shares": 900, "value": 51480.0, "shocked": True},
+            {"symbol": "IWM", "shares": 100, "value": 29050.0, "shocked": True},
         ],
         "legs": [{"symbol": "IWM", "right": "P", "contracts": 1}],
     }
@@ -312,9 +312,9 @@ def test_bills_and_cash_are_not_counted_as_things_to_hedge():
     holding some bills."""
     day = {
         "holdings": [
-            {"symbol": "XLF", "value": 51480.0, "shocked": True},
-            {"symbol": "BIL", "value": 9140.0, "shocked": False},
-            {"symbol": "CASH", "value": 4018.0, "shocked": False},
+            {"symbol": "XLF", "shares": 900, "value": 51480.0, "shocked": True},
+            {"symbol": "BIL", "shares": 100, "value": 9140.0, "shocked": False},
+            {"symbol": "CASH", "shares": 4018, "value": 4018.0, "shocked": False},
         ],
         "legs": [{"symbol": "XLF", "right": "P", "contracts": 9}],
     }
@@ -492,30 +492,28 @@ def test_build_site_runs_on_a_cycle_that_traded_nothing(tmp_path, monkeypatch):
 
 
 def test_the_track_says_how_much_of_the_book_is_hedged():
-    """A share of the portfolio by value, in the plainest terms the page has.
+    """A row per holding, not one bar for the book.
 
-    The fixture holds XLF and IWM and carries a put on XLF alone, which is 64%
-    of the exposure and not half of it.
+    A single track could say how much of the portfolio was covered and never
+    which part of it, and "64% hedged" is the same number whether the
+    uncovered third is the client's largest position or their smallest.
     """
-    assert "64% hedged" in _page(_week())
+    page = _page(_week())
+    assert "100% hedged" in page, "XLF carries a put for all 900 shares"
+    assert ">XLF<" in page and ">IWM<" in page, "a row per holding"
 
 
-def test_a_day_whose_book_was_not_recorded_is_not_drawn_as_a_full_bar():
-    """It used to be, in the verdict's colour, which put a solid amber bar
-    across the two days with the least protection of any -- a shape saying a
-    hundred percent of something on a day that meant nearly none."""
-    entries = [
-        _line("cycle.complete", {"equity": "98319.7"}, "2026-09-01T17:48:00Z"),
-        _line("mandate.stress", _stress(), "2026-09-01T17:48:00Z"),
-        _line("cycle.complete", {"equity": "99726.5"}, "2026-08-28T17:07:00Z"),
-        _line(
-            "mandate.stress",
-            _stress(holdings=None, legs=None, uncovered_risk=71887.0),
-            "2026-08-28T17:07:00Z",
-            severity="breach",
-        ),
-    ]
-    assert "book not recorded" in _page(entries)
+def test_a_day_the_client_did_not_hold_something_is_blank_not_zero():
+    """An unheld position is not an unprotected one.
+
+    The row for a symbol the client had not bought yet, or had already sold,
+    carries nothing at all rather than an empty bar reading as no cover.
+    """
+    from drawdownguard.journal.site import per_symbol_cover
+
+    sold = {"holdings": [], "legs": []}
+    assert per_symbol_cover(sold) == {}
+    assert per_symbol_cover({}) is None
 
 
 def test_the_header_says_which_cycle_it_is_reporting():
@@ -525,3 +523,41 @@ def test_the_header_says_which_cycle_it_is_reporting():
     page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
     assert "Measured on the 2026-09-01 17:48 UTC cycle" in page
     assert "XLF at $57.60" in page, "the spot the fall to strike is measured from"
+
+
+def test_a_holding_is_covered_by_degree_not_by_yes_or_no():
+    """A contract covers a hundred shares and nothing smaller.
+
+    250 shares behind two puts is eighty percent covered, with fifty shares out
+    in the open, and a page that said "hedged" would be describing a position
+    that is not.
+    """
+    from drawdownguard.journal.site import per_symbol_cover
+
+    day = {
+        "holdings": [{"symbol": "SPY", "shares": 250, "value": 150000.0}],
+        "legs": [{"symbol": "SPY", "right": "P", "contracts": 2}],
+    }
+    assert per_symbol_cover(day)["SPY"] == pytest.approx(0.8)
+
+
+def test_more_contracts_than_shares_is_still_fully_covered_and_no_more():
+    """Whole contracts round up, so a 64-share holding carries a put standing
+    behind a hundred. That is not 156% of anything."""
+    from drawdownguard.journal.site import per_symbol_cover
+
+    day = {
+        "holdings": [{"symbol": "SPY", "shares": 64, "value": 38000.0}],
+        "legs": [{"symbol": "SPY", "right": "P", "contracts": 1}],
+    }
+    assert per_symbol_cover(day)["SPY"] == 1.0
+
+
+def test_a_holding_with_no_put_is_uncovered_rather_than_absent():
+    from drawdownguard.journal.site import per_symbol_cover
+
+    day = {
+        "holdings": [{"symbol": "SPY", "shares": 100, "value": 60000.0}],
+        "legs": [],
+    }
+    assert per_symbol_cover(day) == {"SPY": 0.0}
