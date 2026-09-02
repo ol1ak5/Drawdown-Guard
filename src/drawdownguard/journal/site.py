@@ -862,7 +862,7 @@ def _evolution(entries: list[dict]) -> str:
     # simply crop the row that arrived last.
     # Far enough below the date axis that the rows read as a separate
     # statement rather than as a third tier of labels hanging off the line.
-    rows_top = 412.0
+    rows_top = 452.0
     tickers = len(
         {
             h["symbol"]
