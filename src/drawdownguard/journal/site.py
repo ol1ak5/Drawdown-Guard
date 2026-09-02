@@ -933,8 +933,8 @@ def _evolution(entries: list[dict]) -> str:
 <polyline points="{line}" fill="none" stroke="#4ade80" stroke-width="2"
           stroke-linejoin="round" stroke-linecap="round"/>
 {marks}
-<text x="0" y="{rows_top - 22:.0f}" font-size="11" fill="#8b8b86"
-      letter-spacing=".16em">HOW MUCH OF EACH HOLDING HAD A PUT BEHIND IT</text>
+<text x="0" y="{rows_top - 24:.0f}" font-size="13" fill="#8b8b86"
+      letter-spacing=".14em">HOW MUCH OF EACH HOLDING HAD A PUT BEHIND IT</text>
 {_coverage_track(series, points, left, width - right, rows_top)}
 </svg>
 </div>
