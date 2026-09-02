@@ -379,6 +379,23 @@ def _assignment_probability(
     if order.is_purchase:
         return Verdict.approve()
 
+    # Nor of a sale that hands back a long. Nobody can be assigned an option
+    # they own -- exercising it is their choice -- so the number this limit
+    # reads is not a fact about the order in front of it.
+    #
+    # It refused a real one. On 2026-09-02 the client sold their XLF shares,
+    # the nine puts behind them became redundant, and the order to close them
+    # was rejected for an assignment probability of 0.41 on a contract the
+    # account was long. The limit exists to stop the agent writing an option
+    # likely to be called away; applied to an exit it kept the client in a
+    # position they had every reason to leave, and did it in the name of risk.
+    #
+    # Third of its kind in one afternoon, after the liquidity filter and the
+    # missing spot. A check written for opening a position does not become a
+    # check on closing one by being left in the path.
+    if closes_a_long(order, portfolio):
+        return Verdict.approve()
+
     if order.assignment_prob > limits.max_assignment_prob:
         return Verdict.reject(
             f"assignment probability {order.assignment_prob:.2f} exceeds the "

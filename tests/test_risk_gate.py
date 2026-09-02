@@ -426,3 +426,43 @@ def test_a_written_put_is_still_charged_the_whole_strike():
     verdict = veto(written, poor, LIMITS)
     assert verdict.approved is False
     assert "position size" in verdict.reason
+
+
+def test_handing_back_a_long_put_is_not_an_assignment_risk():
+    """Nobody can be assigned an option they own.
+
+    On 2026-09-02 the client sold their XLF shares, the nine puts behind them
+    became redundant, and the order closing them was rejected for an assignment
+    probability of 0.41 on a contract the account was long. The limit exists to
+    stop the agent writing an option likely to be called away; applied to an
+    exit it kept the client in a position they had every reason to leave.
+    """
+    held = portfolio(
+        positions={
+            "SPY": Position(
+                symbol="SPY",
+                leg="PUT_OPEN",
+                contracts=[
+                    OpenContract(
+                        occ_symbol="SPY260828P00560000",
+                        right="P",
+                        strike=Decimal("560"),
+                        expiry=date(2026, 8, 28),
+                        contracts=1,
+                        premium=Decimal("3.50"),
+                    )
+                ],
+            )
+        }
+    )
+    # One contract, so the only rule with anything to say is the one under
+    # test. Nine would also trip the net-delta band, which is a different
+    # question and has its own tests.
+    closing = order(contracts=-1, assignment_prob=0.41)
+    assert veto(closing, held, LIMITS).approved
+
+
+def test_writing_a_new_option_still_answers_for_assignment():
+    """The limit is not removed, only kept off the orders it was never about."""
+    naked = order(contracts=-1, assignment_prob=0.41)
+    assert not veto(naked, portfolio(), LIMITS).approved
