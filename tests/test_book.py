@@ -158,3 +158,38 @@ def test_three_puts_close_the_gap_the_book_actually_has():
     assert rung.breached is False
     # And it was not free: 3 contracts at 8.00 a share.
     assert sum(float(leg.premium) * leg.contracts * 100 for leg in book.legs) == 2_400
+
+
+def test_a_hedge_on_a_sold_holding_still_reaches_the_ladder():
+    """The case `release` exists for, and it failed on the first day it mattered.
+
+    An option leg needs its underlying's price to be shocked, and `to_book`
+    takes that from the share position of the same symbol. On 2026-09-02 the
+    client sold their whole XLF position; the next cycle read nine XLF puts
+    from the broker, found no XLF shares to price them against, and left them
+    out of the book -- so `release` had nothing to hand back and the client
+    went on holding 3,150 of premium against a position that no longer existed.
+
+    A spot supplied for the orphaned underlying is enough.
+    """
+    positions = [
+        {"symbol": "IWM", "qty": "100", "current_price": "290.50"},
+        {"symbol": "XLF271217P00056000", "qty": "9", "avg_entry_price": "3.50"},
+    ]
+    book = to_book(positions, spots={"XLF": 57.22})
+    assert [leg.symbol for leg in book.legs] == ["XLF"]
+    assert book.complete
+
+
+def test_without_a_spot_the_orphaned_leg_is_reported_rather_than_dropped_quietly():
+    """Still out of the ladder, and the book says so.
+
+    Silently omitting a long put understates the protection held; silently
+    omitting a short one understates the loss. The second is the one that gets
+    somebody hurt, so neither is done quietly.
+    """
+    positions = [{"symbol": "XLF271217P00056000", "qty": "9"}]
+    book = to_book(positions)
+    assert book.legs == []
+    assert not book.complete
+    assert "no spot for XLF" in book.unpriced[0]

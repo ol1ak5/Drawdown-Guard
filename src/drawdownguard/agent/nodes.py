@@ -53,8 +53,9 @@ from drawdownguard.execution.orders import (
     confirm,
     submit_order,
 )
+from drawdownguard.execution.reconcile import parse_occ
 from drawdownguard.journal import writer
-from drawdownguard.market.client import get_account, get_positions
+from drawdownguard.market.client import get_account, get_positions, get_spot
 from drawdownguard.risk import changes, period
 from drawdownguard.risk.book import to_book
 from drawdownguard.risk.limits import load_limits
@@ -214,7 +215,50 @@ async def mandate_node(state: GuardState) -> GuardState:
             halted=True, halt_reason=f"could not read the positions: {exc}"
         )
 
-    book = to_book(positions, portfolio.cash)
+    # An option leg needs its underlying's price to be shocked, and `to_book`
+    # takes that price from the share position of the same symbol. So a hedge
+    # on a holding the client has sold has nowhere to get one, and the leg was
+    # dropped from the book entirely.
+    #
+    # That is the exact case `release` exists for, and it failed on the first
+    # day it mattered. On 2026-09-02 the client sold their whole XLF position
+    # at 18:03; the next cycle read nine XLF puts from the broker, found no XLF
+    # shares to price them against, and reported them as unpriced -- so the
+    # book showed no XLF protection, `release` had nothing to hand back, and
+    # the client went on holding 3,150 of premium against a position that no
+    # longer existed. The diff then recorded the legs as "closed", which would
+    # have made the next morning's cycle stop noticing them at all.
+    #
+    # Quotes are fetched for exactly the underlyings that need one: an option
+    # is held on them and no share position supplies a price. A symbol that
+    # cannot be quoted is still reported as unpriced, which is the honest
+    # answer and the one that keeps the book marked incomplete.
+    held = {str(p.get("symbol", "")).upper() for p in positions}
+    orphans = {
+        parsed["underlying"]
+        for p in positions
+        if (parsed := parse_occ(str(p.get("symbol", "")).upper()))
+        and parsed["underlying"] not in held
+    }
+    spots: dict[str, float] = {}
+    for symbol in sorted(orphans):
+        try:
+            spots[symbol] = await get_spot(symbol)
+        except Exception as exc:  # noqa: BLE001 -- reported, not fatal
+            writer.write(
+                "mandate.spot_unreadable",
+                {
+                    "symbol": symbol,
+                    "detail": str(exc),
+                    "consequence": (
+                        "options on this symbol stay out of the ladder, "
+                        "and the book is marked incomplete"
+                    ),
+                },
+                severity="breach",
+            )
+
+    book = to_book(positions, portfolio.cash, spots=spots)
 
     # The promise is measured against what the account was worth when it was
     # made, not against what it is worth this morning. Ten percent of today
