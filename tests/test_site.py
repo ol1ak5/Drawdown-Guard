@@ -561,3 +561,62 @@ def test_a_holding_with_no_put_is_uncovered_rather_than_absent():
         "legs": [],
     }
     assert per_symbol_cover(day) == {"SPY": 0.0}
+
+
+def test_the_early_days_get_their_book_back_from_the_record():
+    """`mandate.stress` only began carrying the book on 2026-09-01, so the days
+    before it drew blank rows -- which hid the one thing they show: IWM was
+    hedged on the 31st and XLF only on the 1st.
+
+    Reconstructed from two facts the journal has always kept: the legs held on
+    a date are the fills up to it, and the holdings are the earliest book it
+    does carry, because `book.reviewed` says nothing moved on those days.
+    """
+    from drawdownguard.journal.site import backfill_books, per_symbol_cover
+
+    entries = [
+        _line("cycle.complete", {"equity": "98319.7"}, "2026-09-01T17:48:00Z"),
+        _line("mandate.stress", _stress(), "2026-09-01T17:48:00Z"),
+        _line(
+            "order.filled",
+            {"symbol": "IWM", "occ_symbol": "IWM270917P00275000", "contracts": 1},
+            "2026-08-31T14:19:00Z",
+        ),
+        _line("cycle.complete", {"equity": "99183.49"}, "2026-08-31T14:19:00Z"),
+        _line(
+            "mandate.stress",
+            _stress(holdings=None, legs=None, uncovered_risk=71339.0),
+            "2026-08-31T14:19:00Z",
+            severity="breach",
+        ),
+    ]
+    series = daily_series(entries)
+    backfill_books(entries, series)
+
+    monday = next(row for row in series if row["date"] == "2026-08-31")
+    cover = per_symbol_cover(monday)
+    assert cover["IWM"] == 1.0, "the put that filled that morning"
+    assert cover["XLF"] == 0.0, "the one that did not"
+
+
+def test_a_day_that_recorded_its_own_book_is_never_overwritten():
+    from drawdownguard.journal.site import backfill_books
+
+    entries = [
+        _line("cycle.complete", {"equity": "98319.7"}, "2026-09-01T17:48:00Z"),
+        _line("mandate.stress", _stress(), "2026-09-01T17:48:00Z"),
+    ]
+    series = daily_series(entries)
+    backfill_books(entries, series)
+    assert "reconstructed" not in series[0]
+
+
+def test_the_agent_looking_and_finding_nothing_is_not_the_client_acting():
+    """It read "client: nothing in the portfolio changed" -- a line about
+    something the client did not do."""
+    entries = [
+        _line("book.reviewed", {"moved": False, "changes": []}, "2026-09-01T23:29:00Z")
+    ]
+    page = _page(entries)
+    assert 'data-who="agent"' in page
+    assert 'data-who="client"' not in page

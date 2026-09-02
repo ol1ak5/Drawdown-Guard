@@ -163,6 +163,9 @@ h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); line-height: .95; font-weight: 600;
 .statement { color: var(--dim); font-size: 1rem; line-height: 1.6;
              max-width: 44rem; margin: 0 0 2.6rem;
              font-variant-numeric: tabular-nums; }
+/* Same face, same size. Only the colour changes, so the figures are findable
+   without the sentence turning into a list of headings. */
+.statement b { color: var(--ink); font-weight: 500; }
 h2 { font-size: 10px; font-weight: 500; letter-spacing: .2em;
      text-transform: uppercase; color: var(--dim); margin: 0 0 1.8rem;
      display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; align-items: baseline; }
@@ -445,9 +448,9 @@ def _hero(stress: dict, stamp: str = "") -> str:
     # from here" does not tell a reader it means the distance from today's
     # price down to the strike. Written out, the arithmetic is in the grammar.
     tail = (
-        f"That leaves {_money(headroom)} unused."
+        f"That leaves <b>{_money(headroom)}</b> unused."
         if held
-        else f"{_money(uncovered)} of it is not covered yet."
+        else f"<b>{_money(uncovered)}</b> of it is not covered yet."
     )
     last = (
         ("Left unused", _money(headroom))
@@ -456,10 +459,10 @@ def _hero(stress: dict, stamp: str = "") -> str:
     )
     return f"""{verdict}
 {stamp}
-<p class="statement">Of the {_money(budget)} this client allowed themselves to
-lose, {_money(premium)} has gone on protection and {_money(ahead)} is the
-furthest the portfolio can still fall before the puts take over &mdash;
-today&rsquo;s prices down to their strikes. {tail}</p>
+<p class="statement">Of the <b>{_money(budget)}</b> this client allowed
+themselves to lose, <b>{_money(premium)}</b> has gone on protection and
+<b>{_money(ahead)}</b> is the furthest the portfolio can still fall before the
+puts take over - today&rsquo;s prices down to their strikes. {tail}</p>
 <div class="figures">
 <div class="fig"><span class="n">{_money(premium)}</span>
 <span class="k">Paid for protection</span></div>
@@ -671,6 +674,62 @@ def hedged_share(row: dict) -> float | None:
     return sum(v * by_symbol.get(k, 0.0) for k, v in exposed.items()) / total
 
 
+def backfill_books(entries: list[dict], series: list[dict]) -> None:
+    """Give the early days the book they were measured on, from the record.
+
+    `mandate.stress` only began carrying the holdings and the legs on
+    2026-09-01, so the days before it had no book to read and the coverage rows
+    were blank for them -- which hid the one thing they show: IWM was hedged on
+    the 31st and XLF only on the 1st, and a chart of protection that cannot
+    show protection arriving is not much of a chart.
+
+    Reconstructed rather than assumed, from two facts the journal has always
+    recorded:
+
+    - the legs held on a date are the fills up to and including it, less
+      anything handed back. `order.filled` carries the symbol and the count.
+    - the holdings are the earliest book the journal does carry, because
+      `book.reviewed` says in as many words that nothing moved on any of those
+      days. If the client had traded, this would be wrong and the record would
+      say so.
+
+    Only days with no book of their own are filled in. A day that recorded its
+    own is never overwritten by a reconstruction.
+    """
+    known = next(
+        (row["holdings"] for row in series if row.get("holdings") is not None), None
+    )
+    if known is None:
+        return
+
+    fills: dict[str, list[dict]] = {}
+    for entry in entries:
+        payload = entry.get("payload") or {}
+        date = str(entry.get("ts", ""))[:10]
+        if entry.get("event") != "order.filled":
+            continue
+        occ = str(payload.get("occ_symbol") or "")
+        # OCC: SYMBOL + YYMMDD + C/P + strike in thousandths.
+        if len(occ) < 15 or occ[-9] not in ("P", "C"):
+            continue
+        fills.setdefault(date, []).append(
+            {
+                "symbol": str(payload.get("symbol") or occ[:-15]),
+                "right": occ[-9],
+                "strike": str(int(occ[-8:]) / 1000).rstrip("0").rstrip("."),
+                "contracts": int(payload.get("contracts") or 0),
+            }
+        )
+
+    standing: list[dict] = []
+    for row in series:
+        standing += fills.get(row["date"], [])
+        if row.get("holdings") is None:
+            row["holdings"] = known
+            row["legs"] = list(standing)
+            row["reconstructed"] = True
+
+
 def _exposed(holdings) -> list[dict]:
     """The holdings the promise is actually about: things that fall."""
     return [
@@ -791,6 +850,7 @@ def _evolution(entries: list[dict]) -> str:
     loads no font: a judge's click must not depend on anyone else's uptime.
     """
     series = daily_series(entries)
+    backfill_books(entries, series)
     if len(series) < 2:
         return (
             '<p class="empty">Two closes are needed before there is a line to draw.</p>'
@@ -940,8 +1000,14 @@ def _who(entry: dict) -> str:
     event = str(entry.get("event", ""))
     if event == "book.reviewed":
         changes = entry.get("payload", {}).get("changes") or []
+        # Nobody acted. The agent looked and found the book where it left it,
+        # and attributing that to the client put "client: nothing in the
+        # portfolio changed" on the page -- a line about something the client
+        # did not do.
+        if not changes:
+            return "agent"
         # A leg is keyed "XLF P56"; shares are keyed by the bare symbol.
-        if changes and all("contracts of" in str(c) for c in changes):
+        if all("contracts of" in str(c) for c in changes):
             return "agent"
         return "client"
     return "client" if event in _CLIENT_EVENTS else "agent"
