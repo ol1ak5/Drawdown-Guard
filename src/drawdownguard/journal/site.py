@@ -860,7 +860,9 @@ def _evolution(entries: list[dict]) -> str:
     # The drawing grows with the book. Two holdings today, four by Thursday
     # when the client sells one and buys another, and a fixed height would
     # simply crop the row that arrived last.
-    rows_top = 336.0
+    # Far enough below the date axis that the rows read as a separate
+    # statement rather than as a third tier of labels hanging off the line.
+    rows_top = 378.0
     tickers = len(
         {
             h["symbol"]
