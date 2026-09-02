@@ -857,7 +857,19 @@ def _evolution(entries: list[dict]) -> str:
         )
 
     labels = _events_by_date(entries)
-    width, height = 1000.0, 386.0
+    # The drawing grows with the book. Two holdings today, four by Thursday
+    # when the client sells one and buys another, and a fixed height would
+    # simply crop the row that arrived last.
+    rows_top = 336.0
+    tickers = len(
+        {
+            h["symbol"]
+            for row in series
+            for h in _exposed(row.get("holdings"))
+        }
+    )
+    width = 1000.0
+    height = rows_top + max(tickers, 1) * 30.0 + 6.0
     left, right, top, floor = 62.0, 24.0, 58.0, 214.0
     values = [row["equity"] for row in series]
     low, high = min(values), max(values)
@@ -919,9 +931,9 @@ def _evolution(entries: list[dict]) -> str:
 <polyline points="{line}" fill="none" stroke="#4ade80" stroke-width="2"
           stroke-linejoin="round" stroke-linecap="round"/>
 {marks}
-<text x="0" y="300" font-size="11" fill="#8b8b86"
+<text x="0" y="{rows_top - 22:.0f}" font-size="11" fill="#8b8b86"
       letter-spacing=".16em">HOW MUCH OF EACH HOLDING HAD A PUT BEHIND IT</text>
-{_coverage_track(series, points, left, width - right, 318.0)}
+{_coverage_track(series, points, left, width - right, rows_top)}
 </svg>
 </div>
 <p class="legend"><span class="c"><i></i>fully hedged</span>
