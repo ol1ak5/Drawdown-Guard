@@ -81,8 +81,21 @@ h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); line-height: .95; font-weight: 600;
      letter-spacing: -.04em; margin: 1.4rem 0 0; }
 .lede { color: var(--dim); max-width: 46rem; margin: 1.1rem 0 0;
         font-size: 1.02rem; }
-.stamp { color: var(--dim); font-size: .78rem; margin: 2rem 0 0;
-         max-width: 52rem; font-variant-numeric: tabular-nums; }
+/* Sits between the verdict and the figures it dates, because that is where a
+   reader is deciding whether to trust them. */
+.stamp { color: var(--dim); font-size: .8rem; margin: -.8rem 0 2.2rem;
+         max-width: 54rem; font-variant-numeric: tabular-nums; }
+/* The figures are white and large inside the sentence that explains them, so
+   the numbers still read first and the grammar carries the arithmetic. */
+.statement { color: var(--dim); font-size: 1.35rem; line-height: 1.65;
+             max-width: 46rem; margin: 0; letter-spacing: -.014em; }
+.statement b { color: var(--ink); font-weight: 600; font-size: 1.7rem;
+               letter-spacing: -.03em; font-variant-numeric: tabular-nums;
+               white-space: nowrap; }
+@media (max-width: 640px) {
+  .statement { font-size: 1.1rem; }
+  .statement b { font-size: 1.35rem; }
+}
 h2 { font-size: 10px; font-weight: 500; letter-spacing: .2em;
      text-transform: uppercase; color: var(--dim); margin: 0 0 1.8rem;
      display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; align-items: baseline; }
@@ -201,15 +214,12 @@ footer a { color: var(--ink); text-decoration: none;
 <p class="lede">An autonomous AI agent that keeps a portfolio within a
 client-defined downside limit, through an option overlay.</p>
 <p class="verdict held"><span class="dot"></span>Inside the promise</p>
-<div class="figures">
-<div class="fig"><span class="n">$4,656</span>
-<span class="k">Premium paid for protection</span></div>
-<div class="fig"><span class="n">$2,648</span>
-<span class="k">Worst case from here</span></div>
-<div class="fig"><span class="n">$2,694</span>
-<span class="k">Remaining headroom</span></div>
-</div>
-<p class="stamp">Measured on the 2026-09-01 23:28 UTC cycle, with XLF at 57.22, IWM at 290.50. Every figure here moves with the market.</p>
+<p class="stamp">Measured on the 2026-09-01 23:28 UTC cycle, with XLF at $57.22, IWM at $290.50. Every figure here moves with the market.</p>
+<p class="statement">Of the <b>$9,998</b> this client allowed
+themselves to lose, <b>$4,656</b> has gone on protection, and
+<b>$2,648</b> is the furthest the portfolio can still fall before the
+puts take over &mdash; today&rsquo;s prices down to their strikes.
+That leaves <b>$2,694</b> unused.</p>
 </header>
 
 <section class="reveal">
@@ -259,7 +269,7 @@ client-defined downside limit, through an option overlay.</p>
 
 <footer class="reveal">
 Rebuilt from the journal after every cycle &middot;
-2026-09-02 05:06 UTC &middot;
+2026-09-02 05:24 UTC &middot;
 Alpaca paper trading. This has never traded real money.
 </footer>
 

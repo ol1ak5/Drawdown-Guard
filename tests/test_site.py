@@ -123,20 +123,22 @@ def test_a_promise_that_holds_says_so_and_shows_the_headroom():
     page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
     assert "Inside the promise" in page
     assert "$2,666" in page, "9,998 less 4,656 of premium and 2,676 ahead"
-    assert "Remaining headroom" in page
+    assert "unused" in page
 
 
 def test_the_header_takes_the_limit_apart_rather_than_restating_it():
-    """4,656 of premium, 2,676 still ahead, 2,666 left -- and those sum to the
-    9,998 that "The promise" states once, further down.
+    """4,656 of premium, 2,676 still ahead, 2,666 left, all inside one
+    sentence that names the 9,998 they add up to.
 
-    A page showing the same number twice in two screens invites a reader to
-    look for the difference between them.
+    Side by side as three labelled figures they gave no hint that they add up
+    to anything, and the labels had to carry the explanation alone -- "worst
+    case from here" does not tell a reader it means the distance from today's
+    price down to the strike.
     """
     page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
     assert "$4,656" in page, "what the protection cost"
     assert "$2,676" in page and "$2,666" in page
-    assert page.count("$9,998") == 1, "stated once, under The promise"
+    assert "this client allowed" in page, "the arithmetic is the grammar"
 
 
 def test_a_broken_promise_is_labelled_as_broken():
@@ -169,7 +171,8 @@ def test_the_worst_case_is_the_whole_descent_not_a_named_shock():
     """
     page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
     assert "$2,676" in page, "the worst it can still do from here"
-    assert "Worst case from here" in page
+    assert "puts take over" in page
+    assert "today&rsquo;s prices down to their strikes" in page
 
 
 def test_a_page_built_before_any_cycle_has_run_says_so():
@@ -521,4 +524,4 @@ def test_the_header_says_which_cycle_it_is_reporting():
     page against a worked example concludes that one of them is wrong."""
     page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
     assert "Measured on the 2026-09-01 17:48 UTC cycle" in page
-    assert "XLF at 57.60" in page, "the spot the fall to strike is measured from"
+    assert "XLF at $57.60" in page, "the spot the fall to strike is measured from"

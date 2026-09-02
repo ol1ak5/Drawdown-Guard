@@ -152,8 +152,21 @@ h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); line-height: .95; font-weight: 600;
      letter-spacing: -.04em; margin: 1.4rem 0 0; }
 .lede { color: var(--dim); max-width: 46rem; margin: 1.1rem 0 0;
         font-size: 1.02rem; }
-.stamp { color: var(--dim); font-size: .78rem; margin: 2rem 0 0;
-         max-width: 52rem; font-variant-numeric: tabular-nums; }
+/* Sits between the verdict and the figures it dates, because that is where a
+   reader is deciding whether to trust them. */
+.stamp { color: var(--dim); font-size: .8rem; margin: -.8rem 0 2.2rem;
+         max-width: 54rem; font-variant-numeric: tabular-nums; }
+/* The figures are white and large inside the sentence that explains them, so
+   the numbers still read first and the grammar carries the arithmetic. */
+.statement { color: var(--dim); font-size: 1.35rem; line-height: 1.65;
+             max-width: 46rem; margin: 0; letter-spacing: -.014em; }
+.statement b { color: var(--ink); font-weight: 600; font-size: 1.7rem;
+               letter-spacing: -.03em; font-variant-numeric: tabular-nums;
+               white-space: nowrap; }
+@media (max-width: 640px) {
+  .statement { font-size: 1.1rem; }
+  .statement b { font-size: 1.35rem; }
+}
 h2 { font-size: 10px; font-weight: 500; letter-spacing: .2em;
      text-transform: uppercase; color: var(--dim); margin: 0 0 1.8rem;
      display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; align-items: baseline; }
@@ -386,7 +399,7 @@ def _measured_at(entry: dict) -> str:
     if not when:
         return ""
     prices = ", ".join(
-        f"{_cell(h['symbol'])} at {float(h['price']):,.2f}"
+        f"{_cell(h['symbol'])} at {_money(h['price'], 2)}"
         for h in (payload.get("holdings") or [])
         if h.get("shocked", True) and h.get("symbol") != "CASH"
     )
@@ -397,7 +410,7 @@ def _measured_at(entry: dict) -> str:
     )
 
 
-def _hero(stress: dict) -> str:
+def _hero(stress: dict, stamp: str = "") -> str:
     """Is the client inside the number they were given, and by how much.
 
     Three figures and one word. The word is the whole page: a reader who stops
@@ -429,20 +442,24 @@ def _hero(stress: dict) -> str:
         else '<p class="verdict open"><span class="dot"></span>'
         "Risk outside the promise</p>"
     )
-    last = (
-        ("Remaining headroom", _money(headroom))
+    # A sentence rather than three labelled figures.
+    #
+    # Side by side the numbers gave no hint that they add up to the limit, and
+    # the labels had to carry the whole explanation on their own -- "worst case
+    # from here" does not tell a reader it means the distance from today's
+    # price down to the strike. Written out, the arithmetic is in the grammar.
+    tail = (
+        f"That leaves <b>{_money(headroom)}</b> unused."
         if held
-        else ("Not covered", _money(uncovered))
+        else f"<b>{_money(uncovered)}</b> of it is not covered yet."
     )
     return f"""{verdict}
-<div class="figures">
-<div class="fig"><span class="n">{_money(premium)}</span>
-<span class="k">Premium paid for protection</span></div>
-<div class="fig"><span class="n">{_money(ahead)}</span>
-<span class="k">Worst case from here</span></div>
-<div class="fig"><span class="n">{last[1]}</span>
-<span class="k">{last[0]}</span></div>
-</div>"""
+{stamp}
+<p class="statement">Of the <b>{_money(budget)}</b> this client allowed
+themselves to lose, <b>{_money(premium)}</b> has gone on protection, and
+<b>{_money(ahead)}</b> is the furthest the portfolio can still fall before the
+puts take over &mdash; today&rsquo;s prices down to their strikes.
+{tail}</p>"""
 
 
 def _promise(stress: dict) -> str:
@@ -1162,8 +1179,7 @@ def render_site(
 <h1>Drawdown Guard</h1>
 <p class="lede">An autonomous AI agent that keeps a portfolio within a
 client-defined downside limit, through an option overlay.</p>
-{_hero(stress)}
-{_measured_at(reading)}
+{_hero(stress, _measured_at(reading))}
 </header>
 
 <section class="reveal">
