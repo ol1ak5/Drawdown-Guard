@@ -81,8 +81,14 @@ h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); line-height: .95; font-weight: 600;
      letter-spacing: -.04em; margin: 1.4rem 0 0; }
 .lede { color: var(--dim); max-width: 46rem; margin: 1.1rem 0 0;
         font-size: 1.02rem; }
+.stamp { color: var(--dim); font-size: .78rem; margin: 2rem 0 0;
+         max-width: 52rem; font-variant-numeric: tabular-nums; }
 h2 { font-size: 10px; font-weight: 500; letter-spacing: .2em;
-     text-transform: uppercase; color: var(--dim); margin: 0 0 1.8rem; }
+     text-transform: uppercase; color: var(--dim); margin: 0 0 1.8rem;
+     display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; align-items: baseline; }
+h2 .when { color: var(--faint, #56564f); letter-spacing: .12em;
+           font-variant-numeric: tabular-nums; text-transform: none;
+           font-size: 11px; }
 
 /* The bands. One argument per band, a hairline between, nothing boxed. */
 section { margin-top: 5rem; padding-top: 5rem; border-top: 1px solid var(--hair); }
@@ -203,6 +209,7 @@ client-defined downside limit, through an option overlay.</p>
 <div class="fig"><span class="n">$2,694</span>
 <span class="k">Remaining headroom</span></div>
 </div>
+<p class="stamp">Measured on the 2026-09-01 23:28 UTC cycle, with XLF at 57.22, IWM at 290.50. Every figure here moves with the market.</p>
 </header>
 
 <section class="reveal">
@@ -211,7 +218,7 @@ client-defined downside limit, through an option overlay.</p>
 </section>
 
 <section class="reveal">
-<h2>The portfolio</h2>
+<h2>The portfolio <span class="when">as at 2026-09-01 23:28 UTC</span></h2>
 <div class="scroll"><table>
 <thead><tr><th>Holding</th><th class="n">Shares</th><th class="n">Value</th>
 <th class="n">Weight</th><th>Protection</th></tr></thead>
@@ -219,7 +226,7 @@ client-defined downside limit, through an option overlay.</p>
 </section>
 
 <section class="reveal">
-<h2>Portfolio evolution</h2>
+<h2>Portfolio evolution <span class="when" style="color:#fbbf24">&minus;$1,553 (&minus;1.56%) since 2026-08-28</span></h2>
 <div class="chart">
 <svg viewBox="0 0 1000 340" role="img"
      aria-label="closing account value, one point per trading day">
@@ -231,11 +238,11 @@ client-defined downside limit, through an option overlay.</p>
 <polyline points="24.0,93.1 500.0,120.4 976.0,171.1" fill="none" stroke="#4ade80" stroke-width="2"
           stroke-linejoin="round" stroke-linecap="round"/>
 <circle cx="24.0" cy="93.1" r="5" fill="#0b0b0c" stroke="#4ade80" stroke-width="2"/><text x="24.0" y="75.1" text-anchor="middle" font-size="15" font-weight="500" fill="#f4f4f2" letter-spacing="-.3">$99,726</text><text x="24.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b86" letter-spacing=".08em">08 / 28</text><circle cx="500.0" cy="120.4" r="5" fill="#0b0b0c" stroke="#4ade80" stroke-width="2"/><text x="500.0" y="102.4" text-anchor="middle" font-size="15" font-weight="500" fill="#f4f4f2" letter-spacing="-.3">$99,183</text><text x="500.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b86" letter-spacing=".08em">08 / 31</text><text x="500.0" y="266.0" text-anchor="middle" font-size="11.5" font-weight="500" fill="#4ade80" letter-spacing=".03em">IWM hedged</text><circle cx="976.0" cy="171.1" r="5" fill="#4ade80" stroke="#4ade80" stroke-width="2"/><text x="976.0" y="153.1" text-anchor="middle" font-size="15" font-weight="500" fill="#f4f4f2" letter-spacing="-.3">$98,174</text><text x="976.0" y="244.0" text-anchor="middle" font-size="12" fill="#8b8b86" letter-spacing=".08em">09 / 01</text><text x="976.0" y="266.0" text-anchor="middle" font-size="11.5" font-weight="500" fill="#4ade80" letter-spacing=".03em">XLF hedged</text>
-<text x="24" y="308" font-size="11" fill="#8b8b86" letter-spacing=".16em">HOW MUCH OF THE PORTFOLIO HAD PROTECTION BEHIND IT</text><clipPath id="trackclip"><rect x="24.0" y="322.0" width="952.0" height="24.0" rx="12.0"/></clipPath><g clip-path="url(#trackclip)"><rect x="24.0" y="322.0" width="952.0" height="24.0" fill="#ffffff" opacity=".06"/><rect x="24.0" y="322.0" width="238.0" height="24.0" fill="#fbbf24" opacity=".85"/><rect x="262.0" y="322.0" width="476.0" height="24.0" fill="#fbbf24" opacity=".85"/><rect x="738.0" y="322.0" width="238.0" height="24.0" fill="#4ade80" opacity=".85"/><text x="749.0" y="338.0" font-size="12" font-weight="600" fill="#0b1220">100% hedged</text></g>
+<text x="24" y="308" font-size="11" fill="#8b8b86" letter-spacing=".16em">HOW MUCH OF THE PORTFOLIO HAD PROTECTION BEHIND IT</text><clipPath id="trackclip"><rect x="24.0" y="322.0" width="952.0" height="24.0" rx="12.0"/></clipPath><g clip-path="url(#trackclip)"><rect x="24.0" y="322.0" width="952.0" height="24.0" fill="#ffffff" opacity=".06"/><text x="143.0" y="338.0" text-anchor="middle" font-size="11" fill="#8b8b86">book not recorded</text><text x="500.0" y="338.0" text-anchor="middle" font-size="11" fill="#8b8b86">book not recorded</text><rect x="738.0" y="322.0" width="238.0" height="24.0" fill="#4ade80" opacity=".85"/><text x="749.0" y="338.0" font-size="12" font-weight="600" fill="#0b1220">100% hedged</text><rect x="262.0" y="322.0" width="1" height="24.0" fill="#050505" opacity=".55"/><rect x="738.0" y="322.0" width="1" height="24.0" fill="#050505" opacity=".55"/></g>
 </svg>
 </div>
 <p class="legend"><span class="c"><i></i>every exposed holding is hedged</span>
-<span class="u"><i></i>some of it is not</span></p>
+<span class="u"><i></i>partly hedged &mdash; the fill is how much</span></p>
 </section>
 
 <section id="decisions" class="reveal">
@@ -252,7 +259,7 @@ client-defined downside limit, through an option overlay.</p>
 
 <footer class="reveal">
 Rebuilt from the journal after every cycle &middot;
-2026-09-02 04:49 UTC &middot;
+2026-09-02 05:06 UTC &middot;
 Alpaca paper trading. This has never traded real money.
 </footer>
 

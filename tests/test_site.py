@@ -486,3 +486,39 @@ def test_build_site_runs_on_a_cycle_that_traded_nothing(tmp_path, monkeypatch):
     written = build_site(out_path=tmp_path / "out.html", journal_dir=journal)
     assert written.exists()
     assert "Drawdown Guard" in written.read_text()
+
+
+def test_the_track_says_how_much_of_the_book_is_hedged():
+    """A share of the portfolio by value, in the plainest terms the page has.
+
+    The fixture holds XLF and IWM and carries a put on XLF alone, which is 64%
+    of the exposure and not half of it.
+    """
+    assert "64% hedged" in _page(_week())
+
+
+def test_a_day_whose_book_was_not_recorded_is_not_drawn_as_a_full_bar():
+    """It used to be, in the verdict's colour, which put a solid amber bar
+    across the two days with the least protection of any -- a shape saying a
+    hundred percent of something on a day that meant nearly none."""
+    entries = [
+        _line("cycle.complete", {"equity": "98319.7"}, "2026-09-01T17:48:00Z"),
+        _line("mandate.stress", _stress(), "2026-09-01T17:48:00Z"),
+        _line("cycle.complete", {"equity": "99726.5"}, "2026-08-28T17:07:00Z"),
+        _line(
+            "mandate.stress",
+            _stress(holdings=None, legs=None, uncovered_risk=71887.0),
+            "2026-08-28T17:07:00Z",
+            severity="breach",
+        ),
+    ]
+    assert "book not recorded" in _page(entries)
+
+
+def test_the_header_says_which_cycle_it_is_reporting():
+    """Every figure moves with the market, and the same arithmetic an hour
+    earlier gives a different answer -- which is how a reader comparing the
+    page against a worked example concludes that one of them is wrong."""
+    page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
+    assert "Measured on the 2026-09-01 17:48 UTC cycle" in page
+    assert "XLF at 57.60" in page, "the spot the fall to strike is measured from"

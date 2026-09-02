@@ -152,8 +152,14 @@ h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); line-height: .95; font-weight: 600;
      letter-spacing: -.04em; margin: 1.4rem 0 0; }
 .lede { color: var(--dim); max-width: 46rem; margin: 1.1rem 0 0;
         font-size: 1.02rem; }
+.stamp { color: var(--dim); font-size: .78rem; margin: 2rem 0 0;
+         max-width: 52rem; font-variant-numeric: tabular-nums; }
 h2 { font-size: 10px; font-weight: 500; letter-spacing: .2em;
-     text-transform: uppercase; color: var(--dim); margin: 0 0 1.8rem; }
+     text-transform: uppercase; color: var(--dim); margin: 0 0 1.8rem;
+     display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; align-items: baseline; }
+h2 .when { color: var(--faint, #56564f); letter-spacing: .12em;
+           font-variant-numeric: tabular-nums; text-transform: none;
+           font-size: 11px; }
 
 /* The bands. One argument per band, a hairline between, nothing boxed. */
 section { margin-top: 5rem; padding-top: 5rem; border-top: 1px solid var(--hair); }
@@ -257,6 +263,19 @@ footer a { color: var(--ink); text-decoration: none;
 """
 
 
+def latest_entry(entries: list[dict], event: str) -> dict:
+    """The most recent whole entry for one event, or an empty dict.
+
+    `latest` returns the payload, which is what almost every caller wants. The
+    header wants the timestamp too: a page whose figures move every half hour
+    has to say which half hour it is reporting.
+    """
+    for entry in entries:
+        if entry.get("event") == event:
+            return entry
+    return {}
+
+
 def latest(entries: list[dict], event: str) -> dict:
     """The most recent payload for one event, or an empty dict.
 
@@ -320,6 +339,62 @@ def entry_from_journal(line: dict) -> dict:
 
 
 # --- the verdict ------------------------------------------------------------
+
+
+def _when(entry: dict) -> str:
+    """The cycle a section is reporting, for the heading it sits in.
+
+    A portfolio table with no date is a claim about now, and this page is a
+    file regenerated on a schedule -- somebody reading it on Thursday should
+    not have to guess whether they are looking at Thursday.
+    """
+    when = str(entry.get("ts", ""))[:16].replace("T", " ")
+    return f'<span class="when">as at {_cell(when)} UTC</span>' if when else ""
+
+
+def _movement(series: list[dict]) -> str:
+    """What the account has done since the first close on the chart.
+
+    The line already shows the direction, and a reader still wants the number:
+    "down how much" is the first question anyone asks of a falling line, and
+    reading it off two labelled points is arithmetic the page can do for them.
+    """
+    if len(series) < 2:
+        return ""
+    first, last = series[0]["equity"], series[-1]["equity"]
+    change = last - first
+    pct = (change / first * 100) if first else 0.0
+    sign = "+" if change > 0 else "&minus;"
+    colour = "#4ade80" if change >= 0 else "#fbbf24"
+    return (
+        f'<span class="when" style="color:{colour}">{sign}{_money(abs(change))} '
+        f"({sign}{abs(pct):.2f}%) since {_cell(series[0]['date'])}</span>"
+    )
+
+
+def _measured_at(entry: dict) -> str:
+    """When the figures above were taken, and off which prices.
+
+    Every number in the header moves with the market, and the same arithmetic
+    written down an hour earlier gives a different answer -- which is exactly
+    how a reader comparing this page against a worked example in the README
+    concludes that one of them is wrong. Naming the cycle and the spots makes
+    each figure reproducible by hand.
+    """
+    payload = entry.get("payload") or {}
+    when = str(entry.get("ts", ""))[:16].replace("T", " ")
+    if not when:
+        return ""
+    prices = ", ".join(
+        f"{_cell(h['symbol'])} at {float(h['price']):,.2f}"
+        for h in (payload.get("holdings") or [])
+        if h.get("shocked", True) and h.get("symbol") != "CASH"
+    )
+    tail = f", with {prices}" if prices else ""
+    return (
+        f'<p class="stamp">Measured on the {_cell(when)} UTC cycle{tail}. '
+        f"Every figure here moves with the market.</p>"
+    )
 
 
 def _hero(stress: dict) -> str:
@@ -610,23 +685,40 @@ def _coverage_track(
         start = left if i == 0 else (points[i - 1][0] + points[i][0]) / 2
         end = right if i == len(series) - 1 else (points[i][0] + points[i + 1][0]) / 2
         share = hedged_share(row)
-        full = share is not None and share >= 0.999
-        colour = "#4ade80" if full else "#fbbf24"
-        # An unrecorded book still gets its day drawn, in the colour the
-        # verdict gives it. Leaving a gap would read as a day nothing ran.
-        width = max((end - start) * (1.0 if share is None else share), 3.0)
         if share is None:
-            colour = "#4ade80" if promise_held(row) else "#fbbf24"
-        out += (
-            f'<rect x="{start:.1f}" y="{y:.1f}" width="{width:.1f}" '
-            f'height="{height:.1f}" fill="{colour}" opacity=".85"/>'
-        )
-        if share is not None:
+            # The book for that day was never written down, so the share
+            # cannot be computed. It used to be drawn full width in the
+            # verdict's colour, which put a solid amber bar across the two
+            # days that had the least protection of any -- the shape said a
+            # hundred percent of something while the day meant nearly none.
             out += (
-                f'<text x="{start + 11:.1f}" y="{y + height / 2 + 4:.1f}" '
-                f'font-size="12" font-weight="600" fill="#0b1220">'
-                f"{share * 100:.0f}% hedged</text>"
+                f'<text x="{(start + end) / 2:.1f}" '
+                f'y="{y + height / 2 + 4:.1f}" text-anchor="middle" '
+                f'font-size="11" fill="#8b8b86">book not recorded</text>'
             )
+            continue
+        full = share >= 0.999
+        colour = "#4ade80" if full else "#fbbf24"
+        # Filled across that day's own span, so a partly hedged morning is a
+        # partly filled morning. The track behind it is the whole of the day,
+        # which is what makes the fraction readable.
+        out += (
+            f'<rect x="{start:.1f}" y="{y:.1f}" '
+            f'width="{max((end - start) * share, 2.0):.1f}" '
+            f'height="{height:.1f}" fill="{colour}" opacity=".85"/>'
+            f'<text x="{start + 11:.1f}" y="{y + height / 2 + 4:.1f}" '
+            f'font-size="12" font-weight="600" '
+            f'fill="{"#0b1220" if share > 0.25 else "#8b8b86"}">'
+            f"{share * 100:.0f}% hedged</text>"
+        )
+    # A hairline where one day ends and the next begins. Without it three
+    # fills of different lengths read as one bar with two colour changes.
+    ticks = "".join(
+        f'<rect x="{(points[i - 1][0] + points[i][0]) / 2:.1f}" y="{y:.1f}" '
+        f'width="1" height="{height:.1f}" fill="#050505" opacity=".55"/>'
+        for i, _ in measured
+        if i > 0
+    )
     first = left if measured[0][0] == 0 else 0.0
     return (
         f'<text x="{first:.0f}" y="{y - 14:.0f}" font-size="11" fill="#8b8b86" '
@@ -637,7 +729,7 @@ def _coverage_track(
         f'rx="{height / 2:.1f}"/></clipPath>'
         f'<g clip-path="url(#trackclip)">'
         f'<rect x="{first:.1f}" y="{y:.1f}" width="{right - first:.1f}" '
-        f'height="{height:.1f}" fill="#ffffff" opacity=".06"/>{out}</g>'
+        f'height="{height:.1f}" fill="#ffffff" opacity=".06"/>{out}{ticks}</g>'
     )
 
 
@@ -730,7 +822,7 @@ def _evolution(entries: list[dict]) -> str:
 </svg>
 </div>
 <p class="legend"><span class="c"><i></i>every exposed holding is hedged</span>
-<span class="u"><i></i>some of it is not</span></p>"""
+<span class="u"><i></i>partly hedged &mdash; the fill is how much</span></p>"""
 
 
 # --- what was decided -------------------------------------------------------
@@ -1051,7 +1143,8 @@ def render_site(
     stays because `build_site` is the only caller and changing both at once
     would hide the reason in a diff.
     """
-    stress = latest(entries, "mandate.stress")
+    reading = latest_entry(entries, "mandate.stress")
+    stress = reading.get("payload") or {}
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -1070,6 +1163,7 @@ def render_site(
 <p class="lede">An autonomous AI agent that keeps a portfolio within a
 client-defined downside limit, through an option overlay.</p>
 {_hero(stress)}
+{_measured_at(reading)}
 </header>
 
 <section class="reveal">
@@ -1078,12 +1172,12 @@ client-defined downside limit, through an option overlay.</p>
 </section>
 
 <section class="reveal">
-<h2>The portfolio</h2>
+<h2>The portfolio {_when(reading)}</h2>
 <div class="scroll">{_portfolio(stress)}</div>
 </section>
 
 <section class="reveal">
-<h2>Portfolio evolution</h2>
+<h2>Portfolio evolution {_movement(daily_series(entries))}</h2>
 {_evolution(entries)}
 </section>
 
