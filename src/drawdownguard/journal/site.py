@@ -397,10 +397,15 @@ def _measured_at(entry: dict) -> str:
     when = str(entry.get("ts", ""))[:16].replace("T", " ")
     if not when:
         return ""
+    # A holding with no price contributes nothing rather than raising. This
+    # page has to render from whatever the journal happens to contain,
+    # including entries written by a version of the program that recorded one
+    # field fewer, and a status page that throws is worse than one with a
+    # shorter sentence in it.
     prices = ", ".join(
         f"{_cell(h['symbol'])} at {_money(h['price'], 2)}"
         for h in (payload.get("holdings") or [])
-        if h.get("shocked", True) and h.get("symbol") != "CASH"
+        if h.get("shocked", True) and h.get("symbol") != "CASH" and h.get("price")
     )
     tail = f", with {prices}" if prices else ""
     return (
@@ -864,11 +869,7 @@ def _evolution(entries: list[dict]) -> str:
     # statement rather than as a third tier of labels hanging off the line.
     rows_top = 452.0
     tickers = len(
-        {
-            h["symbol"]
-            for row in series
-            for h in _exposed(row.get("holdings"))
-        }
+        {h["symbol"] for row in series for h in _exposed(row.get("holdings"))}
     )
     width = 1000.0
     height = rows_top + max(tickers, 1) * 30.0 + 6.0
@@ -1268,8 +1269,18 @@ def render_site(
     stays because `build_site` is the only caller and changing both at once
     would hide the reason in a diff.
     """
+    # The measurement, and the book as it stood once the cycle's orders
+    # filled. `mandate.stress` is taken before the agent acts -- which is the
+    # argument of the cycle -- so on a day it traded, the holdings and the
+    # premium in it describe the account an hour ago. `book.settled` carries
+    # what the client owns now, and only exists on the cycles that changed
+    # something.
     reading = latest_entry(entries, "mandate.stress")
-    stress = reading.get("payload") or {}
+    stress = dict(reading.get("payload") or {})
+    settled = latest_entry(entries, "book.settled")
+    if settled and settled.get("ts", "") >= reading.get("ts", ""):
+        stress.update(settled.get("payload") or {})
+        reading = settled
     return f"""<!doctype html>
 <html lang="en">
 <head>

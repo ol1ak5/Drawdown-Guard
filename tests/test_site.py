@@ -620,3 +620,60 @@ def test_the_agent_looking_and_finding_nothing_is_not_the_client_acting():
     page = _page(entries)
     assert 'data-who="agent"' in page
     assert 'data-who="client"' not in page
+
+
+def test_the_page_shows_the_book_the_client_owns_after_the_cycle_traded():
+    """`mandate.stress` is measured before the agent acts, which is the whole
+    argument of the cycle -- and it means the published book describes the
+    account as it stood before the orders went.
+
+    On 2026-09-02 the agent sold nine redundant XLF puts at 19:47 and the page
+    went on showing them all evening, because the next measurement was not due
+    until the following morning.
+    """
+    entries = [
+        _line(
+            "book.settled",
+            {
+                "holdings": [
+                    {
+                        "symbol": "IWM",
+                        "shares": 100,
+                        "price": 294.12,
+                        "value": 29412.0,
+                        "shocked": True,
+                    }
+                ],
+                "legs": [
+                    {
+                        "symbol": "IWM",
+                        "right": "P",
+                        "strike": "275",
+                        "contracts": 1,
+                        "premium": "15.06",
+                    }
+                ],
+                "premium_paid": 1506.0,
+            },
+            "2026-09-02T19:47:00Z",
+        ),
+        _line("cycle.complete", {"equity": "98693"}, "2026-09-02T19:42:00Z"),
+        _line("mandate.stress", _stress(), "2026-09-02T19:42:00Z"),
+    ]
+    page = _page(entries)
+    assert "$1,506" in page, "the premium left once the XLF puts were sold"
+    assert "$4,656" not in page, "not the premium from before the sale"
+
+
+def test_a_measurement_newer_than_the_settlement_still_wins():
+    """Tomorrow's reading is not overridden by yesterday's settlement."""
+    entries = [
+        _line("cycle.complete", {"equity": "98693"}, "2026-09-03T13:45:00Z"),
+        _line("mandate.stress", _stress(), "2026-09-03T13:45:00Z"),
+        _line(
+            "book.settled",
+            {"holdings": [], "legs": [], "premium_paid": 1506.0},
+            "2026-09-02T19:47:00Z",
+        ),
+    ]
+    assert "$4,656" in _page(entries)
