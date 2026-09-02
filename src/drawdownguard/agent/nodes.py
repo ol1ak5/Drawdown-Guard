@@ -593,6 +593,7 @@ async def protect_node(state: GuardState) -> GuardState:
     wanted = {symbol for symbol, _, _ in sleeves(book.holdings, remaining)}
     wanted |= {leg.symbol for leg in book.legs}
     chains: dict[str, dict[str, list[dict]]] = {}
+    offers: dict[str, dict[str, list[dict]]] = {}
     for symbol in sorted(wanted):
         try:
             puts = await load_chain(symbol, "P", min_dte, max_dte)
@@ -614,6 +615,19 @@ async def protect_node(state: GuardState) -> GuardState:
             "P": liquid(puts, gate_limits),
             "C": liquid(calls, gate_limits),
         }
+        # The whole chain, unfiltered, kept for closing what is already held.
+        #
+        # The liquidity filter exists to stop the solver *buying* a strike
+        # nobody trades. Applying it to an exit locks the client into any
+        # position that has since become illiquid -- which is exactly what
+        # happened on 2026-09-02: the client sold their XLF shares, the nine
+        # puts standing behind them became redundant, and the 56 strike was one
+        # of the sixty-six that today's filter rejected. `release` said hand
+        # them back and nothing could be built to do it.
+        #
+        # Buying an illiquid contract is a choice. Being unable to leave one is
+        # a trap, and it is not the gate's job to set it.
+        offers[symbol] = {"P": puts, "C": calls}
         writer.write(
             "protection.chain_filtered",
             {
@@ -643,7 +657,7 @@ async def protect_node(state: GuardState) -> GuardState:
     legs = list(book.legs)
     release_orders: list = []
     if given:
-        release_orders = closing_orders(given.legs, chains)
+        release_orders = closing_orders(given.legs, offers)
         applied = len(release_orders) == len({leg.symbol for leg in given.legs})
         if applied:
             legs = list(given.kept)

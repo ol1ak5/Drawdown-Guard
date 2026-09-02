@@ -510,9 +510,18 @@ def closing_orders(
     in the chain already loaded for the cycle rather than re-read, so the order
     is priced off the same quote the plan was.
 
-    A leg whose expiry is unknown, or whose contract is not on today's tradable
-    chain, cannot be closed here. That is reported rather than approximated:
-    an order sent at a guessed price is worse than one not sent.
+    A leg whose expiry is unknown, or whose contract is not on today's chain at
+    all, cannot be closed here. That is reported rather than approximated: an
+    order sent at a guessed price is worse than one not sent.
+
+    `chains` must be the *unfiltered* chain. The liquidity filter exists to
+    stop the solver buying a strike nobody trades, and applying it here locks
+    the client into any position that has since become illiquid. On 2026-09-02
+    the client sold their XLF shares and the nine puts behind them became
+    redundant; the 56 strike was one of the sixty-six the filter rejected that
+    morning, so `release` said hand them back and nothing could be built to do
+    it. Buying an illiquid contract is a choice. Being unable to leave one is a
+    trap.
     """
     out: list[ProposedOrder] = []
     for leg in legs:

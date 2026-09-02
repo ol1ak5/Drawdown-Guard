@@ -1074,3 +1074,56 @@ def test_the_budget_is_charged_what_the_order_will_actually_pay():
     row = next(r for r in rows if Decimal(str(r["strike"])) == solved[0])
     assert Decimal(str(price)) == crossing_price(row, buying=True)
     assert price > row["ask"], "the reported price includes the room"
+
+
+def test_a_position_can_be_closed_even_when_the_filter_would_refuse_to_buy_it():
+    """The filter stops the solver buying a strike nobody trades. Applying it
+    to an exit locks the client into any position that has since become
+    illiquid -- which happened on 2026-09-02, when the client sold their XLF
+    shares and the 56 strike behind them was one of the sixty-six the filter
+    rejected that morning."""
+    from datetime import date
+
+    from drawdownguard.risk.remedy import closing_orders
+
+    leg = OptionLeg(
+        symbol="XLF",
+        right="P",
+        strike=Decimal("56"),
+        contracts=9,
+        premium=Decimal("3.50"),
+        spot=57.22,
+        expiry=date(2027, 12, 17),
+    )
+    thin = {
+        "strike": 56.0,
+        "expiry": date(2027, 12, 17),
+        "bid": 3.10,
+        "ask": 3.90,
+        "implied_vol": 0.21,
+        "open_interest": 12,
+        "delta": -0.33,
+        "right": "P",
+    }
+    orders = closing_orders([leg], {"XLF": {"P": [thin]}})
+    assert len(orders) == 1
+    assert orders[0].contracts == -9, "closing a long position is a sale"
+
+
+def test_a_contract_missing_from_the_chain_is_still_refused():
+    """Reported rather than approximated: an order at a guessed price is worse
+    than one not sent."""
+    from datetime import date
+
+    from drawdownguard.risk.remedy import closing_orders
+
+    leg = OptionLeg(
+        symbol="XLF",
+        right="P",
+        strike=Decimal("56"),
+        contracts=9,
+        premium=Decimal("3.50"),
+        spot=57.22,
+        expiry=date(2027, 12, 17),
+    )
+    assert closing_orders([leg], {"XLF": {"P": []}}) == []
