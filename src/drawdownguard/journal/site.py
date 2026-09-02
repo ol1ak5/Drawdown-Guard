@@ -862,7 +862,7 @@ def _evolution(entries: list[dict]) -> str:
     # simply crop the row that arrived last.
     # Far enough below the date axis that the rows read as a separate
     # statement rather than as a third tier of labels hanging off the line.
-    rows_top = 378.0
+    rows_top = 412.0
     tickers = len(
         {
             h["symbol"]
@@ -933,7 +933,7 @@ def _evolution(entries: list[dict]) -> str:
 <polyline points="{line}" fill="none" stroke="#4ade80" stroke-width="2"
           stroke-linejoin="round" stroke-linecap="round"/>
 {marks}
-<text x="0" y="{rows_top - 24:.0f}" font-size="13" fill="#8b8b86"
+<text x="0" y="{rows_top - 38:.0f}" font-size="13" fill="#8b8b86"
       letter-spacing=".14em">HOW MUCH OF EACH HOLDING HAD A PUT BEHIND IT</text>
 {_coverage_track(series, points, left, width - right, rows_top)}
 </svg>
