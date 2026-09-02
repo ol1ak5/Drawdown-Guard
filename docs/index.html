@@ -138,8 +138,12 @@ tbody tr:last-child td { color: var(--ink); }
   border-radius: 2px; margin-right: .5rem; }
 .legend .c i { background: var(--ok); } .legend .u i { background: var(--alarm); }
 
-.controls { display: flex; gap: .6rem 1rem; align-items: center; flex-wrap: wrap;
-            margin: 0 0 1.6rem; font-size: .82rem; color: var(--dim); }
+/* Each label and its control are one item, so a wrap never leaves "Verdict"
+   on one line and its list on the next. */
+.controls { display: flex; gap: .8rem 1.4rem; align-items: center;
+            flex-wrap: wrap; margin: 0 0 1.6rem; font-size: .82rem;
+            color: var(--dim); }
+.controls .field { display: inline-flex; align-items: center; gap: .5rem; }
 .controls label { letter-spacing: .16em; text-transform: uppercase;
                   font-size: 10px; }
 .controls input, .controls select {
@@ -236,7 +240,7 @@ client-defined downside limit, through an option overlay.</p>
 
 <section id="decisions" class="reveal">
 <h2>Decisions</h2>
-<div class="controls"><label for="f-date">Date</label><select id="f-date"><option value="all">all</option><option value="2026-09-01">2026-09-01</option><option value="2026-08-31">2026-08-31</option><option value="2026-08-28">2026-08-28</option></select><label for="f-symbol">Instrument</label><input id="f-symbol" type="text" size="8" autocomplete="off" title="filter by symbol, for example XLF"><label for="f-who">Who</label><select id="f-who"><option value="all">all</option><option value="agent">agent</option><option value="client">client</option></select><label for="f-verdict">Verdict</label><select id="f-verdict"><option value="all">all</option><option value="approved">approved</option><option value="rejected">rejected</option><option value="breach">breach</option><option value="defect">defect</option></select><span class="count">showing <span id="f-count"></span></span></div>
+<div class="controls"><span class="field"><label for="f-date">Date</label><select id="f-date"><option value="all">all</option><option value="2026-09-01">2026-09-01</option><option value="2026-08-31">2026-08-31</option><option value="2026-08-28">2026-08-28</option></select></span><span class="field"><label for="f-symbol">Instrument</label><input id="f-symbol" type="text" size="8" autocomplete="off" title="filter by symbol, for example XLF"></span><span class="field"><label for="f-who">Who</label><select id="f-who"><option value="all">all</option><option value="agent">agent</option><option value="client">client</option></select></span><span class="field"><label for="f-verdict">Verdict</label><select id="f-verdict"><option value="all">all</option><option value="approved">approved</option><option value="rejected">rejected</option><option value="breach">breach</option><option value="defect">defect</option></select></span><span class="count">showing <span id="f-count"></span></span></div>
 <div class="scroll">
 <table>
 <thead><tr><th>When</th><th>Who</th><th>Instrument</th><th>What happened</th>
@@ -248,7 +252,7 @@ client-defined downside limit, through an option overlay.</p>
 
 <footer class="reveal">
 Rebuilt from the journal after every cycle &middot;
-2026-09-01 23:29 UTC &middot;
+2026-09-02 04:49 UTC &middot;
 Alpaca paper trading. This has never traded real money.
 </footer>
 

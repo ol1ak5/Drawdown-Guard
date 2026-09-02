@@ -276,8 +276,6 @@ On Day 3, the new rule worked and the book was fully hedged:
 | IWM 275 put ×1 | n.a. | ✅ filled on Day 2 at 15.06 |
 | XLF **56** put ×9 | 3.53 | ✅ filled at **3.50** |
 
-The XLF strike is 56, not the 54 that went unfilled. The agent did not resurrect the old order - it re-measured the risk against Day 3's chain, and that day's budget reached a strike closer to the market. A higher strike is a higher floor, so the day the order failed ended up buying the client better protection than the day it was priced.
-
 **7️⃣ What does the protection actually do?** 
 
 The answer is below. Without protection, losses continue to grow as the market falls. With the options in place, the loss reaches a floor.

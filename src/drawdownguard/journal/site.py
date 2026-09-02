@@ -209,8 +209,12 @@ tbody tr:last-child td { color: var(--ink); }
   border-radius: 2px; margin-right: .5rem; }
 .legend .c i { background: var(--ok); } .legend .u i { background: var(--alarm); }
 
-.controls { display: flex; gap: .6rem 1rem; align-items: center; flex-wrap: wrap;
-            margin: 0 0 1.6rem; font-size: .82rem; color: var(--dim); }
+/* Each label and its control are one item, so a wrap never leaves "Verdict"
+   on one line and its list on the next. */
+.controls { display: flex; gap: .8rem 1.4rem; align-items: center;
+            flex-wrap: wrap; margin: 0 0 1.6rem; font-size: .82rem;
+            color: var(--dim); }
+.controls .field { display: inline-flex; align-items: center; gap: .5rem; }
 .controls label { letter-spacing: .16em; text-transform: uppercase;
                   font-size: 10px; }
 .controls input, .controls select {
@@ -930,27 +934,28 @@ def _controls(entries: list[dict]) -> str:
     options = "".join(f'<option value="{_cell(d)}">{_cell(d)}</option>' for d in dates)
     return (
         '<div class="controls">'
-        '<label for="f-date">Date</label>'
+        '<span class="field"><label for="f-date">Date</label>'
         f'<select id="f-date"><option value="all">all</option>{options}</select>'
-        '<label for="f-symbol">Instrument</label>'
+        "</span>"
+        '<span class="field"><label for="f-symbol">Instrument</label>'
         # Deliberately no `placeholder` attribute. The word contains "older",
         # which collides with the newest-first ordering test -- the substring is
         # in the attribute name, so no choice of value avoids it. The label and
         # the title say everything a placeholder would.
         '<input id="f-symbol" type="text" size="8" autocomplete="off" '
-        'title="filter by symbol, for example XLF">'
-        '<label for="f-who">Who</label>'
+        'title="filter by symbol, for example XLF"></span>'
+        '<span class="field"><label for="f-who">Who</label>'
         '<select id="f-who"><option value="all">all</option>'
         '<option value="agent">agent</option>'
-        '<option value="client">client</option></select>'
-        '<label for="f-verdict">Verdict</label>'
+        '<option value="client">client</option></select></span>'
+        '<span class="field"><label for="f-verdict">Verdict</label>'
         '<select id="f-verdict">'
         '<option value="all">all</option>'
         '<option value="approved">approved</option>'
         '<option value="rejected">rejected</option>'
         '<option value="breach">breach</option>'
         '<option value="defect">defect</option>'
-        "</select>"
+        "</select></span>"
         '<span class="count">showing <span id="f-count"></span></span>'
         "</div>"
     )
