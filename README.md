@@ -68,18 +68,16 @@ The portfolio is intentionally not static. A client who never touches their allo
 
 ### What actually happened, day by day
 
-Every row below is read off the journal, not off the plan. A plan says what was supposed to happen; this says what did.
-
-| Day | Who | What | Result |
-|---|---|---|---|
-| Aug 28 | Client | Portfolio opened: 100 IWM, 900 XLF, 100 BIL | The promise starts here: $99,978 reference, $9,998 budget |
-| Aug 28 | Agent | Priced protection, sent limit orders at the ask | Both expired unfilled. The ask moved before the cycle finished |
-| Aug 31 | Agent | Re-priced on the day's chain, limit reaching a quarter of the spread past the offer | IWM put filled - 1 contract at $15.06 |
-| Sep 1 | Agent | Same for XLF, on a new strike closer to spot than the failed one | XLF put filled. 9 contracts at $3.50. Book fully hedged |
-| Sep 2 | Client | Sold the entire XLF position, 900 shares | Nine puts now stood behind a position that no longer existed |
-| Sep 2 | Agent | Recognised the hedge as redundant and sold it back | 9 contracts released at $3.15. The first release this project has executed |
-| Sep 3 | Client | Bought 100 shares of AAPL | New exposure, uninsured |
-| Sep 3 | Agent | Priced and bought a put on AAPL in the same cycle | 1 contract at $26.55, struck at 310 |
+| Day | Date | Who | What | Result |
+|---|---|---|---|---|
+| Day 1 | Aug 28 | Client | Portfolio opened: 100 IWM, 900 XLF, 100 BIL | The promise starts here: $99,978 reference, $9,998 budget |
+| Day 1 | Aug 28 | Agent | Priced protection, sent limit orders at the ask | Both expired unfilled. The ask moved before the cycle finished |
+| Day 2 | Aug 31 | Agent | Re-priced on the day's chain, limit reaching a quarter of the spread past the offer | IWM put filled - 1 contract at $15.06 |
+| Day 3 | Sep 1 | Agent | Same for XLF, on a new strike closer to spot than the failed one | XLF put filled. 9 contracts at $3.50. Book fully hedged |
+| Day 4 | Sep 2 | Client | Sold the entire XLF position, 900 shares | Nine puts now stood behind a position that no longer existed |
+| Day 4 | Sep 2 | Agent | Recognised the hedge as redundant and sold it back | 9 contracts released at $3.15. The first release this project has executed |
+| Day 5 | Sep 3 | Client | Bought 100 shares of AAPL | New exposure, uninsured |
+| Day 5 | Sep 3 | Agent | Priced and bought a put on AAPL in the same cycle | 1 contract at $26.55, struck at 310 |
 
 ## 🔄 The Agent Loop
 
@@ -374,8 +372,6 @@ touch HALT && git add HALT && git commit -m "halt" && git push
 
 ## 🔧 What We Improved during the Hackthon Week
 
-Every one of these was found in the journal, not in a stack trace. That's the claim worth making: an autonomous agent trading unattended does not get to fail loudly, so the only defence is a record detailed enough to be read against reality.
-
 | When | What we noticed | How we found out | The improvement |
 |---|---|---|---|
 | Aug 28 | Limits set exactly at the ask never filled | Journal said `submitted: 2`; the account held nothing | The limit reaches past the offer by a fraction of the spread |
@@ -390,7 +386,7 @@ Every one of these was found in the journal, not in a stack trace. That's the cl
 
 ## 🏁 Main Tracks
 
-**Track 03 — Hedging & Risk Protection Agents**
+**Track 03 - Hedging & Risk Protection Agents**
 
 Built directly against the four agent types this track names:
 
@@ -441,7 +437,6 @@ src/drawdownguard/
   execution/   order submission and broker reconciliation
   mcp/         the Alpaca MCP client and its toolsets
   journal/     the writer, and the status page built from the record
-
   config/      risk.yaml, the permanent limits; mandates.yaml, the promises
                scenario.yaml, the client's week, committed before it runs
   scripts/     run_cycle, healthcheck, build_portfolio, build_site, client_action
