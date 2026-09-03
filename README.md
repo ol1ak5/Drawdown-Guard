@@ -72,39 +72,46 @@ Read off the journal, not off the plan. 👤 is the client moving their own mone
 
 ```mermaid
 flowchart LR
-    D1["Aug 28"] --> D2["Aug 31"] --> D3["Sep 1"] --> D4["Sep 2"] --> D5["Sep 3"]
+    classDef day fill:#3f3459,stroke:#241f38,color:#efeaf7
+    classDef client fill:#7d6ba8,stroke:#544674,color:#faf8ff
+    classDef agent fill:#8b5cf6,stroke:#5b3fa0,color:#ffffff
 
-    D1 -.-> C1["👤 Portfolio opened<br/>100 IWM · 900 XLF · 100 BIL"]
-    D1 -.-> A1["🤖 Orders sent at the ask<br/>both expired unfilled"]
+    subgraph D1["Aug 28"]
+        direction TB
+        C1["👤 Portfolio opened<br/>100 IWM · 900 XLF · 100 BIL"]
+        A1["🤖 Orders sent at the ask<br/>both expired unfilled"]
+    end
 
-    D2 -.-> A2["🤖 Re-priced, wider limit<br/>IWM put filled at $15.06"]
+    subgraph D2["Aug 31"]
+        direction TB
+        A2["🤖 Re-priced, wider limit<br/>IWM put filled at $15.06"]
+    end
 
-    D3 -.-> A3["🤖 Re-priced, new strike<br/>XLF put filled at $3.50<br/>book fully hedged"]
+    subgraph D3["Sep 1"]
+        direction TB
+        A3["🤖 Re-priced, new strike<br/>XLF put filled at $3.50<br/>book fully hedged"]
+    end
 
-    D4 -.-> C4["👤 Sold all 900 XLF"]
-    D4 -.-> A4["🤖 9 puts recognised as redundant<br/>released at $3.15"]
+    subgraph D4["Sep 2"]
+        direction TB
+        C4["👤 Sold all 900 XLF"]
+        A4["🤖 9 puts recognised as redundant<br/>released at $3.15"]
+    end
 
-    D5 -.-> C5["👤 Bought 100 AAPL"]
-    D5 -.-> A5["🤖 AAPL hedged same cycle<br/>put bought at $26.55"]
+    subgraph D5["Sep 3"]
+        direction TB
+        C5["👤 Bought 100 AAPL"]
+        A5["🤖 AAPL hedged same cycle<br/>put bought at $26.55"]
+    end
 
-    style D1 fill:#4b4160,stroke:#2f2745,color:#f4f1fa
-    style D2 fill:#4b4160,stroke:#2f2745,color:#f4f1fa
-    style D3 fill:#4b4160,stroke:#2f2745,color:#f4f1fa
-    style D4 fill:#4b4160,stroke:#2f2745,color:#f4f1fa
-    style D5 fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    D1 --> D2 --> D3 --> D4 --> D5
 
-    style C1 fill:#6b4f1f,stroke:#4a3714,color:#fbeed2
-    style C4 fill:#6b4f1f,stroke:#4a3714,color:#fbeed2
-    style C5 fill:#6b4f1f,stroke:#4a3714,color:#fbeed2
-
-    style A1 fill:#1f5c46,stroke:#123c2d,color:#d8f5e8
-    style A2 fill:#1f5c46,stroke:#123c2d,color:#d8f5e8
-    style A3 fill:#1f5c46,stroke:#123c2d,color:#d8f5e8
-    style A4 fill:#1f5c46,stroke:#123c2d,color:#d8f5e8
-    style A5 fill:#1f5c46,stroke:#123c2d,color:#d8f5e8
+    class D1,D2,D3,D4,D5 day
+    class C1,C4,C5 client
+    class A1,A2,A3,A4,A5 agent
 ```
 
-The client's two trades - selling XLF on Sep 2, buying AAPL on Sep 3 - are the only inputs anyone gave the agent all week. Every green box is something the code decided on its own: which strike, how many contracts, when to let a hedge go.
+The client's two trades - selling XLF on Sep 2, buying AAPL on Sep 3 - are the only inputs anyone gave the agent all week. Every bright violet box is something the code decided on its own: which strike, how many contracts, when to let a hedge go.
 
 ## 🔄 The Agent Loop
 
@@ -138,22 +145,22 @@ flowchart TD
 
     JOURNAL["7️⃣ JOURNAL<br/>LLM · THE CLIENT'S NOTE"] --> END([Commit and stop])
 
-    style CRON fill:#4b4160,stroke:#2f2745,color:#f4f1fa
-    style HALT fill:#4b4160,stroke:#2f2745,color:#f4f1fa
-    style RECONCILE fill:#4b4160,stroke:#2f2745,color:#f4f1fa
-    style KILL fill:#4b4160,stroke:#2f2745,color:#f4f1fa
-    style MANDATE fill:#4b4160,stroke:#2f2745,color:#f4f1fa
-    style GAP fill:#4b4160,stroke:#2f2745,color:#f4f1fa
-    style PROTECT fill:#4b4160,stroke:#2f2745,color:#f4f1fa
-    style ELIGIBLE fill:#4b4160,stroke:#2f2745,color:#f4f1fa
-    style GATE fill:#4b4160,stroke:#2f2745,color:#f4f1fa
-    style EXECUTE fill:#4b4160,stroke:#2f2745,color:#f4f1fa
-    style END fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    style CRON fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
+    style HALT fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
+    style RECONCILE fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
+    style KILL fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
+    style MANDATE fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
+    style GAP fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
+    style PROTECT fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
+    style ELIGIBLE fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
+    style GATE fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
+    style EXECUTE fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
+    style END fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
 
     style LLM1 fill:#7c3aed,stroke:#4c1d95,color:#fff
     style LLM2 fill:#7c3aed,stroke:#4c1d95,color:#fff
     style JOURNAL fill:#7c3aed,stroke:#134e4a,color:#fff
-    style DROP fill:#6b7280,stroke:#4b5262,color:#fff
+    style DROP fill:#8478a3,stroke:#5c5080,color:#ffffff
 ```
 
 ## ⚙️ How the agent actually works
