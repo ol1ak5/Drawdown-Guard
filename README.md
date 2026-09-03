@@ -68,16 +68,18 @@ The portfolio is intentionally not static. A client who never touches their allo
 
 ### What actually happened, day by day
 
-| Day | Date | Who | What | Result |
-|---|---|---|---|---|
-| Day 1 | Aug 28 | Client | Portfolio opened: 100 IWM, 900 XLF, 100 BIL | The promise starts here: $99,978 reference, $9,998 budget |
-| Day 1 | Aug 28 | Agent | Priced protection, sent limit orders at the ask | Both expired unfilled. The ask moved before the cycle finished |
-| Day 2 | Aug 31 | Agent | Re-priced on the day's chain, limit reaching a quarter of the spread past the offer | IWM put filled - 1 contract at $15.06 |
-| Day 3 | Sep 1 | Agent | Same for XLF, on a new strike closer to spot than the failed one | XLF put filled. 9 contracts at $3.50. Book fully hedged |
-| Day 4 | Sep 2 | Client | Sold the entire XLF position, 900 shares | Nine puts now stood behind a position that no longer existed |
-| Day 4 | Sep 2 | Agent | Recognised the hedge as redundant and sold it back | 9 contracts released at $3.15. The first release this project has executed |
-| Day 5 | Sep 3 | Client | Bought 100 shares of AAPL | New exposure, uninsured |
-| Day 5 | Sep 3 | Agent | Priced and bought a put on AAPL in the same cycle | 1 contract at $26.55, struck at 310 |
+| Date | | What | Result |
+|---|---|---|---|
+| Aug 28 | 👤 | Portfolio opened: 100 IWM, 900 XLF, 100 BIL | The promise starts here: $99,978 reference, $9,998 budget |
+| ↳ | 🤖 | Priced protection, sent limit orders at the ask | Both expired unfilled. The ask moved before the cycle finished |
+| Aug 31 | 🤖 | Re-priced on the day's chain, limit reaching a quarter of the spread past the offer | IWM put filled - 1 contract at $15.06 |
+| Sep 1 | 🤖 | Same for XLF, on a new strike closer to spot than the failed one | XLF put filled. 9 contracts at $3.50. Book fully hedged |
+| Sep 2 | 👤 | Sold the entire XLF position, 900 shares | Nine puts now stood behind a position that no longer existed |
+| ↳ | 🤖 | Recognised the hedge as redundant and sold it back | 9 contracts released at $3.15. The first release this project has executed |
+| Sep 3 | 👤 | Bought 100 shares of AAPL | New exposure, uninsured |
+| ↳ | 🤖 | Priced and bought a put on AAPL in the same cycle | 1 contract at $26.55, struck at 310 |
+
+👤 client · 🤖 agent · ↳ same day as the row above
 
 ## 🔄 The Agent Loop
 
