@@ -207,11 +207,12 @@ th { text-align: left; font-weight: 500; font-size: 10px; letter-spacing: .16em;
      border-bottom: 1px solid var(--hair); white-space: nowrap; }
 td { padding: .72rem .7rem .72rem 0; border-bottom: 1px solid rgba(255,255,255,.05);
      vertical-align: baseline; color: var(--dim); }
-td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
-/* A right-aligned column needs the gap on its right, not only on its left, or
-   the number touches the next cell -- which is how "55.0%" and the hedge it
-   describes rendered as one word. */
+td.n, th.n { text-align: center; font-variant-numeric: tabular-nums; }
+/* A centred column still needs air on both sides, or a wide neighbour
+   crowds in -- which is how "55.0%" and the hedge it describes once
+   rendered as one word when this was right-aligned instead. */
 td.n + td, th.n + th { padding-left: 1.6rem; }
+td.n { padding-right: 0.8rem; }
 td.sym { color: var(--ink); font-weight: 500; }
 tbody tr { transition: background .45s var(--ease); }
 tbody tr:hover { background: rgba(255,255,255,.025); }
@@ -623,40 +624,6 @@ def daily_series(entries: list[dict]) -> list[dict]:
     return [row for _, row in sorted(days.items()) if row["equity"] is not None]
 
 
-def _events_by_date(entries: list[dict]) -> dict[str, str]:
-    """What happened on each day, in three words, for the axis.
-
-    Only the things that changed the book. A day the agent measured and did
-    nothing needs no label -- the line already says the value moved and the
-    band already says the promise held.
-    """
-    labels: dict[str, str] = {}
-    for entry in reversed(entries):
-        date = str(entry.get("ts", ""))[:10]
-        payload = entry.get("payload") or {}
-        event = entry.get("event")
-        if event == "book.reviewed":
-            for change in payload.get("changes") or []:
-                text = str(change)
-                # "opened +9 contracts of XLF P56" -- the symbol follows "of",
-                # and what comes after it is the strike. Taking the last token
-                # gave "P56 bought", which names the contract instead of the
-                # instrument and reads as though the client had bought it.
-                parts = text.split()
-                symbol = parts[parts.index("of") + 1] if "of" in parts else ""
-                if "contracts" in text:
-                    labels[date] = f"{symbol} hedged"
-                elif "closed all" in text:
-                    labels[date] = f"{symbol} sold"
-                elif text.startswith("opened"):
-                    labels[date] = f"{symbol} bought"
-        elif event == "protection.released" and payload.get("executed"):
-            labels[date] = "hedge released"
-        elif event == "order.filled" and date not in labels:
-            labels[date] = f"{payload.get('symbol', '')} hedged".strip()
-    return labels
-
-
 def promise_held(row: dict) -> bool:
     """Whether the client was inside the number they were given that day."""
     return (row.get("uncovered") or 0.0) <= 0
@@ -868,13 +835,18 @@ def _evolution(entries: list[dict]) -> str:
             '<p class="empty">Two closes are needed before there is a line to draw.</p>'
         )
 
-    labels = _events_by_date(entries)
     # The drawing grows with the book. Two holdings today, four by Thursday
     # when the client sells one and buys another, and a fixed height would
     # simply crop the row that arrived last.
-    # Far enough below the date axis that the rows read as a separate
-    # statement rather than as a third tier of labels hanging off the line.
-    rows_top = 452.0
+    #
+    # What happened on each date used to be named here too, under the axis --
+    # "XLF sold; XLF released". It was dropped: a day can carry more than one
+    # event, the label for it grows with the book exactly as the book grows
+    # narrower point-to-point, and no amount of anchoring or line-wrapping
+    # keeps that from eventually colliding with its neighbour. The Decisions
+    # table below has no such ceiling and already says the same thing, in
+    # full sentences, without competing with the chart for room.
+    rows_top = 330.0
     tickers = len(
         {h["symbol"] for row in series for h in _exposed(row.get("holdings"))}
     )
@@ -905,25 +877,21 @@ def _evolution(entries: list[dict]) -> str:
         # The last point is the one a reader looks for, so it is the solid one.
         # The rest are hollow: present, and not competing for the eye.
         fill = "#4ade80" if i == len(points) - 1 else "#0b0b0c"
+        # The value and the date sit centred on their point -- except at the
+        # two ends, where a centred label can run past the edge of the
+        # drawing and be clipped by the page's own overflow-x guard. The end
+        # points anchor outward instead: the first grows rightward from its
+        # dot, the last grows leftward, and nothing is cut off.
+        anchor = "start" if i == 0 else "end" if i == len(points) - 1 else "middle"
         marks += (
             f'<circle cx="{px:.1f}" cy="{py:.1f}" r="5" fill="{fill}" '
             f'stroke="#4ade80" stroke-width="2"/>'
-            f'<text x="{px:.1f}" y="{py - 18:.1f}" text-anchor="middle" '
+            f'<text x="{px:.1f}" y="{py - 18:.1f}" text-anchor="{anchor}" '
             f'font-size="15" font-weight="500" fill="#f4f4f2" '
             f'letter-spacing="-.3">{_money(row["equity"])}</text>'
-            # The date sits on the baseline; the event, if there was one, sits
-            # above it in the accent, because that is the line a reader is
-            # scanning for when they ask what happened.
-            f'<text x="{px:.1f}" y="{floor + 30:.1f}" text-anchor="middle" '
+            f'<text x="{px:.1f}" y="{floor + 30:.1f}" text-anchor="{anchor}" '
             f'font-size="12" fill="#8b8b86" letter-spacing=".08em">'
             f"{_cell(row['date'][5:].replace('-', ' / '))}</text>"
-            + (
-                f'<text x="{px:.1f}" y="{floor + 52:.1f}" text-anchor="middle" '
-                f'font-size="11.5" font-weight="500" fill="#4ade80" '
-                f'letter-spacing=".03em">{_cell(labels[row["date"]])}</text>'
-                if labels.get(row["date"])
-                else ""
-            )
             # The band. One segment per day, spanning the halfway points to its
             # neighbours so the day a colour changes is the day the promise
             # changed -- and clamped to the plot at both ends, because a first

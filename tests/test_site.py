@@ -221,6 +221,12 @@ def test_weights_are_shown_and_sum_to_the_whole():
     assert "100.0%" in page
 
 
+def test_numeric_columns_are_centred():
+    page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
+    assert "td.n, th.n { text-align: center;" in page
+    assert "text-align: right; font-variant-numeric" not in page
+
+
 def test_bills_are_shown_and_marked_as_not_exposure():
     """Held, and not what the promise is measured against.
 
@@ -330,24 +336,6 @@ def test_a_day_whose_book_was_not_recorded_has_no_share():
 def test_one_close_is_not_a_line():
     entries = [_line("cycle.complete", {"equity": "99000"}, "2026-09-01T19:45:00Z")]
     assert "Two closes are needed" in _page(entries)
-
-
-def test_an_event_label_names_the_instrument_not_the_contract():
-    """ "opened +9 contracts of XLF P56" is the agent hedging XLF.
-
-    Labelling it "P56 bought" names the contract and reads as though the client
-    had bought it.
-    """
-    entries = _week() + [
-        _line(
-            "book.reviewed",
-            {"moved": True, "changes": ["opened +9 contracts of XLF P56"]},
-            "2026-09-01T13:45:00Z",
-        )
-    ]
-    page = _page(entries)
-    assert "XLF hedged" in page
-    assert "P56 bought" not in page
 
 
 # --- the decisions ----------------------------------------------------------
