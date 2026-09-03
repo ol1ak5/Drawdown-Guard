@@ -73,15 +73,13 @@ Every row below is read off the journal, not off the plan. A plan says what was 
 | Day | Who | What | Result |
 |---|---|---|---|
 | Aug 28 | Client | Portfolio opened: 100 IWM, 900 XLF, 100 BIL | The promise starts here: $99,978 reference, $9,998 budget |
-| Aug 28 | Agent | Priced protection, sent limit orders at the ask | Both expired unfilled - the ask moved before the cycle finished |
+| Aug 28 | Agent | Priced protection, sent limit orders at the ask | Both expired unfilled. The ask moved before the cycle finished |
 | Aug 31 | Agent | Re-priced on the day's chain, limit reaching a quarter of the spread past the offer | IWM put filled - 1 contract at $15.06 |
-| Sep 1 | Agent | Same for XLF, on a new strike closer to spot than the failed one | XLF put filled - 9 contracts at $3.50. Book fully hedged |
+| Sep 1 | Agent | Same for XLF, on a new strike closer to spot than the failed one | XLF put filled. 9 contracts at $3.50. Book fully hedged |
 | Sep 2 | Client | Sold the entire XLF position, 900 shares | Nine puts now stood behind a position that no longer existed |
-| Sep 2 | Agent | Recognised the hedge as redundant and sold it back | 9 contracts released at $3.15 - the first release this project has executed |
+| Sep 2 | Agent | Recognised the hedge as redundant and sold it back | 9 contracts released at $3.15. The first release this project has executed |
 | Sep 3 | Client | Bought 100 shares of AAPL | New exposure, uninsured |
 | Sep 3 | Agent | Priced and bought a put on AAPL in the same cycle | 1 contract at $26.55, struck at 310 |
-
-The client's two trades are the only inputs anyone gave the agent this week. Everything in the "Agent" rows - what to buy, at what strike, when to let go of it - came out of the code, not out of a conversation.
 
 ## 🔄 The Agent Loop
 
@@ -291,13 +289,13 @@ On Day 3, the new rule worked and the book was fully hedged:
 | Options | Our limit | Result |
 |---|---|---|
 | IWM 275 put ×1 | n.a. | ✅ filled on Day 2 at 15.06 |
-| XLF **56** put ×9 | 3.53 | ✅ filled at **3.50** |
+| XLF 56 put ×9 | 3.53 | ✅ filled at 3.50 |
 
 **7️⃣ What does the protection actually do?** 
 
 The answer is below. Without protection, losses continue to grow as the market falls. With the options in place, the loss reaches a floor.
 
-**Figures as of 28/08/2026, the day this hedge was priced.** Every number here moves with the market: a different day means a different spot price, so both the distance from spot down to the strike and the premium the chain is charging for it change. This table is one snapshot of the mechanism, not a claim about what it costs today — for that, see the [live status page](https://ol1ak5.github.io/Drawdown-Guard/).
+**Figures as of 28/08/2026, the day this hedge was priced.** Every number here moves with the market: a different day means a different spot price, so both the distance from spot down to the strike and the premium the chain is charging for it change. This table is one snapshot of the mechanism, not a claim about what it costs today. For that, see the [live status page](https://ol1ak5.github.io/Drawdown-Guard/).
 
 **Protective put**
 
@@ -374,11 +372,11 @@ touch HALT && git add HALT && git commit -m "halt" && git push
 ```
 **It stops the agent, not the protection.** Every position stays exactly where it is. Hedges already bought keep working. A stop button that liquidated the client's protection would disarm the portfolio at the precise moment somebody was worried enough to press it.
 
-## 🔧 What we improved during the Hackthon week
+## 🔧 What We Improved during the Hackthon Week
 
 Every one of these was found in the journal, not in a stack trace. That's the claim worth making: an autonomous agent trading unattended does not get to fail loudly, so the only defence is a record detailed enough to be read against reality.
 
-| When | What broke | How we found out | The fix |
+| When | What we noticed | How we found out | The improvement |
 |---|---|---|---|
 | Aug 28 | Limits set exactly at the ask never filled | Journal said `submitted: 2`; the account held nothing | The limit reaches past the offer by a fraction of the spread |
 | Aug 28 | "Sent" was being reported as "bought" | Two facts sat in the record with nothing connecting them | Three outcomes instead of two: `filled`, `partial`, `working` |
@@ -389,12 +387,6 @@ Every one of these was found in the journal, not in a stack trace. That's the cl
 | Sep 2 | A hedge on a position the client had just sold disappeared from the book | An option needs its underlying's spot to be shocked, and the shares were gone | Quote the underlying directly for any leg whose shares no longer exist |
 | Sep 2 | `release` recommended handing the hedge back, but no order could be built | The liquidity filter left one tradable strike out of sixty-seven | Close against the unfiltered chain - a filter for buying is not a rule for leaving |
 | Sep 2 | The gate refused the closing order | Assignment probability read on a contract the account was long, not short | Nobody can be assigned an option they own; the check no longer asks the question |
-
-**All three of Sep 2 were one shape.** A check written to govern opening a position was still being applied on the way out, three different ways, in the same afternoon. None of them would have failed a test - every component behaved exactly as written. The agent recorded "recommend handing back" and "executed: false" instead of quietly doing nothing, and that is what caught them.
-
-Plus fifteen defects from a full-codebase audit: a state key dropped on an early return that silently discarded release orders, a mid price averaged against a missing quote side, a hedge released and immediately rebought because two checks disagreed about scope, and twelve more.
-
-**Two of these could not have been found by testing.** The unfilled limits and the missing cycles are both cases where every component behaved exactly as written and the outcome was still wrong. Only the record caught them.
 
 ## 🏁 Main Tracks
 
@@ -450,12 +442,12 @@ src/drawdownguard/
   mcp/         the Alpaca MCP client and its toolsets
   journal/     the writer, and the status page built from the record
 
-config/        risk.yaml, the permanent limits; mandates.yaml, the promises
+  config/      risk.yaml, the permanent limits; mandates.yaml, the promises
                scenario.yaml, the client's week, committed before it runs
-scripts/       run_cycle, healthcheck, build_portfolio, build_site, client_action
-scheduler/     the Cloudflare worker that asks for every cycle on time
-journal/       the append-only record, one file per day
-data/          committed state: the promise, the holdings snapshot, price history
-docs/          the published status page
-tests/         420 of them
+  scripts/     run_cycle, healthcheck, build_portfolio, build_site, client_action
+  scheduler/   the Cloudflare worker that asks for every cycle on time
+  journal/     the append-only record, one file per day
+  data/        committed state: the promise, the holdings snapshot, price history
+  docs/        the published status page
+  tests/       420 of them
 ```
