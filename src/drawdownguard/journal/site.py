@@ -846,7 +846,7 @@ def _evolution(entries: list[dict]) -> str:
     # keeps that from eventually colliding with its neighbour. The Decisions
     # table below has no such ceiling and already says the same thing, in
     # full sentences, without competing with the chart for room.
-    rows_top = 400.0
+    rows_top = 450.0
     tickers = len(
         {h["symbol"] for row in series for h in _exposed(row.get("holdings"))}
     )
