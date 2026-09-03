@@ -68,41 +68,13 @@ The portfolio is intentionally not static. A client who never touches their allo
 
 ### What actually happened, day by day
 
-Read off the journal, not off the plan. 👤 is the client moving their own money; 🤖 is everything the agent decided on its own.
-
-```mermaid
-flowchart LR
-    D1["Aug 28"] --> C1["👤 Portfolio opened<br/>100 IWM · 900 XLF · 100 BIL"]
-    C1 --> A1["🤖 Orders sent at the ask<br/>both expired unfilled"]
-    A1 --> D2["Aug 31"]
-    D2 --> A2["🤖 Re-priced, wider limit<br/>IWM put filled at $15.06"]
-    A2 --> D3["Sep 1"]
-    D3 --> A3["🤖 Re-priced, new strike<br/>XLF put filled at $3.50<br/>book fully hedged"]
-    A3 --> D4["Sep 2"]
-    D4 --> C4["👤 Sold all 900 XLF"]
-    C4 --> A4["🤖 9 puts recognised as redundant<br/>released at $3.15"]
-    A4 --> D5["Sep 3"]
-    D5 --> C5["👤 Bought 100 AAPL"]
-    C5 --> A5["🤖 AAPL hedged same cycle<br/>put bought at $26.55"]
-
-    style D1 fill:#3f3459,stroke:#241f38,color:#efeaf7
-    style D2 fill:#3f3459,stroke:#241f38,color:#efeaf7
-    style D3 fill:#3f3459,stroke:#241f38,color:#efeaf7
-    style D4 fill:#3f3459,stroke:#241f38,color:#efeaf7
-    style D5 fill:#3f3459,stroke:#241f38,color:#efeaf7
-
-    style C1 fill:#7d6ba8,stroke:#544674,color:#faf8ff
-    style C4 fill:#7d6ba8,stroke:#544674,color:#faf8ff
-    style C5 fill:#7d6ba8,stroke:#544674,color:#faf8ff
-
-    style A1 fill:#8b5cf6,stroke:#5b3fa0,color:#ffffff
-    style A2 fill:#8b5cf6,stroke:#5b3fa0,color:#ffffff
-    style A3 fill:#8b5cf6,stroke:#5b3fa0,color:#ffffff
-    style A4 fill:#8b5cf6,stroke:#5b3fa0,color:#ffffff
-    style A5 fill:#8b5cf6,stroke:#5b3fa0,color:#ffffff
-```
-
-The client's two trades - selling XLF on Sep 2, buying AAPL on Sep 3 - are the only inputs anyone gave the agent all week. Every bright violet box is something the code decided on its own: which strike, how many contracts, when to let a hedge go.
+| Date | Client | Agent |
+|---|---|---|
+| Aug 28 | 👤 Portfolio opened: 100 IWM · 900 XLF · 100 BIL | 🤖 Orders sent at the ask both expired unfilled |
+| Aug 31 | - | 🤖 Re-priced, wider limit IWM put filled at $15.06 |
+| Sep 1 | - | 🤖 Re-priced, new strike XLF put filled at $3.50 book fully hedged |
+| Sep 2 | 👤 Sold all 900 XLF | 🤖 9 puts recognised as redundant released at $3.15 |
+| Sep 3 | 👤 Bought 100 AAPL | 🤖 AAPL hedged same cycle put bought at $26.55 |
 
 ## 🔄 The Agent Loop
 
@@ -136,17 +108,17 @@ flowchart TD
 
     JOURNAL["7️⃣ JOURNAL<br/>LLM · THE CLIENT'S NOTE"] --> END([Commit and stop])
 
-    style CRON fill:#b39ddb,stroke:#6a4fa0,color:#2a1b47
-    style HALT fill:#b39ddb,stroke:#6a4fa0,color:#2a1b47
-    style RECONCILE fill:#b39ddb,stroke:#6a4fa0,color:#2a1b47
-    style KILL fill:#b39ddb,stroke:#6a4fa0,color:#2a1b47
-    style MANDATE fill:#b39ddb,stroke:#6a4fa0,color:#2a1b47
-    style GAP fill:#b39ddb,stroke:#6a4fa0,color:#2a1b47
-    style PROTECT fill:#b39ddb,stroke:#6a4fa0,color:#2a1b47
-    style ELIGIBLE fill:#b39ddb,stroke:#6a4fa0,color:#2a1b47
-    style GATE fill:#b39ddb,stroke:#6a4fa0,color:#2a1b47
-    style EXECUTE fill:#b39ddb,stroke:#6a4fa0,color:#2a1b47
-    style END fill:#b39ddb,stroke:#6a4fa0,color:#2a1b47
+    style CRON fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
+    style HALT fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
+    style RECONCILE fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
+    style KILL fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
+    style MANDATE fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
+    style GAP fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
+    style PROTECT fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
+    style ELIGIBLE fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
+    style GATE fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
+    style EXECUTE fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
+    style END fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
 
     style LLM1 fill:#7c3aed,stroke:#4c1d95,color:#fff
     style LLM2 fill:#7c3aed,stroke:#4c1d95,color:#fff
