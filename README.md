@@ -72,43 +72,34 @@ Read off the journal, not off the plan. 👤 is the client moving their own mone
 
 ```mermaid
 flowchart LR
-    classDef day fill:#3f3459,stroke:#241f38,color:#efeaf7
-    classDef client fill:#7d6ba8,stroke:#544674,color:#faf8ff
-    classDef agent fill:#8b5cf6,stroke:#5b3fa0,color:#ffffff
+    D1["Aug 28"] --> C1["👤 Portfolio opened<br/>100 IWM · 900 XLF · 100 BIL"]
+    C1 --> A1["🤖 Orders sent at the ask<br/>both expired unfilled"]
+    A1 --> D2["Aug 31"]
+    D2 --> A2["🤖 Re-priced, wider limit<br/>IWM put filled at $15.06"]
+    A2 --> D3["Sep 1"]
+    D3 --> A3["🤖 Re-priced, new strike<br/>XLF put filled at $3.50<br/>book fully hedged"]
+    A3 --> D4["Sep 2"]
+    D4 --> C4["👤 Sold all 900 XLF"]
+    C4 --> A4["🤖 9 puts recognised as redundant<br/>released at $3.15"]
+    A4 --> D5["Sep 3"]
+    D5 --> C5["👤 Bought 100 AAPL"]
+    C5 --> A5["🤖 AAPL hedged same cycle<br/>put bought at $26.55"]
 
-    subgraph D1["Aug 28"]
-        direction TB
-        C1["👤 Portfolio opened<br/>100 IWM · 900 XLF · 100 BIL"]
-        A1["🤖 Orders sent at the ask<br/>both expired unfilled"]
-    end
+    style D1 fill:#3f3459,stroke:#241f38,color:#efeaf7
+    style D2 fill:#3f3459,stroke:#241f38,color:#efeaf7
+    style D3 fill:#3f3459,stroke:#241f38,color:#efeaf7
+    style D4 fill:#3f3459,stroke:#241f38,color:#efeaf7
+    style D5 fill:#3f3459,stroke:#241f38,color:#efeaf7
 
-    subgraph D2["Aug 31"]
-        direction TB
-        A2["🤖 Re-priced, wider limit<br/>IWM put filled at $15.06"]
-    end
+    style C1 fill:#7d6ba8,stroke:#544674,color:#faf8ff
+    style C4 fill:#7d6ba8,stroke:#544674,color:#faf8ff
+    style C5 fill:#7d6ba8,stroke:#544674,color:#faf8ff
 
-    subgraph D3["Sep 1"]
-        direction TB
-        A3["🤖 Re-priced, new strike<br/>XLF put filled at $3.50<br/>book fully hedged"]
-    end
-
-    subgraph D4["Sep 2"]
-        direction TB
-        C4["👤 Sold all 900 XLF"]
-        A4["🤖 9 puts recognised as redundant<br/>released at $3.15"]
-    end
-
-    subgraph D5["Sep 3"]
-        direction TB
-        C5["👤 Bought 100 AAPL"]
-        A5["🤖 AAPL hedged same cycle<br/>put bought at $26.55"]
-    end
-
-    D1 --> D2 --> D3 --> D4 --> D5
-
-    class D1,D2,D3,D4,D5 day
-    class C1,C4,C5 client
-    class A1,A2,A3,A4,A5 agent
+    style A1 fill:#8b5cf6,stroke:#5b3fa0,color:#ffffff
+    style A2 fill:#8b5cf6,stroke:#5b3fa0,color:#ffffff
+    style A3 fill:#8b5cf6,stroke:#5b3fa0,color:#ffffff
+    style A4 fill:#8b5cf6,stroke:#5b3fa0,color:#ffffff
+    style A5 fill:#8b5cf6,stroke:#5b3fa0,color:#ffffff
 ```
 
 The client's two trades - selling XLF on Sep 2, buying AAPL on Sep 3 - are the only inputs anyone gave the agent all week. Every bright violet box is something the code decided on its own: which strike, how many contracts, when to let a hedge go.
