@@ -66,6 +66,23 @@ The client changes the portfolio mid-flight:
 
 The portfolio is intentionally not static. A client who never touches their allocation isn't the point. That gives Drawdown Guard a real job - it keeps the changing portfolio aligned with a fixed risk mandate.
 
+### What actually happened, day by day
+
+Every row below is read off the journal, not off the plan. A plan says what was supposed to happen; this says what did.
+
+| Day | Who | What | Result |
+|---|---|---|---|
+| Aug 28 | Client | Portfolio opened: 100 IWM, 900 XLF, 100 BIL | The promise starts here: $99,978 reference, $9,998 budget |
+| Aug 28 | Agent | Priced protection, sent limit orders at the ask | Both expired unfilled - the ask moved before the cycle finished |
+| Aug 31 | Agent | Re-priced on the day's chain, limit reaching a quarter of the spread past the offer | IWM put filled - 1 contract at $15.06 |
+| Sep 1 | Agent | Same for XLF, on a new strike closer to spot than the failed one | XLF put filled - 9 contracts at $3.50. Book fully hedged |
+| Sep 2 | Client | Sold the entire XLF position, 900 shares | Nine puts now stood behind a position that no longer existed |
+| Sep 2 | Agent | Recognised the hedge as redundant and sold it back | 9 contracts released at $3.15 - the first release this project has executed |
+| Sep 3 | Client | Bought 100 shares of AAPL | New exposure, uninsured |
+| Sep 3 | Agent | Priced and bought a put on AAPL in the same cycle | 1 contract at $26.55, struck at 310 |
+
+The client's two trades are the only inputs anyone gave the agent this week. Everything in the "Agent" rows - what to buy, at what strike, when to let go of it - came out of the code, not out of a conversation.
+
 ## 🔄 The Agent Loop
 
 ```mermaid
@@ -98,22 +115,22 @@ flowchart TD
 
     JOURNAL["7️⃣ JOURNAL<br/>LLM · THE CLIENT'S NOTE"] --> END([Commit and stop])
 
-    style CRON fill:#faf8fe,stroke:#ddd3f0,color:#5b4b7a
-    style HALT fill:#faf8fe,stroke:#ddd3f0,color:#5b4b7a
-    style RECONCILE fill:#faf8fe,stroke:#ddd3f0,color:#5b4b7a
-    style KILL fill:#faf8fe,stroke:#ddd3f0,color:#5b4b7a
-    style MANDATE fill:#faf8fe,stroke:#ddd3f0,color:#5b4b7a
-    style GAP fill:#faf8fe,stroke:#ddd3f0,color:#5b4b7a
-    style PROTECT fill:#faf8fe,stroke:#ddd3f0,color:#5b4b7a
-    style ELIGIBLE fill:#faf8fe,stroke:#ddd3f0,color:#5b4b7a
-    style GATE fill:#faf8fe,stroke:#ddd3f0,color:#5b4b7a
-    style EXECUTE fill:#faf8fe,stroke:#ddd3f0,color:#5b4b7a
-    style END fill:#faf8fe,stroke:#ddd3f0,color:#5b4b7a
+    style CRON fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    style HALT fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    style RECONCILE fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    style KILL fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    style MANDATE fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    style GAP fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    style PROTECT fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    style ELIGIBLE fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    style GATE fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    style EXECUTE fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    style END fill:#4b4160,stroke:#2f2745,color:#f4f1fa
 
     style LLM1 fill:#7c3aed,stroke:#4c1d95,color:#fff
     style LLM2 fill:#7c3aed,stroke:#4c1d95,color:#fff
     style JOURNAL fill:#7c3aed,stroke:#134e4a,color:#fff
-    style DROP fill:#d3d3d3,stroke:#a9a9a9,color:#2f2f2f
+    style DROP fill:#6b7280,stroke:#4b5262,color:#fff
 ```
 
 ## ⚙️ How the agent actually works
@@ -280,7 +297,7 @@ On Day 3, the new rule worked and the book was fully hedged:
 
 The answer is below. Without protection, losses continue to grow as the market falls. With the options in place, the loss reaches a floor.
 
-Figures as of 28/08/2026.
+**Figures as of 28/08/2026, the day this hedge was priced.** Every number here moves with the market: a different day means a different spot price, so both the distance from spot down to the strike and the premium the chain is charging for it change. This table is one snapshot of the mechanism, not a claim about what it costs today — for that, see the [live status page](https://ol1ak5.github.io/Drawdown-Guard/).
 
 **Protective put**
 
@@ -369,6 +386,11 @@ Every one of these was found in the journal, not in a stack trace. That's the cl
 | Aug 29-30 | The cycle did not run at all | Scheduled runs arrived at 23:24 UTC, hours after the close | Thirteen attempts a day, plus a Cloudflare worker that presses the first one on time |
 | Aug 31 | A quarter of the spread was still not enough | The XLF ask drifted 2.72 → 2.87 across the session | Cross the whole spread |
 | Aug 31 | A client selling near the close would go unseen until the next morning | Reading the schedule against the scenario | A full cycle every half hour, all session |
+| Sep 2 | A hedge on a position the client had just sold disappeared from the book | An option needs its underlying's spot to be shocked, and the shares were gone | Quote the underlying directly for any leg whose shares no longer exist |
+| Sep 2 | `release` recommended handing the hedge back, but no order could be built | The liquidity filter left one tradable strike out of sixty-seven | Close against the unfiltered chain - a filter for buying is not a rule for leaving |
+| Sep 2 | The gate refused the closing order | Assignment probability read on a contract the account was long, not short | Nobody can be assigned an option they own; the check no longer asks the question |
+
+**All three of Sep 2 were one shape.** A check written to govern opening a position was still being applied on the way out, three different ways, in the same afternoon. None of them would have failed a test - every component behaved exactly as written. The agent recorded "recommend handing back" and "executed: false" instead of quietly doing nothing, and that is what caught them.
 
 Plus fifteen defects from a full-codebase audit: a state key dropped on an early return that silently discarded release orders, a mid price averaged against a missing quote side, a hedge released and immediately rebought because two checks disagreed about scope, and twelve more.
 
