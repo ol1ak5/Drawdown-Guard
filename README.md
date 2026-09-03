@@ -71,19 +71,21 @@ The portfolio is intentionally not static. A client who never touches their allo
 Read off the journal, not off the plan. 👤 is the client moving their own money; 🤖 is everything the agent decided on its own.
 
 ```mermaid
-flowchart LR
-    D1["Aug 28"] --> C1["👤 Portfolio opened<br/>100 IWM · 900 XLF · 100 BIL"]
-    C1 --> A1["🤖 Orders sent at the ask<br/>both expired unfilled"]
-    A1 --> D2["Aug 31"]
-    D2 --> A2["🤖 Re-priced, wider limit<br/>IWM put filled at $15.06"]
-    A2 --> D3["Sep 1"]
-    D3 --> A3["🤖 Re-priced, new strike<br/>XLF put filled at $3.50<br/>book fully hedged"]
-    A3 --> D4["Sep 2"]
-    D4 --> C4["👤 Sold all 900 XLF"]
-    C4 --> A4["🤖 9 puts recognised as redundant<br/>released at $3.15"]
-    A4 --> D5["Sep 3"]
-    D5 --> C5["👤 Bought 100 AAPL"]
-    C5 --> A5["🤖 AAPL hedged same cycle<br/>put bought at $26.55"]
+flowchart TD
+    subgraph R1
+        direction LR
+        D1["Aug 28"] --> C1["👤 Portfolio opened<br/>100 IWM · 900 XLF · 100 BIL"] --> A1["🤖 Orders sent at the ask<br/>both expired unfilled"] --> D2["Aug 31"] --> A2["🤖 Re-priced, wider limit<br/>IWM put filled at $15.06"] --> D3["Sep 1"] --> A3["🤖 Re-priced, new strike<br/>XLF put filled at $3.50<br/>book fully hedged"]
+    end
+
+    subgraph R2
+        direction RL
+        D4["Sep 2"] --> C4["👤 Sold all 900 XLF"] --> A4["🤖 9 puts recognised as redundant<br/>released at $3.15"] --> D5["Sep 3"] --> C5["👤 Bought 100 AAPL"] --> A5["🤖 AAPL hedged same cycle<br/>put bought at $26.55"]
+    end
+
+    A3 --> D4
+
+    style R1 fill:transparent,stroke:transparent
+    style R2 fill:transparent,stroke:transparent
 
     style D1 fill:#3f3459,stroke:#241f38,color:#efeaf7
     style D2 fill:#3f3459,stroke:#241f38,color:#efeaf7
@@ -136,22 +138,22 @@ flowchart TD
 
     JOURNAL["7️⃣ JOURNAL<br/>LLM · THE CLIENT'S NOTE"] --> END([Commit and stop])
 
-    style CRON fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
-    style HALT fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
-    style RECONCILE fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
-    style KILL fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
-    style MANDATE fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
-    style GAP fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
-    style PROTECT fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
-    style ELIGIBLE fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
-    style GATE fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
-    style EXECUTE fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
-    style END fill:#5b4d80,stroke:#3a2f57,color:#f5f2fb
+    style CRON fill:#dda0dd,stroke:#a569bd,color:#3b1f57
+    style HALT fill:#dda0dd,stroke:#a569bd,color:#3b1f57
+    style RECONCILE fill:#dda0dd,stroke:#a569bd,color:#3b1f57
+    style KILL fill:#dda0dd,stroke:#a569bd,color:#3b1f57
+    style MANDATE fill:#dda0dd,stroke:#a569bd,color:#3b1f57
+    style GAP fill:#dda0dd,stroke:#a569bd,color:#3b1f57
+    style PROTECT fill:#dda0dd,stroke:#a569bd,color:#3b1f57
+    style ELIGIBLE fill:#dda0dd,stroke:#a569bd,color:#3b1f57
+    style GATE fill:#dda0dd,stroke:#a569bd,color:#3b1f57
+    style EXECUTE fill:#dda0dd,stroke:#a569bd,color:#3b1f57
+    style END fill:#dda0dd,stroke:#a569bd,color:#3b1f57
 
     style LLM1 fill:#7c3aed,stroke:#4c1d95,color:#fff
     style LLM2 fill:#7c3aed,stroke:#4c1d95,color:#fff
     style JOURNAL fill:#7c3aed,stroke:#134e4a,color:#fff
-    style DROP fill:#8478a3,stroke:#5c5080,color:#ffffff
+    style DROP fill:#d3d3d3,stroke:#a9a9a9,color:#2f2f2f
 ```
 
 ## ⚙️ How the agent actually works
