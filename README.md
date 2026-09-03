@@ -68,18 +68,43 @@ The portfolio is intentionally not static. A client who never touches their allo
 
 ### What actually happened, day by day
 
-| Date | Who | What | Result |
-|---|---|---|---|
-| Aug 28 | 👤 Client | Portfolio opened: 100 IWM, 900 XLF, 100 BIL | The promise starts here: $99,978 reference, $9,998 budget |
-| Aug 28 | 🤖 Agent | Priced protection, sent limit orders at the ask | Both expired unfilled. The ask moved before the cycle finished |
-| Aug 31 | 🤖 Agent | Re-priced on the day's chain, limit reaching a quarter of the spread past the offer | IWM put filled - 1 contract at $15.06 |
-| Sep 1 | 🤖  Agent| Same for XLF, on a new strike closer to spot than the failed one | XLF put filled. 9 contracts at $3.50. Book fully hedged |
-| Sep 2 | 👤 Client | Sold the entire XLF position, 900 shares | Nine puts now stood behind a position that no longer existed |
-| Sep 2 | 🤖 Agent | Recognised the hedge as redundant and sold it back | 9 contracts released at $3.15. The first release this project has executed |
-| Sep 3 | 👤 Client | Bought 100 shares of AAPL | New exposure, uninsured |
-| Sep 3 | 🤖 Agent | Priced and bought a put on AAPL in the same cycle | 1 contract at $26.55, struck at 310 |
+Read off the journal, not off the plan. 👤 is the client moving their own money; 🤖 is everything the agent decided on its own.
 
-👤 client · 🤖 agent · ↳ same day as the row above
+```mermaid
+flowchart LR
+    D1["Aug 28"] --> D2["Aug 31"] --> D3["Sep 1"] --> D4["Sep 2"] --> D5["Sep 3"]
+
+    D1 -.-> C1["👤 Portfolio opened<br/>100 IWM · 900 XLF · 100 BIL"]
+    D1 -.-> A1["🤖 Orders sent at the ask<br/>both expired unfilled"]
+
+    D2 -.-> A2["🤖 Re-priced, wider limit<br/>IWM put filled at $15.06"]
+
+    D3 -.-> A3["🤖 Re-priced, new strike<br/>XLF put filled at $3.50<br/>book fully hedged"]
+
+    D4 -.-> C4["👤 Sold all 900 XLF"]
+    D4 -.-> A4["🤖 9 puts recognised as redundant<br/>released at $3.15"]
+
+    D5 -.-> C5["👤 Bought 100 AAPL"]
+    D5 -.-> A5["🤖 AAPL hedged same cycle<br/>put bought at $26.55"]
+
+    style D1 fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    style D2 fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    style D3 fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    style D4 fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+    style D5 fill:#4b4160,stroke:#2f2745,color:#f4f1fa
+
+    style C1 fill:#6b4f1f,stroke:#4a3714,color:#fbeed2
+    style C4 fill:#6b4f1f,stroke:#4a3714,color:#fbeed2
+    style C5 fill:#6b4f1f,stroke:#4a3714,color:#fbeed2
+
+    style A1 fill:#1f5c46,stroke:#123c2d,color:#d8f5e8
+    style A2 fill:#1f5c46,stroke:#123c2d,color:#d8f5e8
+    style A3 fill:#1f5c46,stroke:#123c2d,color:#d8f5e8
+    style A4 fill:#1f5c46,stroke:#123c2d,color:#d8f5e8
+    style A5 fill:#1f5c46,stroke:#123c2d,color:#d8f5e8
+```
+
+The client's two trades - selling XLF on Sep 2, buying AAPL on Sep 3 - are the only inputs anyone gave the agent all week. Every green box is something the code decided on its own: which strike, how many contracts, when to let a hedge go.
 
 ## 🔄 The Agent Loop
 
