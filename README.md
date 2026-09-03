@@ -108,17 +108,17 @@ flowchart TD
 
     JOURNAL["7️⃣ JOURNAL<br/>LLM · THE CLIENT'S NOTE"] --> END([Commit and stop])
 
-    style CRON fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
-    style HALT fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
-    style RECONCILE fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
-    style KILL fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
-    style MANDATE fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
-    style GAP fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
-    style PROTECT fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
-    style ELIGIBLE fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
-    style GATE fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
-    style EXECUTE fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
-    style END fill:#ece6f7,stroke:#c3b3dd,color:#4a3d66
+    style CRON fill:#ececff,stroke:#9370db,color:#000000
+    style HALT fill:#ececff,stroke:#9370db,color:#000000
+    style RECONCILE fill:#ececff,stroke:#9370db,color:#000000
+    style KILL fill:#ececff,stroke:#9370db,color:#000000
+    style MANDATE fill:#ececff,stroke:#9370db,color:#000000
+    style GAP fill:#ececff,stroke:#9370db,color:#000000
+    style PROTECT fill:#ececff,stroke:#9370db,color:#000000
+    style ELIGIBLE fill:#ececff,stroke:#9370db,color:#000000
+    style GATE fill:#ececff,stroke:#9370db,color:#000000
+    style EXECUTE fill:#ececff,stroke:#9370db,color:#000000
+    style END fill:#ececff,stroke:#9370db,color:#000000
 
     style LLM1 fill:#7c3aed,stroke:#4c1d95,color:#fff
     style LLM2 fill:#7c3aed,stroke:#4c1d95,color:#fff
