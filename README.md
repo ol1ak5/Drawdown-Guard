@@ -71,8 +71,8 @@ The portfolio is intentionally not static. A client who never touches their allo
 | Date | Client | Agent |
 |---|---|---|
 | Aug 28 | 👤 Portfolio opened: 100 IWM · 900 XLF · 100 BIL | 🤖 Orders sent at the ask both expired unfilled |
-| Aug 31 | - | 🤖 Re-priced, wider limit IWM put filled at $15.06 |
-| Sep 1 | - | 🤖 Re-priced, new strike XLF put filled at $3.50 book fully hedged |
+| Aug 31 | 👤 No action | 🤖 Re-priced, wider limit IWM put filled at $15.06 |
+| Sep 1 | 👤 No action | 🤖 Re-priced, new strike XLF put filled at $3.50 book fully hedged |
 | Sep 2 | 👤 Sold all 900 XLF | 🤖 9 puts recognised as redundant released at $3.15 |
 | Sep 3 | 👤 Bought 100 AAPL | 🤖 AAPL hedged same cycle put bought at $26.55 |
 
