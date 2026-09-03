@@ -161,8 +161,11 @@ h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); line-height: .95; font-weight: 600;
    could not do -- "worst case from here" does not tell anyone it is the
    distance from today's price down to the strike. */
 .statement { color: var(--dim); font-size: 1rem; line-height: 1.6;
-             max-width: 44rem; margin: 0 0 2.6rem;
+             max-width: 64rem; margin: 0 0 2.6rem;
              font-variant-numeric: tabular-nums; }
+/* Left wide on purpose: at the old 44rem the sentence wrapped after two
+   figures with most of the screen still empty, which reads as a mistake
+   rather than as a deliberate line break. */
 /* Same face, same size. Only the colour changes, so the figures are findable
    without the sentence turning into a list of headings. */
 .statement b { color: var(--ink); font-weight: 500; }
@@ -385,31 +388,19 @@ def _movement(series: list[dict]) -> str:
 
 
 def _measured_at(entry: dict) -> str:
-    """When the figures above were taken, and off which prices.
+    """When the figures above were taken.
 
     Every number in the header moves with the market, and the same arithmetic
     written down an hour earlier gives a different answer -- which is exactly
     how a reader comparing this page against a worked example in the README
-    concludes that one of them is wrong. Naming the cycle and the spots makes
-    each figure reproducible by hand.
+    concludes that one of them is wrong. Naming the cycle makes each figure
+    reproducible: read the journal at that timestamp and the numbers match.
     """
-    payload = entry.get("payload") or {}
     when = str(entry.get("ts", ""))[:16].replace("T", " ")
     if not when:
         return ""
-    # A holding with no price contributes nothing rather than raising. This
-    # page has to render from whatever the journal happens to contain,
-    # including entries written by a version of the program that recorded one
-    # field fewer, and a status page that throws is worse than one with a
-    # shorter sentence in it.
-    prices = ", ".join(
-        f"{_cell(h['symbol'])} at {_money(h['price'], 2)}"
-        for h in (payload.get("holdings") or [])
-        if h.get("shocked", True) and h.get("symbol") != "CASH" and h.get("price")
-    )
-    tail = f", with {prices}" if prices else ""
     return (
-        f'<p class="stamp">Measured on the {_cell(when)} UTC cycle{tail}. '
+        f'<p class="stamp">Measured on the {_cell(when)} UTC cycle. '
         f"Every figure here moves with the market.</p>"
     )
 
@@ -608,11 +599,27 @@ def daily_series(entries: list[dict]) -> list[dict]:
                 row["worst_case"] = float(payload.get("worst_case"))
                 row["already_lost"] = float(payload.get("already_lost") or 0.0)
                 row["remaining_budget"] = payload.get("remaining_budget")
-                row["premium_paid"] = payload.get("premium_paid")
-                row["holdings"] = payload.get("holdings")
-                row["legs"] = payload.get("legs")
+                # `holdings`/`legs` are set below too, and only take this reading
+                # when nothing newer already has -- see the `book.settled` branch.
+                if row["holdings"] is None:
+                    row["premium_paid"] = payload.get("premium_paid")
+                    row["holdings"] = payload.get("holdings")
+                    row["legs"] = payload.get("legs")
             except (TypeError, ValueError):
                 pass
+        elif entry.get("event") == "book.settled" and row["holdings"] is None:
+            # Written once a cycle has traded, after the fills are read back --
+            # so on a day the book changed, this is the account as it actually
+            # stands and `mandate.stress` is the reading from before the order
+            # went. Entries arrive newest first, so the first one seen for a
+            # date wins, and a `book.settled` always sits ahead of the
+            # `mandate.stress` from the same cycle. Without this branch the
+            # coverage row for that day was built from the pre-trade book: on
+            # 2026-09-03 the agent bought and hedged AAPL in one cycle, and the
+            # row said AAPL was 0% covered on the day it was fully covered.
+            row["premium_paid"] = payload.get("premium_paid")
+            row["holdings"] = payload.get("holdings")
+            row["legs"] = payload.get("legs")
     return [row for _, row in sorted(days.items()) if row["equity"] is not None]
 
 
@@ -952,7 +959,7 @@ recorded</span></p>"""
 # selling a position in the same voice as the agent buying a put reads as an
 # agent trading on an opinion. The client moves their own money; the agent
 # answers.
-_CLIENT_EVENTS = {"portfolio.established"}
+_CLIENT_EVENTS = {"portfolio.established", "client.acted"}
 
 # One short line per event, in the client's words rather than the program's.
 # The old page printed the raw payload here -- a wall of JSON in a table cell,
@@ -987,6 +994,11 @@ _SAYS = {
     "cycle.complete": "finished the check",
     "reconcile.discrepancy": "our records and the broker disagreed; the broker won",
     "portfolio.established": "the client bought this holding",
+    # `client.acted` fell through to the event name -- "client acted" -- which
+    # tells a reader nothing they could not already see in the Who column.
+    # `_says` below writes the real sentence from the payload's action and
+    # quantity; this entry only covers the case neither is present.
+    "client.acted": "the client made a trade",
 }
 
 # Events that say nothing a reader wants. Filtering the chain-liquidity line is
@@ -1048,6 +1060,12 @@ def _says(entry: dict) -> str:
             f"sold {_plural(payload.get('contracts'), 'contract')} of protection "
             "back; no longer needed"
         )
+    if event == "client.acted":
+        verb = "sold" if payload.get("action") == "sell_equity" else "bought"
+        shares = payload.get("shares")
+        symbol = payload.get("symbol")
+        if shares and symbol:
+            return f"{verb} {shares} shares of {symbol}"
     return _SAYS.get(event, event.replace(".", " "))
 
 

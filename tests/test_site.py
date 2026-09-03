@@ -519,10 +519,16 @@ def test_a_day_the_client_did_not_hold_something_is_blank_not_zero():
 def test_the_header_says_which_cycle_it_is_reporting():
     """Every figure moves with the market, and the same arithmetic an hour
     earlier gives a different answer -- which is how a reader comparing the
-    page against a worked example concludes that one of them is wrong."""
+    page against a worked example concludes that one of them is wrong.
+
+    Prices are not listed here -- they used to be, and it read as arbitrary:
+    one symbol shown out of several, no explanation of why that one. The
+    timestamp alone is enough to reproduce a figure by reading the journal
+    at that cycle.
+    """
     page = _page([_line("mandate.stress", _stress(), "2026-09-01T17:48:00Z")])
     assert "Measured on the 2026-09-01 17:48 UTC cycle" in page
-    assert "XLF at $57.60" in page, "the spot the fall to strike is measured from"
+    assert "with XLF at" not in page
 
 
 def test_a_holding_is_covered_by_degree_not_by_yes_or_no():
@@ -677,3 +683,55 @@ def test_a_measurement_newer_than_the_settlement_still_wins():
         ),
     ]
     assert "$4,656" in _page(entries)
+
+
+def test_a_hedge_bought_the_same_cycle_shows_covered_that_day():
+    """On 2026-09-03 the agent bought AAPL and hedged it in one cycle.
+    `mandate.stress` measures before the trade, so the coverage row built
+    from it alone said AAPL was 0% covered on the day it was fully covered --
+    `book.settled`, written after the fill, has to win.
+    """
+    entries = [
+        _line(
+            "book.settled",
+            {
+                "holdings": [
+                    {"symbol": "AAPL", "shares": 100, "value": 32805.0, "shocked": True}
+                ],
+                "legs": [
+                    {
+                        "symbol": "AAPL",
+                        "right": "P",
+                        "strike": "310",
+                        "contracts": 1,
+                        "premium": "26.55",
+                    }
+                ],
+                "premium_paid": 2655.0,
+            },
+            "2026-09-03T14:17:00Z",
+        ),
+        _line("cycle.complete", {"equity": "98902"}, "2026-09-03T14:16:00Z"),
+        _line("mandate.stress", _stress(holdings=[], legs=[]), "2026-09-03T14:16:00Z"),
+    ]
+    from drawdownguard.journal.site import daily_series, per_symbol_cover
+
+    series = daily_series(entries)
+    row = next(r for r in series if r["date"] == "2026-09-03")
+    assert per_symbol_cover(row)["AAPL"] == 1.0
+
+
+def test_client_acted_reads_as_the_trade_it_was():
+    """It fell through to the event's own name -- "client acted" -- which
+    told a reader nothing the Who column had not already said."""
+    entries = [
+        _line(
+            "client.acted",
+            {"day": 5, "action": "buy_equity", "symbol": "AAPL", "shares": 100},
+            "2026-09-03T13:53:00Z",
+        )
+    ]
+    page = _page(entries)
+    assert "bought 100 shares of AAPL" in page
+    assert 'data-who="client"' in page
+    assert "client acted" not in page

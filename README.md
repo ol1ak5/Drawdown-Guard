@@ -280,6 +280,8 @@ On Day 3, the new rule worked and the book was fully hedged:
 
 The answer is below. Without protection, losses continue to grow as the market falls. With the options in place, the loss reaches a floor.
 
+Figures as of 28/08/2026.
+
 **Protective put**
 
 | Market falls | Without the agent | **With the agent** | Premium paid | **Floor + Premium** | Drawdown budget | Promise |

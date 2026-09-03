@@ -90,8 +90,11 @@ h1 { font-size: clamp(2.6rem, 7vw, 4.6rem); line-height: .95; font-weight: 600;
    could not do -- "worst case from here" does not tell anyone it is the
    distance from today's price down to the strike. */
 .statement { color: var(--dim); font-size: 1rem; line-height: 1.6;
-             max-width: 44rem; margin: 0 0 2.6rem;
+             max-width: 64rem; margin: 0 0 2.6rem;
              font-variant-numeric: tabular-nums; }
+/* Left wide on purpose: at the old 44rem the sentence wrapped after two
+   figures with most of the screen still empty, which reads as a mistake
+   rather than as a deliberate line break. */
 /* Same face, same size. Only the colour changes, so the figures are findable
    without the sentence turning into a list of headings. */
 .statement b { color: var(--ink); font-weight: 500; }
