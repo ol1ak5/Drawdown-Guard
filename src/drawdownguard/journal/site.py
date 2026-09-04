@@ -957,7 +957,7 @@ _SAYS = {
     "mandate.stress": "checked the portfolio against the promise",
     "mandate.period_opened": "the twelve-month promise starts here",
     "mandate.unreadable": "could not read the portfolio",
-    "book.reviewed": "looked at what the client holds",
+    "book.reviewed": "checked the portfolio",
     "review.unaddressed": "raised something today's checks did not cover",
     "cycle.complete": "finished the check",
     "reconcile.discrepancy": "our records and the broker disagreed; the broker won",
@@ -986,25 +986,15 @@ def _who(entry: dict) -> str:
     the market, and a table showing the client selling a position in the same
     voice as the agent buying a put reads as an agent trading on an opinion.
 
-    `book.reviewed` is the hard case, because the diff behind it does not know
-    who moved what -- it is a set difference between two snapshots. But the
-    instrument says it: shares in this book change because the client bought or
-    sold them, and option legs change because the agent did. So the row is
-    attributed by what moved rather than by who was asked.
+    `book.reviewed` is always the agent: it is the agent looking at the book,
+    not anyone acting on it. The move it noticed already has its own row -- the
+    client's `client.acted`, or the agent's `order.filled` -- so rendering the
+    diff here again put the same purchase on the page twice, once as "client
+    bought AAPL" and again a cycle later when the agent reconciled and saw it.
     """
     event = str(entry.get("event", ""))
     if event == "book.reviewed":
-        changes = entry.get("payload", {}).get("changes") or []
-        # Nobody acted. The agent looked and found the book where it left it,
-        # and attributing that to the client put "client: nothing in the
-        # portfolio changed" on the page -- a line about something the client
-        # did not do.
-        if not changes:
-            return "agent"
-        # A leg is keyed "XLF P56"; shares are keyed by the bare symbol.
-        if all("contracts of" in str(c) for c in changes):
-            return "agent"
-        return "client"
+        return "agent"
     return "client" if event in _CLIENT_EVENTS else "agent"
 
 
@@ -1013,10 +1003,10 @@ def _says(entry: dict) -> str:
     event = str(entry.get("event", ""))
     payload = entry.get("payload") or {}
     if event == "book.reviewed":
-        changes = payload.get("changes") or []
-        if changes:
-            return "; ".join(_plainly(str(c)) for c in changes[:2])
-        return "nothing in the portfolio changed"
+        # Neutral on purpose: the change it saw is already on its own row
+        # (`client.acted` or `order.filled`), so re-describing it here read as
+        # a second, duplicate trade.
+        return "checked the portfolio"
     if event == "order.filled":
         count = payload.get("contracts", "")
         price = payload.get("fill_price")
@@ -1045,36 +1035,6 @@ def _plural(count, noun: str) -> str:
     except (TypeError, ValueError):
         return f"{count} {noun}s"
     return f"{n} {noun}" + ("" if n == 1 else "s")
-
-
-def _plainly(change: str) -> str:
-    """One line of the portfolio diff, said the way a person would say it.
-
-    The diff is written for arithmetic -- "opened +9 contracts of XLF P56" is
-    exact and is not a sentence. A client reading their own account should not
-    have to work out that P56 is a put struck at 56, or that "opened" is the
-    word for having bought one.
-    """
-    parts = change.split()
-    if "of" not in parts:
-        return change
-    symbol = parts[parts.index("of") + 1]
-    tail = parts[parts.index("of") + 2 :]
-    if "contracts" in change:
-        strike = tail[0][1:] if tail and tail[0][:1] in ("P", "C") else ""
-        kind = "put" if tail and tail[0][:1] == "P" else "call"
-        raw = parts[1].rstrip("x")
-        count = abs(int(raw)) if raw.lstrip("+-").isdigit() else ""
-        struck = f" struck at {strike}" if strike else ""
-        leg = _plural(count, f"{symbol} {kind}")
-        if change.startswith("closed"):
-            return f"gave back {leg}{struck}"
-        return f"took on {leg}{struck}"
-    if change.startswith("closed"):
-        return f"sold the whole {symbol} position, {parts[2]} shares"
-    if change.startswith("opened"):
-        return f"bought {parts[1].lstrip('+')} shares of {symbol}"
-    return change
 
 
 def _decision_rows(entries: list[dict]) -> str:

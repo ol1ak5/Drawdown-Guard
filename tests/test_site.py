@@ -345,23 +345,45 @@ def test_the_client_and_the_agent_are_not_given_the_same_voice():
     """The whole claim is that the agent never takes a view.
 
     A table showing the client selling in the same voice as the agent buying a
-    put reads as an agent trading on an opinion.
+    put reads as an agent trading on an opinion. So `client.acted` is the
+    client's and `order.filled` is the agent's.
     """
     entries = [
         _line(
-            "book.reviewed",
-            {"moved": True, "changes": ["closed all 900 shares of XLF"]},
+            "client.acted",
+            {"action": "sell_equity", "symbol": "XLF", "shares": 900},
             "2026-09-02T13:45:00Z",
         ),
         _line(
-            "book.reviewed",
-            {"moved": True, "changes": ["opened +9 contracts of XLF P56"]},
+            "order.filled",
+            {"symbol": "XLF", "contracts": 9, "fill_price": "3.5"},
             "2026-09-01T13:45:00Z",
         ),
     ]
     page = _page(entries)
-    assert 'data-who="client"' in page, "shares move because the client moved them"
-    assert 'data-who="agent"' in page, "legs move because the agent did"
+    assert 'data-who="client"' in page, "the client moved their own shares"
+    assert 'data-who="agent"' in page, "the agent bought the puts"
+
+
+def test_a_book_review_is_the_agent_looking_not_a_trade():
+    """`book.reviewed` fires a cycle after the client trades, when the agent
+
+    reconciles and sees the new position. Rendering its diff put the same
+    purchase on the page twice -- once as the client's trade, once as the
+    agent's review a cycle later. It now reads as neither a client nor a
+    second trade.
+    """
+    entries = [
+        _line(
+            "book.reviewed",
+            {"moved": True, "changes": ["opened +100 shares of AAPL"]},
+            "2026-09-03T14:16:00Z",
+        ),
+    ]
+    page = _page(entries)
+    assert 'data-who="agent"' in page
+    assert "checked the portfolio" in page
+    assert "shares of AAPL" not in page
 
 
 def test_a_row_says_what_happened_rather_than_dumping_the_payload():
