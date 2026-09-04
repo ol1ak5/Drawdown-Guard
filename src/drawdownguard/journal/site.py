@@ -961,7 +961,7 @@ _SAYS = {
     "review.unaddressed": "raised something today's checks did not cover",
     "cycle.complete": "finished the check",
     "reconcile.discrepancy": "our records and the broker disagreed; the broker won",
-    "portfolio.established": "the client bought this holding",
+    "portfolio.established": "opened this position",
     # `client.acted` fell through to the event name -- "client acted" -- which
     # tells a reader nothing they could not already see in the Who column.
     # `_says` below writes the real sentence from the payload's action and
@@ -1024,6 +1024,11 @@ def _says(entry: dict) -> str:
         symbol = payload.get("symbol")
         if shares and symbol:
             return f"{verb} {shares} shares of {symbol}"
+    if event == "portfolio.established":
+        shares = payload.get("shares")
+        symbol = payload.get("symbol")
+        if shares and symbol:
+            return f"opened with {shares} shares of {symbol}"
     return _SAYS.get(event, event.replace(".", " "))
 
 
