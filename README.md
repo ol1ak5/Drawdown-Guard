@@ -8,7 +8,7 @@ Drawdown Guard is an autonomous AI trading agent that checks a portfolio every w
 
 **The market moves. The loss mandate doesn't. Drawdown Guard keeps the two in line.**
 
-🔴 **[Demo Application Platform](https://ol1ak5.github.io/Drawdown-Guard/)** · 📓 **[Journal](journal/)**
+🔴 **[Demo Application Platform](https://ol1ak5.github.io/Drawdown-Guard/)** · 📓 **[Journal](journal/)** · 📄 **[One-pager](ONE-PAGER.md)**
 
 ---
 
