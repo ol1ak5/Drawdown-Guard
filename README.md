@@ -1,26 +1,14 @@
 # 🛡️ Drawdown Guard
 
-**Investors can say how much they can afford to lose in the worst scenario. But portfolios can't keep that promise on their own.**
+An autonomous AI trading agent that checks a portfolio every weekday against its client's downside limit, and steps in with an options overlay the moment it doesn't.
 
-So we built an agent that does.
+Investors can say how much they can afford to lose in the worst scenario. But portfolios can't keep that promise on their own. So we built an agent that does.
 
-Drawdown Guard is an autonomous AI trading agent that checks a portfolio every weekday against its client's downside limit, and steps in with an options overlay the moment it doesn't.
-
-**The market moves. The loss mandate doesn't. Drawdown Guard keeps the two in line.**
-
-🔴 **[Demo Application Platform](https://ol1ak5.github.io/drawdown-guard/)** · 📓 **[Journal](journal/)** · 📄 **[One-pager](ONE-PAGER.md)**
-
----
+💻 **[Demo Application Platform](https://ol1ak5.github.io/drawdown-guard/)** · 📓 **[Journal](journal/)** · 📄 **[One-pager](ONE-PAGER.md)**
 
 ## 🎯 The problem
 
-**Just knowing a loss tolerance limit is not a loss control.**
-
-Investors can decide how much downside they can accept. But once the portfolio is built, that number doesn't enforce itself.
-
-Markets move. Positions change. Options expire. New exposure is added.
-
-**The challenge is not knowing what the market will do next.** It's keeping the portfolio aligned with the risk limit the client already chose. That's exactly what Drawdown Guard is built to solve.
+Just knowing a loss tolerance limit is not a loss control. Investors can decide how much downside they can accept. But once the portfolio is built, that number doesn't enforce itself. The main challenge is not knowing what the market will do next. It's keeping the portfolio aligned with the risk limit the client already chose. That's exactly what Drawdown Guard is built to solve.
 
 ## 💡 The solution
 
@@ -64,7 +52,7 @@ The client changes the portfolio mid-flight:
 - Sells the whole XLF position of 900 shares on September 2nd
 - Buys 100 shares of AAPL on September 3rd
 
-The portfolio is intentionally not static. A client who never touches their allocation isn't the point. That gives Drawdown Guard a real job - it keeps the changing portfolio aligned with a fixed risk mandate.
+The portfolio is intentionally not static. A client who never touches their allocation isn't the point. That gives Drawdown Guard a real job. It keeps the changing portfolio aligned with a fixed risk mandate.
 
 ### What actually happened, day by day
 
@@ -336,11 +324,11 @@ The portfolio can become uncovered for several reasons:
 
 | Trigger | Why it uncovers risk |
 |---|---|
-| 📈 **Portfolio grew** | More exposure behind the same fixed budget. The floor has to be re-struck |
-| 🛒 **Client bought** | New holdings arrive unhedged. Adding protection when a client invests is the unglamorous half of the job |
-| 💵 **Client sold** | Risk exposure falls. The agent reassesses the book and returns any protection that is no longer needed |
-| ⏳ **Hedge aged** | The market moved and the strike that used to hold the floor no longer reaches it |
-| 📅 **Coverage expired** | Coverage silently ended. Nothing but recomputation notices |
+| **Portfolio grew** | More exposure behind the same fixed budget. The floor has to be re-struck |
+| **Client bought** | New holdings arrive unhedged. Adding protection when a client invests is the unglamorous half of the job |
+| **Client sold** | Risk exposure falls. The agent reassesses the book and returns any protection that is no longer needed |
+| **Hedge aged** | The market moved and the strike that used to hold the floor no longer reaches it |
+| **Coverage expired** | Coverage silently ended. Nothing but recomputation notices |
 
 ## 🔌 Alpaca Trading API and MCP Server
 
@@ -381,35 +369,6 @@ touch HALT && git add HALT && git commit -m "halt" && git push
 | Sep 2 | `release` recommended handing the hedge back, but no order could be built | The liquidity filter left one tradable strike out of sixty-seven | Close against the unfiltered chain - a filter for buying is not a rule for leaving |
 | Sep 2 | The gate refused the closing order | Assignment probability read on a contract the account was long, not short | Nobody can be assigned an option they own; the check no longer asks the question |
 
-## 🏁 Main Tracks
-
-**Track 03 - Hedging & Risk Protection Agents**
-
-Built directly against the four agent types this track names:
-
-| Track agent type | How Drawdown Guard implements it |
-|---|---|
-| 📉 **Drawdown-defense agents** | Checks the portfolio against a client-defined loss budget and keeps the book within its mandate |
-| 🛡️ **Protective put strategy** | Uses long puts to cover the calculated downside shortfall |
-| 🎯 **Collar strategy** | Priced on every cycle against the put, and taken when the call is the richer leg. It has not been taken yet: on this book the call has priced below the put on every reading, so buying outright won 37 times out of 37. The journal records every declined collar and the volatilities that declined it |
-| ♻️ **Hedge rebalancers for equity portfolios** | Adds protection when risk is uncovered and hands it back on a margin band. The client's sale on day 4 and purchase on day 5 are what exercise both halves |
-
-## 🧰 Technologies
-
-| Technology | Description |
-|---|---|
-| **Alpaca Trading API** | Live paper account, level 3 |
-| **Alpaca MCP Server** | Every broker call goes through MCP |
-| **LangGraph** | The five-node cycle, including the conditional halt edge |
-| **LangChain** | The provider-agnostic chat interface behind all three model calls |
-| **Google Gemini** | Risk analysis, hedge structure selection, and the client's note |
-| **NumPy · SciPy · pandas** | Black-Scholes, the stress ladder, the payoff maths |
-| **Pydantic** | Mandates and limits are validated types |
-| **GitHub Actions** | The agent's heartbeat. Thirteen autonomous cycles a day, every weekday |
-| **GitHub Pages** | The live status page, rebuilt from the journal after every cycle |
-| **Cloudflare Workers** | Asks for all thirteen cycles on time |
-| **Python 3.11** | The language the project runs on |
-
 ## ▶️ Try it
 
 ```bash
@@ -423,30 +382,39 @@ uv run pytest
 
 🔐 `ALPACA_PAPER_TRADE=true` is a hard interlock. The program refuses to start without it. This has never traded real money.
 
-## 📁 Layout
+## 🏁 Main Tracks
 
-```
-src/drawdownguard/
-  risk/        mandate, period, stress ladder, remedies, and the gate
-  agent/       the cycle, its nodes, the roles, the guards
-  market/      Alpaca adapters: account, chain, features, history
-  options/     Black-Scholes pricing and payoff
-  execution/   order submission and broker reconciliation
-  mcp/         the Alpaca MCP client and its toolsets
-  journal/     the writer, and the status page built from the record
-  config/      risk.yaml, the permanent limits; mandates.yaml, the promises
-               scenario.yaml, the client's week, committed before it runs
-  scripts/     run_cycle, healthcheck, build_portfolio, build_site, client_action
-  scheduler/   the Cloudflare worker that asks for every cycle on time
-  journal/     the append-only record, one file per day
-  data/        committed state: the promise, the holdings snapshot, price history
-  docs/        the published status page
-  tests/       420 of them
-```
+**Track 03 - Hedging & Risk Protection Agents**
+
+Built directly against the four agent types this track names:
+
+| Track agent type | How Drawdown Guard implements it |
+|---|---|
+| 📉 **Drawdown-defense agents** | Checks the portfolio against a client-defined loss budget and keeps the book within its mandate |
+| 🛡️ **Protective put strategy** | Uses long puts to cover the calculated downside shortfall |
+| 🎯 **Collar strategy** | Priced on every cycle against the put, and taken when the call is the richer leg. It has not been taken yet: on this book the call has priced below the put on every reading, so buying outright won 37 times out of 37. The journal records every declined collar and the volatilities that declined it |
+| ♻️ **Hedge rebalancers for equity portfolios** | Adds protection when risk is uncovered and hands it back on a margin band. The client's sale on day 4 and purchase on day 5 are what exercise both halves |
+
+## 🧩 Built With
+
+| Stack | Used for |
+|---|---|
+| **Alpaca Trading API** | Live paper account, level 3 |
+| **Alpaca MCP Server** | Every broker call goes through MCP |
+| **LangGraph** | The five-node cycle, including the conditional halt edge |
+| **LangChain** | The provider-agnostic chat interface behind all three model calls |
+| **Google Gemini** | Risk analysis, hedge structure selection, and the client's note |
+| **NumPy · SciPy · pandas** | Black-Scholes, the stress ladder, the payoff maths |
+| **Pydantic** | Mandates and limits are validated types |
+| **GitHub Actions** | The agent's heartbeat. Thirteen autonomous cycles a day, every weekday |
+| **GitHub Pages** | The live status page, rebuilt from the journal after every cycle |
+| **Cloudflare Workers** | Asks for all thirteen cycles on time |
+| **Python 3.11** | The language the project runs on |
 
 ## 📄 License
 
 Copyright © 2026 Olga Aksenova.
 
-The code in this repository is licensed under the **[Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)** – see
-[LICENSE](LICENSE) for the full text.
+The code in this repository is licensed under the **[Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)** – see [LICENSE](LICENSE) for the full text.
+
+*Built for Alpaca AI Trading Agents Hackathon*
