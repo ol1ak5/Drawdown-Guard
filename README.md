@@ -8,7 +8,7 @@ Drawdown Guard is an autonomous AI trading agent that checks a portfolio every w
 
 **The market moves. The loss mandate doesn't. Drawdown Guard keeps the two in line.**
 
-🔴 **[Demo Application Platform](https://ol1ak5.github.io/Drawdown-Guard/)** · 📓 **[Journal](journal/)** · 📄 **[One-pager](ONE-PAGER.md)**
+🔴 **[Demo Application Platform](https://ol1ak5.github.io/drawdown-guard/)** · 📓 **[Journal](journal/)** · 📄 **[One-pager](ONE-PAGER.md)**
 
 ---
 
@@ -290,7 +290,7 @@ On Day 3, the new rule worked and the book was fully hedged:
 
 The answer is below. Without protection, losses continue to grow as the market falls. With the options in place, the loss reaches a floor.
 
-**Figures as of 28/08/2026, the day this hedge was priced.** Every number here moves with the market: a different day means a different spot price, so both the distance from spot down to the strike and the premium the chain is charging for it change. This table is one snapshot of the mechanism, not a claim about what it costs today. For that, see the [live status page](https://ol1ak5.github.io/Drawdown-Guard/).
+**Figures as of 28/08/2026, the day this hedge was priced.** Every number here moves with the market: a different day means a different spot price, so both the distance from spot down to the strike and the premium the chain is charging for it change. This table is one snapshot of the mechanism, not a claim about what it costs today. For that, see the [live status page](https://ol1ak5.github.io/drawdown-guard/).
 
 **Protective put**
 

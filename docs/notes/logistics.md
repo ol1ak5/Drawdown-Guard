@@ -209,7 +209,7 @@ themselves rather than reading a claim that it happened.
       parameters, never loosen them, so a weaker or differently-behaved model
       cannot talk the agent into a bad trade. Model: `gemini-3.7-flash`.
 - [x] Create the public repository. Done 2026-08-24:
-      `github.com/ol1ak5/Drawdown-Guard`. `DRAWDOWNGUARD_REPO_URL` still needs
+      `github.com/ol1ak5/drawdown-guard`. `DRAWDOWNGUARD_REPO_URL` still needs
       setting so the status page footer carries a real source link.
 - [x] Connect Discord and create the team.
 - [x] Confirm whether a demo URL is required — it is, and the answer is a

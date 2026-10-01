@@ -19,7 +19,7 @@
 // `check_not_already_run`.
 
 const WORKFLOW =
-  "https://api.github.com/repos/ol1ak5/Drawdown-Guard/actions/workflows/trade.yml/dispatches";
+  "https://api.github.com/repos/ol1ak5/drawdown-guard/actions/workflows/trade.yml/dispatches";
 
 export default {
   async scheduled(event, env, ctx) {

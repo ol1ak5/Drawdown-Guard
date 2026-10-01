@@ -57,4 +57,4 @@ The controls around it:
 - **Alpaca Trading API.** The agent uses the API to read the account, positions and buying power, pull live quotes and the full option chain, submit option orders, and read their fills back. The historical daily bars behind the volatility estimates come from the Alpaca market-data API through the `alpaca-py` SDK (cached locally as parquet).
 - **Alpaca MCP Server.** Those broker calls go through the Alpaca MCP Server rather than the REST client directly, so the agent works against a small, named set of tools: `get_account_info`, `get_all_positions`, `get_option_chain`, `get_option_contracts`, `get_option_snapshot` and `get_stock_latest_quote` to read; `place_option_order` to trade; `get_order_by_client_id` to confirm each fill. The risk-analyst call opens its own MCP session with read-only tools only and cannot place an order.
 
-*Live `ol1ak5.github.io/Drawdown-Guard/` · Code `github.com/ol1ak5/Drawdown-Guard`*
+*Live `ol1ak5.github.io/drawdown-guard/` · Code `github.com/ol1ak5/drawdown-guard`*

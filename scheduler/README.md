@@ -24,7 +24,7 @@ You need a GitHub token. Create it yourself and put it in Cloudflare yourself
 -- it should not pass through anything else.
 
 1. GitHub → Settings → Developer settings → **Fine-grained personal access
-   token**, scoped to `ol1ak5/Drawdown-Guard` only, with **Actions: Read and
+   token**, scoped to `ol1ak5/drawdown-guard` only, with **Actions: Read and
    write**. Nothing else. Give it an expiry past the event.
 
 2. From this directory:
