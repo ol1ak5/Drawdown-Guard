@@ -100,23 +100,6 @@ flowchart TD
     EXECUTE["6️⃣ EXECUTE"] --> JOURNAL
 
     JOURNAL["7️⃣ JOURNAL<br/>LLM · THE CLIENT'S NOTE"] --> END([Commit and stop])
-
-    style CRON fill:#ececff,stroke:#9370db,color:#000000
-    style HALT fill:#ececff,stroke:#9370db,color:#000000
-    style RECONCILE fill:#ececff,stroke:#9370db,color:#000000
-    style KILL fill:#ececff,stroke:#9370db,color:#000000
-    style MANDATE fill:#ececff,stroke:#9370db,color:#000000
-    style GAP fill:#ececff,stroke:#9370db,color:#000000
-    style PROTECT fill:#ececff,stroke:#9370db,color:#000000
-    style ELIGIBLE fill:#ececff,stroke:#9370db,color:#000000
-    style GATE fill:#ececff,stroke:#9370db,color:#000000
-    style EXECUTE fill:#ececff,stroke:#9370db,color:#000000
-    style END fill:#ececff,stroke:#9370db,color:#000000
-
-    style LLM1 fill:#7c3aed,stroke:#4c1d95,color:#fff
-    style LLM2 fill:#7c3aed,stroke:#4c1d95,color:#fff
-    style JOURNAL fill:#7c3aed,stroke:#134e4a,color:#fff
-    style DROP fill:#9a9a9a,stroke:#6e6e6e,color:#ffffff
 ```
 
 ## ⚙️ How the Agent Actually Works
