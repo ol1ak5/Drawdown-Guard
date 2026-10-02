@@ -6,11 +6,6 @@ Investors can say how much they can afford to lose in the worst scenario. But po
 
 🌐 **[See It Live](https://ol1ak5.github.io/drawdown-guard/)** · 📓 **[Read the Journal](journal/)** · 📄 **[Read the One-pager](ONE-PAGER.md)**
 
-<p align="center">
-  <img src="docs/img/site-top.png" width="49%" alt="Drawdown Guard live status page — the promise and today's figures">
-  <img src="docs/img/site-coverage.png" width="49%" alt="Drawdown Guard live status page — portfolio evolution chart and per-holding hedge coverage">
-</p>
-
 ## 🎯 The Problem
 
 Just knowing a loss tolerance limit is not a loss control. Investors can decide how much downside they can accept. But once the portfolio is built, that number doesn't enforce itself. The main challenge is not knowing what the market will do next. It's keeping the portfolio aligned with the risk limit the client already chose. That's exactly what Drawdown Guard is built to solve.
