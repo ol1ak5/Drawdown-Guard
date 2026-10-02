@@ -4,7 +4,7 @@ An autonomous AI trading agent that checks a portfolio every weekday against its
 
 Investors can say how much they can afford to lose in the worst scenario. But portfolios can't keep that promise on their own. So we built an agent that does.
 
-💻 **[Demo Application Platform](https://ol1ak5.github.io/drawdown-guard/)** · 📓 **[Journal](journal/)** · 📄 **[One-pager](ONE-PAGER.md)**
+🌐 **[See It Live](https://ol1ak5.github.io/drawdown-guard/)** · 📓 **[Read the Journal](journal/)** · 📄 **[Read the One-pager](ONE-PAGER.md)**
 
 ## 🎯 The Problem
 
