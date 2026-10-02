@@ -6,11 +6,11 @@ Investors can say how much they can afford to lose in the worst scenario. But po
 
 💻 **[Demo Application Platform](https://ol1ak5.github.io/drawdown-guard/)** · 📓 **[Journal](journal/)** · 📄 **[One-pager](ONE-PAGER.md)**
 
-## 🎯 The problem
+## 🎯 The Problem
 
 Just knowing a loss tolerance limit is not a loss control. Investors can decide how much downside they can accept. But once the portfolio is built, that number doesn't enforce itself. The main challenge is not knowing what the market will do next. It's keeping the portfolio aligned with the risk limit the client already chose. That's exactly what Drawdown Guard is built to solve.
 
-## 💡 The solution
+## 💡 The Solution
 
 Drawdown Guard stands between the client's promise and the portfolio, turning a downside limit into a continuously monitored constraint the portfolio is checked against.
 
@@ -20,7 +20,7 @@ Every weekday, the agent wakes up and asks one question:
 If yes, the agent records the result and stays on guard.
 If no, it measures the existing gap, and evaluates the available options on today's actual option chain to bring the portfolio back within its mandate.
 
-## 👤 One client, one promise
+## 👤 One Client, One Promise
 
 For this hackathon, we turn the problem into a concrete situation.
 
@@ -35,7 +35,7 @@ Our simulated client has a c. $100,000 portfolio that includes:
 | **BIL** | 100 | 91.66 | **$9,166** | Fixed income | 1-3 month T-bills |
 | **Cash** | n.a. | n.a. | **$8,675** | Liquidity | Used for the hedge |
 
-### The promise
+### The Promise
 
 The client's mandate is simple:
 
@@ -114,7 +114,7 @@ flowchart TD
     style DROP fill:#9a9a9a,stroke:#6e6e6e,color:#ffffff
 ```
 
-## ⚙️ How the agent actually works
+## ⚙️ How the Agent Actually Works
 
 Seven steps presented as five nodes in the LangGraph cycle. Every half hour while the market is open. Fully autonomous.
 
@@ -369,7 +369,7 @@ touch HALT && git add HALT && git commit -m "halt" && git push
 | Sep 2 | `release` recommended handing the hedge back, but no order could be built | The liquidity filter left one tradable strike out of sixty-seven | Close against the unfiltered chain - a filter for buying is not a rule for leaving |
 | Sep 2 | The gate refused the closing order | Assignment probability read on a contract the account was long, not short | Nobody can be assigned an option they own; the check no longer asks the question |
 
-## ▶️ Try it
+## ▶️ Try It
 
 ```bash
 uv sync
